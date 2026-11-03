@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="48" y1="48" x2="976" y2="976">
+      <stop offset="0" stop-color="#5073EE"/>
+      <stop offset="1" stop-color="#2C3DD0"/>
+    </linearGradient>
+  </defs>
+  <rect x="40" y="40" width="944" height="944" rx="200" ry="200" fill="url(#bg)"/>
+  <!-- Layout: bro + 120px gap + TEAM, vertically centered; TEAM stretched to bro width -->
+  <text x="512" y="480" text-anchor="middle" font-family="Noto Sans, DejaVu Sans, Arial, sans-serif" font-size="440" font-weight="700" fill="#FFFFFF">bro</text>
+  <text x="512" y="700" text-anchor="middle" font-family="Noto Sans, DejaVu Sans, Arial, sans-serif" font-size="154" font-weight="700" fill="#FFFFFF" fill-opacity="0.88" letter-spacing="28" textLength="698" lengthAdjust="spacingAndGlyphs">TEAM</text>
+</svg>

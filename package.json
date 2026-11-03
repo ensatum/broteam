@@ -1,0 +1,109 @@
+{
+  "name": "bro-team",
+  "version": "2026.4.192",
+  "broteam": {
+    "release": 4,
+    "build": 192
+  },
+  "description": "BroTeam — доска задач по Yandex Tracker",
+  "homepage": "https://github.com/ensatum/broteam",
+  "main": "dist-electron/main.js",
+  "author": "Developer",
+  "license": "UNLICENSED",
+  "private": true,
+  "desktopName": "broteam.desktop",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:vite\" \"npm:dev:electron\"",
+    "dev:vite": "vite",
+    "dev:electron": "wait-on tcp:5173 && npm run build:electron && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
+    "build:icons": "node scripts/generate-icons.mjs",
+    "build:electron": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --outdir=dist-electron --external:electron --external:better-sqlite3 --format=cjs --sourcemap && cp build/icon.png dist-electron/icon.png",
+    "build:renderer": "vite build",
+    "build": "npm run build:icons && npm run build:electron && npm run build:renderer",
+    "dist:linux": "npm run build && electron-builder --linux AppImage deb && node scripts/prune-artifacts.mjs release 1",
+    "release": "bash scripts/release.sh",
+    "build:dev": "bash scripts/build.sh",
+    "dist:mac": "node scripts/dist-mac.mjs && node scripts/prune-artifacts.mjs release 1",
+    "dist:win": "npm run build && electron-builder --win nsis && node scripts/prune-artifacts.mjs release 1",
+    "prune:releases": "node scripts/prune-artifacts.mjs release 1",
+    "prune:builds": "node scripts/prune-artifacts.mjs builds 3",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.1",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.13",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.5.2",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.3",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.0.0",
+    "electron": "^38.1.2",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.25.10",
+    "tailwindcss": "^4.1.13",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7",
+    "wait-on": "^8.0.5"
+  },
+  "build": {
+    "appId": "pro.a3f.broteam",
+    "productName": "BroTeam",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      }
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**/*"
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icons",
+      "category": "Office",
+      "maintainer": "Developer <dev@localhost>",
+      "executableName": "broteam",
+      "syncDesktopName": true,
+      "desktop": {
+        "entry": {
+          "Name": "BroTeam",
+          "StartupWMClass": "broteam"
+        }
+      },
+      "synopsis": "BroTeam standup board for Yandex Tracker"
+    },
+    "mac": {
+      "target": [
+        "zip"
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.productivity",
+      "identity": null
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    }
+  }
+}
