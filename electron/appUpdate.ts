@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -62,6 +62,102 @@ function newestVersion(versions: string[], baked: string): string | null {
   return best;
 }
 
+function canWrite(dir: string): boolean {
+  try {
+    fs.accessSync(dir, fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function run(command: string, args: string[]): void {
+  const result = spawnSync(command, args, { stdio: 'ignore' });
+  if (result.status !== 0) throw new Error(`Команда ${command} не выполнилась.`);
+}
+
+/** Packaged Mac app: …/BroTeam.app/Contents/MacOS/BroTeam */
+function runningMacApp(): string | null {
+  const bundle = path.resolve(process.execPath, '../../..');
+  if (!bundle.endsWith('.app') || path.basename(bundle) === 'Electron.app') return null;
+  return bundle;
+}
+
+function macInstallDestination(): string {
+  const current = runningMacApp();
+  const translocated = current?.includes('/AppTranslocation/') ?? false;
+  if (current && !translocated && canWrite(path.dirname(current))) return current;
+  const userApps = path.join(app.getPath('home'), 'Applications');
+  fs.mkdirSync(userApps, { recursive: true });
+  if (canWrite(userApps)) return path.join(userApps, 'BroTeam.app');
+  if (canWrite('/Applications')) return '/Applications/BroTeam.app';
+  throw new Error('Нет прав заменить приложение. Перенесите BroTeam.app в папку «Программы» и повторите.');
+}
+
+function findMacApp(dir: string): string | null {
+  for (const name of fs.readdirSync(dir)) {
+    if (name.endsWith('.app')) return path.join(dir, name);
+  }
+  return null;
+}
+
+function installMacZip(zip: string, report: (message: string) => void): AppUpdateResult {
+  if (!runningMacApp()) {
+    throw new Error('Автоустановка доступна для собранного приложения, не для запуска из исходников.');
+  }
+  report('Устанавливаем и перезапускаем…');
+  const extracted = fs.mkdtempSync(path.join(os.tmpdir(), 'broteam-mac-'));
+  try {
+    run('ditto', ['-xk', zip, extracted]);
+    const unpacked = findMacApp(extracted);
+    if (!unpacked) throw new Error('В архиве нет приложения.');
+    const stagedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'broteam-next-'));
+    const staged = path.join(stagedDir, 'BroTeam.app');
+    run('ditto', [unpacked, staged]);
+    const dest = macInstallDestination();
+    const script = path.join(os.tmpdir(), `broteam-install-${process.pid}.sh`);
+    fs.writeFileSync(
+      script,
+      `#!/bin/bash
+set -euo pipefail
+pid="$1"
+src="$2"
+dest="$3"
+while kill -0 "$pid" 2>/dev/null; do
+  sleep 0.2
+done
+mkdir -p "$(dirname "$dest")"
+backup="\${dest}.previous"
+rm -rf "$backup"
+if [[ -d "$dest" ]]; then
+  mv "$dest" "$backup"
+fi
+if ! ditto "$src" "$dest"; then
+  if [[ -d "$backup" ]]; then
+    rm -rf "$dest"
+    mv "$backup" "$dest"
+  fi
+  exit 1
+fi
+xattr -dr com.apple.quarantine "$dest" || true
+rm -rf "$backup" "$(dirname "$src")"
+open "$dest"
+rm -f "$0"
+`,
+      { mode: 0o755 },
+    );
+    const child = spawn('bash', [script, String(process.pid), staged, dest], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+    app.exit(0);
+    return { updated: true, restarted: true, message: 'Приложение перезапускается.' };
+  } finally {
+    fs.rmSync(extracted, { recursive: true, force: true });
+  }
+}
+
 async function installDownloaded(file: string, report: (message: string) => void): Promise<AppUpdateResult> {
   const appImage = process.env.APPIMAGE;
   if (process.platform === 'linux' && appImage && file.endsWith('.AppImage')) {
@@ -72,6 +168,9 @@ async function installDownloaded(file: string, report: (message: string) => void
     child.unref();
     app.exit(0);
     return { updated: true, restarted: true, message: 'Приложение перезапускается.' };
+  }
+  if (process.platform === 'darwin' && file.endsWith('.zip')) {
+    return installMacZip(file, report);
   }
   const dest = path.join(app.getPath('downloads'), path.basename(file));
   fs.copyFileSync(file, dest);
