@@ -93,6 +93,22 @@ export function ConsoleDock(props: { open: boolean; height: number; onHeight: (h
         <TabButton active={tab === 'log'} onClick={() => setTab('log')}>
           LOG
         </TabButton>
+        <button
+          type="button"
+          className="ml-auto h-5 rounded px-2 text-[10px] font-semibold text-slate-300 hover:bg-slate-800"
+          onClick={() => {
+            void window.api.readLog().then((text) => navigator.clipboard.writeText(text));
+          }}
+        >
+          Копировать
+        </button>
+        <button
+          type="button"
+          className="h-5 rounded px-2 text-[10px] font-semibold text-slate-300 hover:bg-slate-800"
+          onClick={() => void window.api.revealLog()}
+        >
+          Открыть файл
+        </button>
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import type {
   TrackerUser,
 } from '@shared/types';
 import { COLUMN_COLORS, DEFAULT_GITHUB, DEVELOPER_TONE_PRESETS, PARTICIPANT_ROLES, normalizeDeveloperTone } from '@shared/types';
+import { sessionLog } from '../sessionLog';
 import ColorField from '../components/ColorField';
 import { ActivityIcon, BellOffIcon, DownloadIcon, InfoIcon, PlusIcon, RefreshIcon, TrashIcon, UploadIcon } from '../components/Icons';
 import { DEFAULT_WORK_SCHEDULE, type WorkSchedule } from '../autoRefresh';
@@ -76,7 +77,6 @@ export default function SettingsPage(props: Props) {
   const [boardSearchError, setBoardSearchError] = useState<string | null>(null);
   const [columnListsOpen, setColumnListsOpen] = useState<Record<number, boolean>>({});
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
   const [importSections, setImportSections] = useState<BackupChoice>(() => ({
     settings: true,
     tasks: false,
@@ -90,6 +90,20 @@ export default function SettingsPage(props: Props) {
     drafts: false,
   }));
   const [section, setSection] = useState<SettingsTab>(props.initialSection ?? 'app');
+  const sectionRef = useRef(section);
+  sectionRef.current = section;
+  const [notice, setNotice] = useState<{ section: SettingsTab; tone: 'ok' | 'err'; text: string } | null>(null);
+  function publishOk(text: string) {
+    const where = sectionRef.current;
+    setNotice({ section: where, tone: 'ok', text });
+    sessionLog('info', 'settings', { section: where, text });
+  }
+  function publishErr(error: unknown) {
+    const text = error instanceof Error ? error.message : String(error);
+    const where = sectionRef.current;
+    setNotice({ section: where, tone: 'err', text });
+    sessionLog('error', 'settings', { section: where, text });
+  }
   const [githubDraft, setGithubDraft] = useState<GithubSource>(DEFAULT_GITHUB);
   const [githubSaved, setGithubSaved] = useState<GithubSource>(DEFAULT_GITHUB);
   const [appInfo, setAppInfo] = useState<{ name: string; version: string; headerVersion: string }>({
@@ -125,9 +139,9 @@ export default function SettingsPage(props: Props) {
       const saved = await window.api.saveGithub(githubDraft);
       setGithubDraft(saved);
       setGithubSaved(saved);
-      setStatus('Источник сохранён');
+      publishOk('Источник сохранён');
     } catch (e) {
-      props.onError(e instanceof Error ? e.message : String(e));
+      publishErr(e);
     } finally {
       setBusy(false);
     }
@@ -138,9 +152,9 @@ export default function SettingsPage(props: Props) {
     props.onError(null);
     try {
       await window.api.testGithub(githubDraft);
-      setStatus('Репозиторий доступен');
+      publishOk('Репозиторий доступен');
     } catch (e) {
-      props.onError(e instanceof Error ? e.message : String(e));
+      publishErr(e);
     } finally {
       setBusy(false);
     }
@@ -152,9 +166,9 @@ export default function SettingsPage(props: Props) {
     try {
       const saved = await window.api.saveConnection(connDraft);
       props.onConnectionChange(saved);
-      setStatus('Подключение сохранено');
+      publishOk('Подключение сохранено');
     } catch (e) {
-      props.onError(e instanceof Error ? e.message : String(e));
+      publishErr(e);
     } finally {
       setBusy(false);
     }
@@ -165,9 +179,9 @@ export default function SettingsPage(props: Props) {
     props.onError(null);
     try {
       const me = await window.api.testConnection(connDraft);
-      setStatus(`OK: ${me.display} (${me.login})`);
+      publishOk(`OK: ${me.display} (${me.login})`);
     } catch (e) {
-      props.onError(e instanceof Error ? e.message : String(e));
+      publishErr(e);
     } finally {
       setBusy(false);
     }
@@ -180,7 +194,7 @@ export default function SettingsPage(props: Props) {
       const users = await window.api.searchUsers(userQuery);
       setUserResults(users);
     } catch (e) {
-      props.onError(e instanceof Error ? e.message : String(e));
+      publishErr(e);
     } finally {
       setBusy(false);
     }
@@ -226,9 +240,9 @@ export default function SettingsPage(props: Props) {
     try {
       const saved = await window.api.replaceDevelopers(devDraft);
       props.onDevelopersChange(saved);
-      setStatus('Участники сохранены');
+      publishOk('Участники сохранены');
     } catch (e) {
-      props.onError(e instanceof Error ? e.message : String(e));
+      publishErr(e);
     } finally {
       setBusy(false);
     }
@@ -239,9 +253,9 @@ export default function SettingsPage(props: Props) {
     props.onError(null);
     try {
       const result = await window.api.exportBackup(exportSections);
-      if (result.ok) setStatus(`Экспорт сохранён: ${result.path}`);
+      if (result.ok) publishOk(`Экспорт сохранён: ${result.path}`);
     } catch (e) {
-      props.onError(e instanceof Error ? e.message : String(e));
+      publishErr(e);
     } finally {
       setBusy(false);
     }
@@ -257,7 +271,7 @@ export default function SettingsPage(props: Props) {
     try {
       const result = await window.api.importBackup(importSections);
       if (!result.ok) return;
-      setStatus(`Импортировано: ${result.applied.join(', ')}`);
+      publishOk(`Импортировано: ${result.applied.join(', ')}`);
       // Refresh local drafts of settings from DB
       const [boardCfg, devs, cols, nextBoards, activeId] = await Promise.all([
         window.api.getBoard(),
@@ -277,7 +291,7 @@ export default function SettingsPage(props: Props) {
       props.onActiveBoardChange(activeId);
       props.onReloadAll?.();
     } catch (e) {
-      props.onError(e instanceof Error ? e.message : String(e));
+      publishErr(e);
     } finally {
       setBusy(false);
     }
@@ -342,9 +356,9 @@ export default function SettingsPage(props: Props) {
       setBoardHits([]);
       setBoardSearch('');
       if (added) await loadColumns(added.id, added.trackerBoardId);
-      setStatus(`Добавлена доска ${board.name}#${board.id}`);
+      publishOk(`Добавлена доска ${board.name}#${board.id}`);
     } catch (e) {
-      props.onError(e instanceof Error ? e.message : String(e));
+      publishErr(e);
     } finally {
       setBusy(false);
     }
@@ -380,7 +394,7 @@ export default function SettingsPage(props: Props) {
       setColDraft(savedCols);
       props.onColumnsChange(savedCols);
     } catch (e) {
-      props.onError(e instanceof Error ? e.message : String(e));
+      publishErr(e);
     } finally {
       setBusy(false);
     }
@@ -446,7 +460,7 @@ export default function SettingsPage(props: Props) {
           ...prev.filter((column) => column.boardLocalId !== localId),
           ...withDraftEdits(ordered),
         ]);
-        setStatus(`Колонки доски обновлены: ${ordered.length}`);
+        publishOk(`Колонки доски обновлены: ${ordered.length}`);
         return;
       }
       const others = props.columns.filter((column) => column.boardLocalId !== localId);
@@ -455,9 +469,9 @@ export default function SettingsPage(props: Props) {
       columnDraftHold.current = overlay;
       props.onColumnsChange(savedCols);
       setColDraft(overlay);
-      setStatus(`Колонки сохранены: ${ordered.length}`);
+      publishOk(`Колонки сохранены: ${ordered.length}`);
     } catch (e) {
-      props.onError(e instanceof Error ? e.message : String(e));
+      publishErr(e);
     } finally {
       setBusy(false);
     }
@@ -491,9 +505,9 @@ export default function SettingsPage(props: Props) {
       props.onColumnsChange(savedCols);
       setBoardDraft(savedBoard);
       setColDraft(savedCols);
-      setStatus('Настройки доски сохранены');
+      publishOk('Настройки доски сохранены');
     } catch (e) {
-      props.onError(e instanceof Error ? e.message : String(e));
+      publishErr(e);
     } finally {
       setBusy(false);
     }
@@ -527,9 +541,15 @@ export default function SettingsPage(props: Props) {
         ))}
       </nav>
       <div className="min-w-0 flex-1 space-y-4">
-      {status && (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          {status}
+      {notice && notice.section === section && (
+        <div
+          className={`rounded-md px-3 py-2 text-sm ${
+            notice.tone === 'err'
+              ? 'border border-red-200 bg-red-50 text-red-800'
+              : 'border border-emerald-200 bg-emerald-50 text-emerald-800'
+          }`}
+        >
+          {notice.text}
         </div>
       )}
 

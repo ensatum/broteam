@@ -116,11 +116,6 @@ button:disabled.bro-save-busy {
   pointer-events: none;
   user-select: none;
 }
-.bro-fade-host.bro-dim,
-.bro-fade-host.bro-out,
-.bro-fade-host.bro-hold {
-  filter: grayscale(1);
-}
 .bro-fade-host.bro-dim {
   opacity: 1;
   transition: none;
@@ -135,8 +130,18 @@ button:disabled.bro-save-busy {
 }
 .bro-fade-host.bro-in {
   opacity: 1;
-  filter: none;
   transition: opacity 200ms linear;
+}
+.bro-filter-row.is-preview-on,
+.bro-filter-row.is-preview-off,
+.bro-filter-row.is-preview-pin,
+.bro-filter-row.is-preview-exclude,
+[data-icon-filter].is-preview-on,
+[data-icon-filter].is-preview-off,
+[data-icon-filter].is-preview-pin,
+[data-done-filter].is-preview-on,
+[data-done-filter].is-preview-off {
+  cursor: progress;
 }
 
 body.bro-drag-row,

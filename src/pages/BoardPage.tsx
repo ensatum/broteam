@@ -18,7 +18,7 @@ import SummaryDock from '../components/SummaryDock';
 import { RunSpinner } from '../components/ApiRunControls';
 import { InstantTip } from '../components/InstantTip';
 import { ConsoleDock } from '../components/ConsoleDock';
-import { attachFadeHost, fadeThen, reapplyFade } from '../contentFade';
+import { attachFadeHost, fadeThen, hideWorkBusy, reapplyFade, showWorkBusy } from '../contentFade';
 import { defaultSummaryPeriod, type SummaryPeriod } from '@shared/summary';
 import TodoPanel from '../components/TodoPanel';
 import {
@@ -488,6 +488,9 @@ export default function BoardPage(props: Props) {
       window.removeEventListener('scroll', place, true);
     };
   }, [modeMenuOpen]);
+  useLayoutEffect(() => {
+    hideWorkBusy();
+  });
   useEffect(() => {
     if (!modeMenuOpen) return;
     const close = (event: MouseEvent) => {
@@ -1926,12 +1929,15 @@ export default function BoardPage(props: Props) {
   }
 
   function chooseBoardScope(scope: BoardScope) {
-    setBoardScope(scope);
-    const showDone = scope !== 'open';
-    setShowDoneIssues(showDone);
-    saveShowDone(showDone);
-    syncApplied({ showDone });
-    selectAllTasks();
+    showWorkBusy();
+    window.setTimeout(() => {
+      setBoardScope(scope);
+      const showDone = scope !== 'open';
+      setShowDoneIssues(showDone);
+      saveShowDone(showDone);
+      syncApplied({ showDone });
+      selectAllTasks();
+    }, 0);
   }
 
   function selectPending(
@@ -2872,8 +2878,18 @@ export default function BoardPage(props: Props) {
 
         <div
           ref={centerRef}
-          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+          className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
         >
+          {props.refreshingBoardId != null && props.refreshingBoardId === props.activeBoardId && (
+            <>
+              <div className="absolute inset-0 z-30 bg-white/60" />
+              <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
+                <div className="pointer-events-auto">
+                  <RunSpinner countId="bro-api-count" />
+                </div>
+              </div>
+            </>
+          )}
           <div className="flex h-8 shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50 px-2">
             <button
               ref={modeButtonRef}
@@ -4758,16 +4774,6 @@ function boardStatusTotals(
   doneStatusKeys?: ReadonlySet<string>,
 ): { open: number; done: number; total: number } {
   if (!matrix) return { open: 0, done: 0, total: 0 };
-  const stats = matrix.sprintStatsById;
-  if (stats && Object.keys(stats).length) {
-    let done = 0;
-    let total = 0;
-    for (const stat of Object.values(stats)) {
-      done += stat.done || 0;
-      total += stat.total || 0;
-    }
-    if (total > 0) return { open: Math.max(0, total - done), done, total };
-  }
   const seen = new Set<string>();
   let done = 0;
   let total = 0;

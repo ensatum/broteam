@@ -170,43 +170,45 @@ export default function App() {
     };
   }, []);
 
+  const viewRef = useRef(activeBoardId);
+  viewRef.current = activeBoardId;
+
   const refreshBoard = useCallback(async () => {
     if (refreshLock.current || refreshingBoardId != null) return;
     refreshLock.current = true;
-    const returnTo = activeBoardId;
-    setRefreshingBoardId(returnTo ?? -1);
     await window.api.resetTrackerActivity();
     await window.api.beginBoardRefresh();
     setApiCount(0);
-    const held = startContentFade(true);
     const refreshButton = document.querySelector<HTMLButtonElement>('[data-refresh]');
     refreshButton?.setAttribute('disabled', '');
     refreshButton?.querySelector('svg')?.classList.add('animate-spin');
     const queue = boards.filter((item) => item.enabled);
     setError(null);
-    let nextMatrix: Awaited<ReturnType<typeof window.api.refreshBoard>> | null = null;
     let stopped = false;
     const failures: string[] = [];
     try {
       for (const item of queue) {
         setRefreshingBoardId(item.id);
         try {
-          await window.api.setActiveBoard(item.id);
-          const data = await window.api.refreshBoard();
-          await window.api.saveLastBoard(data);
-          if (item.id === returnTo) nextMatrix = data;
+          const data = await window.api.refreshBoard(item.id);
+          if (viewRef.current === item.id) {
+            setRefreshingBoardId(null);
+            await startContentFade(false);
+            if (viewRef.current === item.id) setMatrix(data);
+            window.setTimeout(() => revealContentFade(), 0);
+          }
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e);
           if (message.includes('Запросы остановлены')) throw e;
           failures.push(`${(item.alias || '').trim() || item.name}: ${message}`);
           sessionLog('error', 'board refresh failed', { id: item.id, error: message });
+          if (viewRef.current === item.id) setRefreshingBoardId(null);
         }
+        if (viewRef.current != null) await window.api.setActiveBoard(viewRef.current);
       }
       if (failures.length) setError(failures.join('\n'));
       setDevelopers(await window.api.listDevelopers());
       const listed = await window.api.listIssueChanges();
-      await held;
-      if (nextMatrix) setMatrix(nextMatrix);
       setLastRefreshAt(Date.now());
       setChanges(listed);
       try {
@@ -217,14 +219,12 @@ export default function App() {
     } catch (e) {
       stopped = e instanceof Error && e.message.includes('Запросы остановлены');
       if (!stopped) setError(e instanceof Error ? e.message : String(e));
-      await held;
     } finally {
       try {
-        if (returnTo != null) await window.api.setActiveBoard(returnTo);
-        if (nextMatrix && nextMatrix.sourceBoardLocalId === returnTo) setMatrix(nextMatrix);
-        else if (!stopped && returnTo != null) {
-          const last = await window.api.getLastBoard();
-          setMatrix(last && last.sourceBoardLocalId === returnTo ? last : null);
+        if (viewRef.current != null) await window.api.setActiveBoard(viewRef.current);
+        if (stopped && viewRef.current != null) {
+          const last = await window.api.getLastBoard(viewRef.current);
+          setMatrix(last && last.sourceBoardLocalId === viewRef.current ? last : null);
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -234,9 +234,8 @@ export default function App() {
       refreshButton?.querySelector('svg')?.classList.remove('animate-spin');
       setRefreshingBoardId(null);
       setLoading(false);
-      window.setTimeout(() => revealContentFade(), 0);
     }
-  }, [activeBoardId, boards, refreshingBoardId]);
+  }, [boards, refreshingBoardId]);
 
   useEffect(() => {
     if (!ready || !autoRefresh || refreshingBoardId != null) return;
@@ -323,7 +322,18 @@ export default function App() {
   }
 
   const switchBoard = (id: number) => {
-    if (refreshLock.current || refreshingBoardId != null || id === activeBoardId) return;
+    if (id === activeBoardId) return;
+    if (refreshLock.current) {
+      const ticket = ++boardSwitch.current;
+      paintBoardBadge(id);
+      viewRef.current = id;
+      setActiveBoardId(id);
+      void window.api.getLastBoard(id).then((last) => {
+        if (boardSwitch.current !== ticket || viewRef.current !== id) return;
+        setMatrix(last && last.sourceBoardLocalId === id ? last : null);
+      });
+      return;
+    }
     const ticket = ++boardSwitch.current;
     const previousId = activeBoardId;
     sessionLog('info', 'switch board', { id, from: activeBoardId, hadMatrix: describeMatrix(matrix) });

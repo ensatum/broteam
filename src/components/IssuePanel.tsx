@@ -232,6 +232,19 @@ export default function IssuePanel(props: Props) {
     props.issueNotes,
     props.issueBookmarks,
   ]);
+  const [paintCount, setPaintCount] = useState(40);
+  const paintKey = `${selection?.developerId ?? ''}|${selection?.statusKey ?? ''}|${filteredIssues.length}|${search}|${props.listSort ?? ''}`;
+  useEffect(() => {
+    setPaintCount(40);
+  }, [paintKey]);
+  useEffect(() => {
+    if (paintCount >= filteredIssues.length) return;
+    const id = window.setTimeout(() => {
+      setPaintCount((count) => Math.min(filteredIssues.length, count + 60));
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [paintCount, paintKey, filteredIssues.length]);
+  const paintedIssues = filteredIssues.slice(0, paintCount);
 
   const frameClass = props.embedded
     ? 'flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-white'
@@ -379,7 +392,7 @@ export default function IssuePanel(props: Props) {
             </button>
           </div>
         )}
-        {!listNotice && filteredIssues.map((issue) => {
+        {!listNotice && paintedIssues.map((issue) => {
           const color = colorByStatus[issue.statusKey] || '#64748b';
           const col = colByStatus[issue.statusKey];
           const note = props.issueNotes[issue.key] || '';

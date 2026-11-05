@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -74,7 +74,7 @@ import type {
 } from '../shared/types';
 import { COLUMN_COLORS, DEVELOPER_TONE_PRESETS, normalizeDeveloperTone } from '../shared/types';
 import { describeMatrix } from '../shared/matrixShape';
-import { initSessionLog, sessionLog } from './sessionLog';
+import { initSessionLog, sessionLog, sessionLogPath } from './sessionLog';
 import {
   beginBoardRefreshUsage,
   initApiUsage,
@@ -154,6 +154,19 @@ function createWindow(): void {
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
     sessionLog('error', 'render-process-gone', details);
+    const file = sessionLogPath();
+    void dialog
+      .showMessageBox({
+        type: 'error',
+        title: 'BroTeam',
+        message: 'Приложение закрылось из-за ошибки.',
+        detail: file ? `Лог: ${file}` : 'Файл лога не найден.',
+        buttons: file ? ['Открыть лог', 'Закрыть'] : ['Закрыть'],
+        defaultId: 0,
+      })
+      .then(({ response }) => {
+        if (file && response === 0) shell.showItemInFolder(file);
+      });
   });
   mainWindow.webContents.on('did-fail-load', (_event, code, description, url) => {
     sessionLog('error', 'did-fail-load', { code, description, url });
@@ -338,27 +351,33 @@ function registerIpc(): void {
     },
   );
 
-  ipcMain.handle('board:refresh', async () => {
+  ipcMain.handle('board:refresh', async (_e, boardLocalId?: number) => {
     armTracker();
-    const activeId = getActiveBoardLocalId();
-    sessionLog('info', 'board:refresh start', { activeId });
+    const viewed = getActiveBoardLocalId();
+    const target = typeof boardLocalId === 'number' ? boardLocalId : viewed;
+    sessionLog('info', 'board:refresh start', { activeId: target });
+    if (target != null && target !== viewed) setActiveBoardLocalId(target);
     try {
       const matrix = await buildLiveMatrix();
-      latestMatrix = matrix;
+      if (getActiveBoardLocalId() === target) latestMatrix = matrix;
       sessionLog('info', 'board:refresh done', describeMatrix(matrix));
       return matrix;
     } catch (error) {
       sessionLog('error', 'board:refresh failed', error);
       throw error;
+    } finally {
+      if (target != null && getActiveBoardLocalId() === target && viewed != null && viewed !== target) {
+        setActiveBoardLocalId(viewed);
+      }
     }
   });
-  ipcMain.handle('board:getLast', () => {
-    const activeId = getActiveBoardLocalId();
+  ipcMain.handle('board:getLast', (_e, boardLocalId?: number) => {
+    const activeId = typeof boardLocalId === 'number' ? boardLocalId : getActiveBoardLocalId();
     try {
       const memoryMatches =
         latestMatrix != null && activeId != null && latestMatrix.sourceBoardLocalId === activeId;
       const memory = memoryMatches ? latestMatrix : null;
-      const loaded = memory || getLastMatrix<BoardMatrix>();
+      const loaded = memory || getLastMatrix<BoardMatrix>(typeof boardLocalId === 'number' ? boardLocalId : undefined);
       const loadedOwns =
         loaded != null &&
         (activeId == null || loaded.sourceBoardLocalId === activeId);
@@ -369,14 +388,15 @@ function registerIpc(): void {
         ignoredMemory: latestMatrix && !memoryMatches ? describeMatrix(latestMatrix) : null,
         loaded: describeMatrix(m),
       });
+      const peek = typeof boardLocalId === 'number' && boardLocalId !== getActiveBoardLocalId();
       if (!m) {
-        if (latestMatrix?.sourceBoardLocalId == null || latestMatrix?.sourceBoardLocalId === activeId) {
+        if (!peek && (latestMatrix?.sourceBoardLocalId == null || latestMatrix?.sourceBoardLocalId === activeId)) {
           latestMatrix = null;
         }
         return null;
       }
       const remapped = remapMatrixPersonNames(m, listDevelopers());
-      latestMatrix = remapped;
+      if (!peek) latestMatrix = remapped;
       const todosByDev: Record<number, ReturnType<typeof listDeveloperTodos>> = {};
       for (const t of listDeveloperTodos()) {
         if (!todosByDev[t.developerId]) todosByDev[t.developerId] = [];
@@ -560,6 +580,15 @@ function registerIpc(): void {
   ipcMain.handle('tracker:usage', () => trackerActivity());
   ipcMain.handle('app:storageStats', () => readStorageStats(app.getPath('userData')));
   ipcMain.handle('console:history', () => consoleHistory());
+  ipcMain.handle('log:read', () => {
+    const file = sessionLogPath();
+    if (!file || !fs.existsSync(file)) return '';
+    return fs.readFileSync(file, 'utf8');
+  });
+  ipcMain.handle('log:reveal', () => {
+    const file = sessionLogPath();
+    if (file) shell.showItemInFolder(file);
+  });
   ipcMain.handle('changes:list', () => listIssueChanges());
   ipcMain.handle('changes:dismiss', (_e, boardLocalId: number, issueKeys: string[]) => {
     dismissIssueChanges(boardLocalId, issueKeys);

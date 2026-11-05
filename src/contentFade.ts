@@ -9,7 +9,7 @@ const hosts: { table: HTMLElement | null; list: HTMLElement | null; spinner: HTM
 let phase: Phase = 'idle';
 let spinnerOn = false;
 let token = 0;
-let queued: (() => void) | null = null;
+const queued: Array<() => void> = [];
 let job: Promise<void> | null = null;
 
 const PHASE = ['bro-dim', 'bro-out', 'bro-hold', 'bro-in'] as const;
@@ -46,9 +46,10 @@ export function reapplyFade() {
 function holdAfter(ms: number, my: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(() => {
-      if (token !== my) return;
-      phase = 'hold';
-      paint();
+      if (token === my) {
+        phase = 'hold';
+        paint();
+      }
       resolve();
     }, ms);
   });
@@ -66,12 +67,15 @@ export function startContentFade(spinner: boolean): Promise<void> {
   job = new Promise((resolve) => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        if (token !== my) return;
+        if (token !== my) {
+          if (job) job = null;
+          resolve();
+          return;
+        }
         phase = 'out';
         paint();
         void holdAfter(200, my).then(() => {
-          if (token !== my) return;
-          job = null;
+          if (token === my) job = null;
           resolve();
         });
       });
@@ -97,15 +101,41 @@ export function revealContentFade() {
   });
 }
 
+function flushQueued() {
+  const batch = queued.splice(0);
+  for (const fn of batch) fn();
+}
+
+export function showWorkBusy() {
+  if (document.getElementById('bro-work-busy')) return;
+  const veil = document.createElement('div');
+  veil.id = 'bro-work-busy';
+  veil.className = 'pointer-events-none fixed inset-0 z-[80] flex items-start justify-center pt-16';
+  const label = document.createElement('div');
+  label.className = 'rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white shadow';
+  label.textContent = 'Считаем…';
+  veil.appendChild(label);
+  document.body.appendChild(veil);
+}
+
+export function hideWorkBusy() {
+  document.getElementById('bro-work-busy')?.remove();
+}
+
 export function fadeThen(apply: () => void) {
-  queued = apply;
-  if (job && (phase === 'dim' || phase === 'out' || phase === 'hold')) return;
-  void startContentFade(false).then(() => {
-    const fn = queued;
-    queued = null;
-    fn?.();
-    window.setTimeout(() => revealContentFade(), 0);
-  });
+  queued.push(apply);
+  const after = () => {
+    showWorkBusy();
+    window.setTimeout(() => {
+      flushQueued();
+      window.setTimeout(() => revealContentFade(), 0);
+    }, 0);
+  };
+  if (job && (phase === 'dim' || phase === 'out' || phase === 'hold')) {
+    void job.then(after);
+    return;
+  }
+  void startContentFade(false).then(after);
 }
 
 export function setApiCount(total: number) {
