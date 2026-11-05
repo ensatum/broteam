@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Cross-build macOS zip from Linux.
- * electron-builder alone leaves host (Linux) better-sqlite3.node inside the .app —
- * this script swaps in official darwin Electron prebuilds before packaging.
+ * The pack hook writes the darwin module into the .app and puts the Linux
+ * module back. This script only checks the finished .app.
  *
  * DMG is skipped here (needs macOS `sips`). Output: release/BroTeam-*-mac.zip
  */
@@ -13,8 +13,6 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-const electronVersion = pkg.devDependencies.electron.replace(/^[^\d]*/, '');
-const sqliteDir = path.join(root, 'node_modules', 'better-sqlite3');
 const arches = process.argv.slice(2).length
   ? process.argv.slice(2)
   : ['x64', 'arm64'];
@@ -28,28 +26,8 @@ function run(cmd, args, opts = {}) {
     ...opts,
   });
   if (r.status !== 0) {
-    process.exit(r.status ?? 1);
+    throw new Error(`${cmd} ${args.join(' ')} → ${r.status ?? 1}`);
   }
-}
-
-function installPrebuild(platform, arch) {
-  console.log(`\n→ better-sqlite3 prebuild ${platform}-${arch} (electron ${electronVersion})`);
-  run(
-    'npx',
-    [
-      '--yes',
-      'prebuild-install',
-      '--platform',
-      platform,
-      '--arch',
-      arch,
-      '--runtime',
-      'electron',
-      '--target',
-      electronVersion,
-    ],
-    { cwd: sqliteDir },
-  );
 }
 
 function assertMachO(appOutDir) {
@@ -58,35 +36,33 @@ function assertMachO(appOutDir) {
     'BroTeam.app/Contents/Resources/app.asar.unpacked/node_modules/better-sqlite3/build/Release/better_sqlite3.node',
   );
   if (!fs.existsSync(nodeFile)) {
-    console.error(`missing native module: ${nodeFile}`);
-    process.exit(1);
+    throw new Error(`missing native module: ${nodeFile}`);
   }
   const file = spawnSync('file', [nodeFile], { encoding: 'utf8' });
   const out = file.stdout || '';
   console.log(`  native: ${out.trim()}`);
   if (!/Mach-O/.test(out)) {
-    console.error('better_sqlite3.node is not a macOS Mach-O binary — aborting');
-    process.exit(1);
+    throw new Error('better_sqlite3.node is not a macOS Mach-O binary — aborting');
   }
 }
 
 run('npm', ['run', 'build']);
 
-for (const arch of arches) {
-  installPrebuild('darwin', arch);
-  run('npx', [
-    'electron-builder',
-    '--mac',
-    'zip',
-    `--${arch}`,
-    `-c.mac.artifactName=BroTeam-${pkg.version}-${arch}-mac.\${ext}`,
-  ]);
-  const appOut = arch === 'x64' ? path.join(root, 'release/mac') : path.join(root, 'release/mac-arm64');
-  assertMachO(appOut);
+try {
+  for (const arch of arches) {
+    run('npx', [
+      'electron-builder',
+      '--mac',
+      'zip',
+      `--${arch}`,
+      `-c.mac.artifactName=BroTeam-${pkg.version}-${arch}-mac.\${ext}`,
+    ]);
+    const appOut = arch === 'x64' ? path.join(root, 'release/mac') : path.join(root, 'release/mac-arm64');
+    assertMachO(appOut);
+  }
+} finally {
+  run('node', ['scripts/ensure-native.mjs', 'linux', process.arch === 'arm64' ? 'arm64' : 'x64']);
 }
-
-// Restore Linux binary for local dist:linux / dev
-installPrebuild('linux', process.arch === 'arm64' ? 'arm64' : 'x64');
 
 console.log('\nmac zip artifacts:');
 for (const name of fs.readdirSync(path.join(root, 'release')).sort()) {

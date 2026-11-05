@@ -1,9 +1,9 @@
 {
   "name": "bro-team",
-  "version": "2026.6.197",
+  "version": "2026.6.198",
   "broteam": {
     "release": 6,
-    "build": 197
+    "build": 198
   },
   "description": "BroTeam — доска задач по Yandex Tracker",
   "homepage": "https://github.com/ensatum/broteam",
@@ -70,6 +70,9 @@
         "to": "icon.png"
       }
     ],
+    "npmRebuild": false,
+    "afterPack": "./scripts/after-pack.mjs",
+    "artifactBuildCompleted": "./scripts/check-artifact.mjs",
     "asarUnpack": [
       "**/node_modules/better-sqlite3/**/*"
     ],

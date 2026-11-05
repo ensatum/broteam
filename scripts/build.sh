@@ -27,6 +27,7 @@ fi
 version="$(node scripts/bump-version.mjs build)"
 echo "Build ${version}"
 npm run build
+node scripts/ensure-native.mjs linux
 npx electron-builder --linux AppImage -c.directories.output=builds -c.linux.artifactName="BroTeam-${version}.\${ext}"
 node scripts/prune-artifacts.mjs builds 3
 

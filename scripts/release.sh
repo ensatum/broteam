@@ -55,6 +55,7 @@ build_target() {
   failed+=("$name")
 }
 
+node scripts/ensure-native.mjs linux || exit 1
 build_target "Linux" npx electron-builder --linux AppImage deb -c.directories.output=release -c.linux.artifactName="BroTeam-${version}-\${arch}.\${ext}"
 build_target "macOS" node scripts/dist-mac.mjs
 node scripts/prune-artifacts.mjs release 1
