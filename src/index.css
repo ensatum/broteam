@@ -245,22 +245,12 @@ body.bro-drag-col * {
   line-height: 0;
   border: 0;
   border-radius: 9999px !important;
-  background: #fef3c7;
+  background: rgba(var(--bro-bell, 255, 255, 255), var(--bro-bell-a, 0.5));
   color: #451a03;
 }
 
 .bro-change-bell:hover {
-  background: #fde68a;
-}
-
-.bro-change-bell.bro-heat,
-.bro-change-bell.bro-heat:hover {
-  background: transparent;
-  filter: none;
-}
-
-.bro-change-bell.bro-heat:hover {
-  filter: brightness(0.85);
+  background: color-mix(in srgb, rgba(var(--bro-bell, 255, 255, 255), var(--bro-bell-a, 0.5)) 35%, #fbbf24);
 }
 
 .bro-change-beside {

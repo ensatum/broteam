@@ -28,7 +28,6 @@ import {
   SlashIcon,
   CompassIcon,
   CellBadgeStack,
-  heatStyle,
   type CellBadgeKind,
   type CellBadgeModel,
   ArrowRightIcon,
@@ -3713,6 +3712,16 @@ function scopeBadgeClass(active: boolean, idle: string, on: string): string {
   return `inline-flex h-5 items-center gap-0.5 rounded px-1.5 text-[10px] font-semibold leading-none tabular-nums ${active ? on : idle}`;
 }
 
+function changeBellStyle(count: number): CSSProperties {
+  const t = Math.max(0, Math.min(1, ((count || 1) - 1) * 0.2));
+  const mix = (from: number, to: number) => Math.round(from + (to - from) * t);
+  return {
+    ['--bro-bell' as string]: `${mix(255, 251)}, ${mix(255, 191)}, ${mix(255, 36)}`,
+    ['--bro-bell-a' as string]: (0.5 + 0.5 * t).toFixed(2),
+    color: '#451a03',
+  } as CSSProperties;
+}
+
 function ChangeBell(props: { show: boolean; count: number; heat?: number; onClick?: () => void }) {
   if (!props.show) return null;
   return (
@@ -3723,8 +3732,8 @@ function ChangeBell(props: { show: boolean; count: number; heat?: number; onClic
       <InstantTip text="Есть изменения" className="inline-flex">
         <button
           type="button"
-          className="bro-change-bell bro-heat bro-heat-mark pointer-events-auto"
-          style={heatStyle(props.heat || 1)}
+          className="bro-change-bell pointer-events-auto"
+          style={changeBellStyle(props.heat || 1)}
           onClick={(event) => {
             event.stopPropagation();
             props.onClick?.();
