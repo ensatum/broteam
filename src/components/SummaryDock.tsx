@@ -896,7 +896,7 @@ function SummaryCard(props: {
         </InstantTip>
         {row.boardLabel ? (
           <span
-            className="shrink-0 rounded border border-slate-300 bg-slate-50 px-1 py-px text-[10px] font-normal text-slate-600"
+            className="inline-flex h-4 shrink-0 items-center rounded border border-slate-300 bg-slate-50 px-1 text-[10px] font-normal leading-none text-slate-600"
             style={row.boardColor ? { color: row.boardColor } : undefined}
           >
             {row.boardLabel}
