@@ -56,7 +56,7 @@ import {
   listSummaryCachePeople,
   getSummarySource,
 } from './db';
-import { exportBackupToFile, importBackupFromFile, type BackupSections } from './backup';
+import { exportBackupToFile, importBackupFromFile, importBackupFromPath, inspectBackupFile, type BackupSections } from './backup';
 import { checkGithub, updateAppFromRepository } from './appUpdate';
 import { liveVersion } from '../shared/version';
 import { buildLiveMatrix, patchIssueInMatrix, remapMatrixPersonNames } from './boardService';
@@ -555,6 +555,12 @@ function registerIpc(): void {
 
   ipcMain.handle('backup:export', async (_e, sections: BackupSections) => {
     return exportBackupToFile(mainWindow, sections);
+  });
+  ipcMain.handle('backup:inspect', async () => inspectBackupFile(mainWindow));
+  ipcMain.handle('backup:importPath', async (_e, filePath: string, sections: BackupSections) => {
+    const result = await importBackupFromPath(filePath, sections);
+    if (result.ok && sections.settings) latestMatrix = null;
+    return result;
   });
   ipcMain.handle('backup:import', async (_e, sections: BackupSections) => {
     const result = await importBackupFromFile(mainWindow, sections);

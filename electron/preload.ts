@@ -102,6 +102,14 @@ export type ElectronApi = {
     | { ok: true; applied: string[]; path: string }
     | { ok: false; reason: 'cancelled' }
   >;
+  inspectBackup: () => Promise<
+    | { ok: true; path: string; found: BackupSections }
+    | { ok: false; reason: 'cancelled' }
+  >;
+  importBackupPath: (
+    filePath: string,
+    sections: BackupSections,
+  ) => Promise<{ ok: true; applied: string[]; path: string }>;
   listSnapshots: () => Promise<Array<{ id: number; date: string; createdAt: string }>>;
   getSnapshot: (
     id: number,
@@ -235,6 +243,8 @@ const api: ElectronApi = {
   deleteDraft: (id) => ipcRenderer.invoke('drafts:delete', id),
   exportBackup: (sections) => ipcRenderer.invoke('backup:export', sections),
   importBackup: (sections) => ipcRenderer.invoke('backup:import', sections),
+  inspectBackup: () => ipcRenderer.invoke('backup:inspect'),
+  importBackupPath: (filePath, sections) => ipcRenderer.invoke('backup:importPath', filePath, sections),
   listSnapshots: () => ipcRenderer.invoke('snapshots:list'),
   getSnapshot: (id) => ipcRenderer.invoke('snapshots:get', id),
   snapshotExists: (date) => ipcRenderer.invoke('snapshots:exists', date),

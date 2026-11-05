@@ -28,6 +28,7 @@ import {
   SlashIcon,
   CompassIcon,
   CellBadgeStack,
+  heatColor,
   type CellBadgeKind,
   type CellBadgeModel,
   ArrowRightIcon,
@@ -40,6 +41,7 @@ import {
   ClockIcon,
   CalendarIcon,
   EyeOffIcon,
+  GearIcon,
   ToggleLeftIcon,
   ToggleRightIcon,
   ShieldIcon,
@@ -66,6 +68,8 @@ const BOARD_ROWS_KEY = 'broteam.boardRows';
 const BOARD_COLS_KEY = 'broteam.boardCols';
 const COLUMN_AUTO_SKIP_KEY = 'broteam.columnAutoSkip';
 const TABLE_MODE_KEY = 'broteam.tableMode';
+const TABLE_SHOWN_KEY = 'broteam.tableShown';
+const BOARD_SCALE_KEY = 'broteam.boardScale';
 const SHOW_DONE_KEY = 'broteam.showDoneIssues';
 
 type BoardRowPrefs = Record<string, { hidden: number[]; shown: number[] }>;
@@ -125,7 +129,35 @@ function loadTableMode(): TablePref {
   } catch {
     /* ignore broken storage */
   }
-  return null;
+  return 'full';
+}
+
+function loadTableShown(): boolean {
+  try {
+    return localStorage.getItem(TABLE_SHOWN_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+function saveTableShown(on: boolean): void {
+  localStorage.setItem(TABLE_SHOWN_KEY, on ? '1' : '0');
+}
+
+function readBoardScales(): Record<string, { fraction: number; mode: 'mini' | 'full' }> {
+  try {
+    const raw = localStorage.getItem(BOARD_SCALE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, { fraction: number; mode: 'mini' | 'full' }>) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeBoardScale(id: number, scale: { fraction: number; mode: 'mini' | 'full' }): void {
+  const all = readBoardScales();
+  all[String(id)] = scale;
+  localStorage.setItem(BOARD_SCALE_KEY, JSON.stringify(all));
 }
 
 function saveTableMode(mode: TablePref): void {
@@ -230,15 +262,10 @@ function resolveTableMode(input: {
   bodyRows: number;
   pref: 'hidden' | 'mini' | 'full' | null;
   holdHidden: boolean;
+  shown: boolean;
 }): TableMode {
-  if (input.holdHidden || input.pref === 'hidden') return 'hidden';
-  if (input.width <= 0 || input.height <= 0) return 'full';
-  const compactW = tableWidth(input.dataCols, COMPACT_COL_PX);
-  const compactH = tableHeight(input.bodyRows, COMPACT_HEADER_PX, COMPACT_ROW_PX);
-  if (input.width < compactW || input.height < compactH) return 'hidden';
+  if (!input.shown || input.holdHidden || input.pref === 'hidden') return 'hidden';
   if (input.pref === 'mini') return 'mini';
-  const iconH = tableHeight(input.bodyRows, FULL_HEADER_PX, ICON_ROW_PX);
-  if (input.height < iconH) return 'mini';
   return 'full';
 }
 
@@ -416,6 +443,7 @@ type Props = {
   setupKind: 'integration' | 'boards' | null;
   onRefresh: () => void;
   refreshingBoardId?: number | null;
+  editExit?: number;
   onMatrixChange: (m: BoardMatrix) => void;
   onDevelopersChange: (d: Developer[]) => void;
   onColumnsChange: (c: BoardColumnConfig[]) => void;
@@ -587,6 +615,9 @@ export default function BoardPage(props: Props) {
     };
   }, []);
   const [reorderMode, setReorderMode] = useState(false);
+  useEffect(() => {
+    if (props.editExit) setReorderMode(false);
+  }, [props.editExit]);
   const [rowPrefs, setRowPrefs] = useState<BoardRowPrefs>(loadBoardRowPrefs);
   const [columnPrefs, setColumnPrefs] = useState<BoardColPrefs>(loadBoardColPrefs);
   const [columnAutoSkip, setColumnAutoSkip] = useState<ColumnAutoSkip>(loadColumnAutoSkip);
@@ -612,6 +643,7 @@ export default function BoardPage(props: Props) {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set());
   const [tableFraction, setTableFraction] = useState(() => loadBoardLayout().tableFraction);
   const [tablePref, setTablePref] = useState<TablePref>(loadTableMode);
+  const [tableShown, setTableShown] = useState(loadTableShown);
   const [holdHidden, setHoldHidden] = useState(false);
   const [dropColKey, setDropColKey] = useState<string | null>(null);
   const [dropDevId, setDropDevId] = useState<number | null>(null);
@@ -687,6 +719,7 @@ export default function BoardPage(props: Props) {
   const holdReason = useRef<'user' | 'drag' | null>(null);
   const appliedTableFit = useRef('');
   const draggedTable = useRef(false);
+  const iconFit = useRef({ col: 0, row: 0, pref: 'full' as TablePref, shown: true, id: null as number | null });
   const renderStamp = useRef('');
   const layoutRef = useRef({
     filtersOpen: true,
@@ -695,6 +728,7 @@ export default function BoardPage(props: Props) {
     compactH: 0,
     filtersWidth: DRAFTS_MIN_PX,
     draftsOpen: false,
+    tableShown: true,
   });
 
   const matrixMatches =
@@ -1308,7 +1342,7 @@ export default function BoardPage(props: Props) {
           const draftsW = RIGHT_RAIL_PX + contentW;
           const filtersW = leftW;
           const centerW = rect.width - filtersW - draftsW;
-          if (metrics.compactW > 0 && centerW < metrics.compactW) {
+          if (!metrics.tableShown && metrics.compactW > 0 && centerW < metrics.compactW) {
             if (holdReason.current !== 'user') {
               holdReason.current = 'drag';
               setHoldHidden(true);
@@ -1323,9 +1357,11 @@ export default function BoardPage(props: Props) {
       if (splitDragging.current && centerRef.current) {
         const rect = centerRef.current.getBoundingClientRect();
         if (rect.height > 0) {
-          const fraction = Math.min(0.92, Math.max(0.08, (e.clientY - rect.top) / rect.height));
+          let fraction = Math.min(0.92, Math.max(0.08, (e.clientY - rect.top) / rect.height));
           const slot = rect.height * fraction - 12;
-          if (metrics.compactH > 0 && slot < metrics.compactH) {
+          if (metrics.tableShown && metrics.compactH > 0 && slot < metrics.compactH) {
+            fraction = Math.min(0.92, Math.max(fraction, (metrics.compactH + 12) / rect.height));
+          } else if (!metrics.tableShown && metrics.compactH > 0 && slot < metrics.compactH) {
             if (holdReason.current !== 'user') {
               holdReason.current = 'drag';
               setHoldHidden(true);
@@ -1453,6 +1489,28 @@ export default function BoardPage(props: Props) {
     if (tablePref === 'hidden') collapseTable();
     else revealTable(tablePref, boardChanged);
   }, [fitKey, matrix, matrixReady, issuesOpen, tablePref, centerBox.h, props.activeBoardId]);
+  useEffect(() => {
+    if (props.activeBoardId == null) return;
+    const saved = readBoardScales()[String(props.activeBoardId)];
+    if (!saved) return;
+    setTableFraction(saved.fraction);
+    setTablePref(saved.mode);
+  }, [props.activeBoardId]);
+  useEffect(() => {
+    if (props.activeBoardId == null) return;
+    if (tablePref !== 'mini' && tablePref !== 'full') return;
+    writeBoardScale(props.activeBoardId, { fraction: tableFraction, mode: tablePref });
+  }, [props.activeBoardId, tableFraction, tablePref]);
+  useEffect(() => {
+    const watch = iconFit.current;
+    if (!watch.shown || watch.id == null || watch.col <= 0 || watch.row <= 0) return;
+    const fits = watch.col >= 48 && watch.row >= 36;
+    const next = fits ? 'full' : 'mini';
+    if (next !== watch.pref && (watch.pref === 'mini' || watch.pref === 'full')) {
+      setTablePref(next);
+      saveTableMode(next);
+    }
+  }, [centerBox.w, centerBox.h, tableFraction, tableShown, tablePref, props.activeBoardId]);
   const sprintCounts = sourceMatrix?.sprintCounts || [];
   const reviewerCounts = sourceMatrix?.reviewerCounts || [];
   const qaCounts = sourceMatrix?.qaCounts || [];
@@ -2079,15 +2137,19 @@ export default function BoardPage(props: Props) {
     setOthersMenu((open) => (open ? null : { top, left }));
   }
 
+  function leaveReorder() {
+    setReorderMode(false);
+  }
+
   function tableCorner() {
     return (
-      <div className="flex h-full w-full items-center justify-center gap-1">
+      <div className="flex h-full w-full items-center justify-center">
         <button
           type="button"
-          title="Добавить строку на эту доску"
+          title="Исполнители"
           disabled={readOnly}
-          className={`inline-flex h-6 w-6 items-center justify-center rounded ${
-            readOnly ? 'cursor-default text-slate-300' : 'text-slate-500 hover:bg-slate-200 hover:text-slate-900'
+          className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium ${
+            readOnly ? 'cursor-default text-slate-300' : 'text-slate-600 hover:bg-slate-200 hover:text-slate-900'
           }`}
           onClick={(event) => {
             if (readOnly) return;
@@ -2095,18 +2157,7 @@ export default function BoardPage(props: Props) {
           }}
         >
           <UsersIcon className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          title={reorderMode ? 'Выключить редактирование' : 'Включить редактирование'}
-          className={`inline-flex h-6 w-6 items-center justify-center rounded ${
-            reorderMode
-              ? 'bg-slate-800 text-white'
-              : 'text-slate-500 hover:bg-slate-200 hover:text-slate-900'
-          }`}
-          onClick={() => setReorderMode((on) => !on)}
-        >
-          <TableIcon className="h-3.5 w-3.5" />
+          Исполнители
         </button>
       </div>
     );
@@ -2283,7 +2334,10 @@ export default function BoardPage(props: Props) {
           onError={props.onError}
           onSnapshotContentChange={props.onSnapshotContentChange}
           consoleOpen={consoleOpen}
-          onToggleConsole={() => setConsoleOpen((open) => !open)}
+          onToggleConsole={() => {
+            leaveReorder();
+            setConsoleOpen((open) => !open);
+          }}
         />
       </div>
       <ConsoleDock open={consoleOpen} height={consoleHeight} onHeight={setConsoleHeight} />
@@ -2291,13 +2345,13 @@ export default function BoardPage(props: Props) {
     );
   }
 
-  const cellSelectedClass = 'ring-2 ring-inset ring-sky-600 bg-sky-100';
+  const cellSelectedClass = 'ring-1 ring-inset ring-sky-600 bg-sky-100';
   const grandFigures = splitVisible(
     visibleIssuesByColumn(matrix, columns),
     columns,
     doneStatusKeys,
   );
-  const showPending = grandFigures.open > 0;
+  const showPending = grandFigures.open > 0 && !reorderMode;
   const dataCols = shownColumns.length + (showPending ? 2 : 1);
   const developerRows = matrix.developers;
   function columnDropMark(statusKey: string): string {
@@ -2347,7 +2401,7 @@ export default function BoardPage(props: Props) {
   const compactH = tableHeight(bodyRows, COMPACT_HEADER_PX, COMPACT_ROW_PX);
   const fullW = tableWidth(dataCols, FULL_COL_PX);
   const fullNeedH = tableHeight(bodyRows, FULL_HEADER_PX, MAX_ROW_PX);
-  layoutRef.current = { filtersOpen, issuesOpen, compactW, compactH, filtersWidth, draftsOpen };
+  layoutRef.current = { filtersOpen, issuesOpen, compactW, compactH, filtersWidth, draftsOpen, tableShown };
   const slotHeight =
     centerBox.h <= 0
       ? 0
@@ -2361,7 +2415,15 @@ export default function BoardPage(props: Props) {
     bodyRows,
     pref: tablePref,
     holdHidden,
+    shown: tableShown,
   });
+  iconFit.current = {
+    col: dataCols > 0 ? Math.max(0, (centerBox.w - NAME_COL_PX) / dataCols) : 0,
+    row: bodyRows > 0 && slotHeight > 0 ? (slotHeight - FULL_HEADER_PX) / bodyRows : 0,
+    pref: tablePref,
+    shown: tableShown,
+    id: props.activeBoardId,
+  };
   const compact = tableMode === 'mini';
   const fitRow =
     bodyRows > 0 && slotHeight > 0 ? (slotHeight - FULL_HEADER_PX) / bodyRows : MAX_ROW_PX;
@@ -2670,9 +2732,26 @@ export default function BoardPage(props: Props) {
             }`}
           >
             <RailButton
+              title={tableShown ? 'Скрыть таблицу' : 'Показать таблицу'}
+              pressed={tableShown}
+              onClick={() => {
+                leaveReorder();
+                setTableShown((on) => {
+                  const next = !on;
+                  saveTableShown(next);
+                  return next;
+                });
+              }}
+            >
+              <FeatherGridIcon />
+            </RailButton>
+            <RailButton
               title="Фильтры"
               pressed={filtersOpen}
-              onClick={() => setFiltersOpen((open) => !open)}
+              onClick={() => {
+                leaveReorder();
+                setFiltersOpen((open) => !open);
+              }}
             >
               <FilterIcon className="h-4 w-4" />
               {activeFilterCount > 0 && (
@@ -2684,7 +2763,10 @@ export default function BoardPage(props: Props) {
             <RailButton
               title="Задачи"
               pressed={issuesOpen}
-              onClick={() => setIssuesOpen((open) => !open)}
+              onClick={() => {
+                leaveReorder();
+                setIssuesOpen((open) => !open);
+              }}
               className="mt-auto"
             >
               <InboxIcon className="h-4 w-4" />
@@ -2879,6 +2961,7 @@ export default function BoardPage(props: Props) {
         <div
           ref={centerRef}
           className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+          style={tableShown ? { minWidth: compactW } : undefined}
         >
           {props.refreshingBoardId != null && props.refreshingBoardId === props.activeBoardId && (
             <>
@@ -2890,32 +2973,16 @@ export default function BoardPage(props: Props) {
               </div>
             </>
           )}
-          <div className="flex h-8 shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50 px-2">
+          <div className="relative flex h-8 shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50 px-2">
             <button
-              ref={modeButtonRef}
               type="button"
-              aria-expanded={modeMenuOpen}
-              aria-label="Режим таблицы"
-              className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${
-                modeMenuOpen
-                  ? 'border-slate-300 bg-white text-slate-800 shadow'
-                  : 'border-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:shadow-sm'
-              }`}
-              onClick={() => {
-                const box = modeButtonRef.current?.getBoundingClientRect();
-                if (box) setModeMenuPos({ top: box.bottom + 2, left: box.left });
-                setModeMenuOpen((open) => !open);
-              }}
+              title={tablePref === 'mini' ? 'Таблица с иконками' : 'Компактная таблица'}
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:shadow-sm"
+              onClick={() => rememberTablePref(tablePref === 'mini' ? 'full' : 'mini')}
             >
-              {tableMode === 'hidden' ? (
-                <EyeOffIcon className="h-4 w-4" />
-              ) : tableMode === 'mini' ? (
-                <FeatherListIcon />
-              ) : (
-                <FeatherGridIcon />
-              )}
+              {tablePref === 'mini' ? <FeatherMaximizeIcon /> : <FeatherMinimizeIcon />}
             </button>
-            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-[11px]">
+            <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden text-[11px]">
               <span className="truncate font-semibold text-slate-900">{sprintTitle}</span>
               {sprintHeader.extra != null && sprintHeader.extra > 0 && (
                 <span className="shrink-0 font-semibold text-sky-600">(+{sprintHeader.extra})</span>
@@ -2929,6 +2996,19 @@ export default function BoardPage(props: Props) {
                 <span className="shrink-0 text-[10px] font-semibold text-red-600">{sprintOutdated}</span>
               )}
             </div>
+            <button
+              type="button"
+              title="Режим редактирования"
+              className={`absolute left-1/2 top-1/2 z-10 inline-flex h-6 -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-md border px-2 text-[11px] font-medium ${
+                reorderMode
+                  ? 'border-slate-800 bg-slate-800 text-white'
+                  : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+              }`}
+              onClick={() => setReorderMode((on) => !on)}
+            >
+              <GearIcon className="h-3.5 w-3.5" />
+              Режим редактирования
+            </button>
             <div className="flex shrink-0 items-center gap-1">
               {boardScope === 'changes' && boardChanges.length > 0 && (
                 <InstantTip text="Пропустить изменения" className="inline-flex h-5 items-center">
@@ -3012,7 +3092,7 @@ export default function BoardPage(props: Props) {
           <div className="relative h-full min-h-0">
           <div
             ref={setTableHost}
-            className="bro-fade-host h-full min-h-0 overflow-hidden bg-white"
+            className="bro-fade-host h-full min-h-0 overflow-x-auto overflow-y-hidden bg-white"
           >
             <table
               className="h-full w-full table-fixed border-collapse text-sm"
@@ -3040,85 +3120,58 @@ export default function BoardPage(props: Props) {
                       className={`sticky top-0 z-10 bg-slate-50 ${numColW} px-1 py-1 text-left border-b border-r border-slate-300 font-semibold text-[11px] leading-tight text-black ${shade('head', c.statusKey)} ${columnDropMark(c.statusKey)}`}
                     >
                       <span className="flex items-center gap-0.5">
-                        <span className="min-w-0 flex-1 truncate">
+                        <span
+                          className={`min-w-0 flex-1 truncate ${reorderMode && !readOnly ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                          draggable={reorderMode && !readOnly}
+                          onDragStart={(e) => {
+                            if (!reorderMode || readOnly) return;
+                            dragDevId.current = null;
+                            dragColKey.current = c.statusKey;
+                            setDraggingDev(null);
+                            setDraggingCol(c.statusKey);
+                            e.dataTransfer.effectAllowed = 'move';
+                            e.dataTransfer.setData('text/plain', c.statusKey);
+                            setMoveGhost(e, c.alias);
+                          }}
+                          onDragEnd={() => {
+                            dragColKey.current = null;
+                            setDraggingCol(null);
+                            setDropColKey(null);
+                          }}
+                        >
                           <ColumnAliasLabel alias={c.alias} color={c.color} />
                         </span>
-                        {!reorderMode && (
+                        <button
+                          type="button"
+                          title={
+                            autoSkipColumns.has(c.statusKey)
+                              ? 'Выключить автопропуск изменений'
+                              : 'Автопропуск изменений'
+                          }
+                          className={
+                            autoSkipColumns.has(c.statusKey)
+                              ? 'inline-flex h-4 w-4 shrink-0 items-center justify-center text-red-600 hover:text-red-800'
+                              : 'inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-300 hover:text-slate-500'
+                          }
+                          onMouseDown={(event) => event.stopPropagation()}
+                          onClick={() => toggleColumnAutoSkip(c.statusKey)}
+                        >
+                          <BellOffIcon className="h-3 w-3" />
+                        </button>
+                        {reorderMode && !readOnly && (
                           <button
                             type="button"
-                            title={
-                              autoSkipColumns.has(c.statusKey)
-                                ? 'Выключить автопропуск изменений'
-                                : 'Автопропуск изменений'
-                            }
-                            className={
-                              autoSkipColumns.has(c.statusKey)
-                                ? 'inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-amber-100 text-red-600 hover:bg-amber-200'
-                                : 'inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-300 hover:text-slate-500'
-                            }
+                            title="Скрыть с доски"
+                            className={`inline-flex h-4 w-4 shrink-0 items-center justify-center ${
+                              columnSlot?.hidden?.includes(c.statusKey)
+                                ? 'text-red-600 hover:text-red-800'
+                                : 'text-slate-400 hover:text-slate-700'
+                            }`}
                             onMouseDown={(event) => event.stopPropagation()}
-                            onClick={() => toggleColumnAutoSkip(c.statusKey)}
+                            onClick={() => toggleColumnHideFix(c.statusKey)}
                           >
-                            <BellOffIcon className="h-3 w-3" />
+                            <EyeOffIcon className="h-3 w-3" />
                           </button>
-                        )}
-                        {reorderMode && !readOnly && (
-                          <>
-                            <button
-                              type="button"
-                              title={
-                                autoSkipColumns.has(c.statusKey)
-                                  ? 'Выключить автопропуск изменений'
-                                  : 'Автопропуск изменений'
-                              }
-                              className={
-                                autoSkipColumns.has(c.statusKey)
-                                  ? 'inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-amber-100 text-red-600 hover:bg-amber-200'
-                                  : 'inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-400 hover:text-slate-700'
-                              }
-                              onMouseDown={(event) => event.stopPropagation()}
-                              onClick={() => toggleColumnAutoSkip(c.statusKey)}
-                            >
-                              <BellOffIcon className="h-3 w-3" />
-                            </button>
-                            <button
-                              type="button"
-                              title={
-                                columnSlot?.hidden?.includes(c.statusKey)
-                                  ? 'Снять фиксацию скрытия'
-                                  : 'Зафиксировать скрытие'
-                              }
-                              className={`inline-flex h-4 w-4 shrink-0 items-center justify-center ${
-                                columnSlot?.hidden?.includes(c.statusKey)
-                                  ? 'text-black'
-                                  : 'text-slate-400 hover:text-slate-700'
-                              }`}
-                              onMouseDown={(event) => event.stopPropagation()}
-                              onClick={() => toggleColumnHideFix(c.statusKey)}
-                            >
-                              <EyeOffIcon className="h-3 w-3" />
-                            </button>
-                            <span
-                              draggable
-                              className="inline-flex shrink-0 cursor-grab text-slate-400 active:cursor-grabbing"
-                              onDragStart={(e) => {
-                                dragDevId.current = null;
-                                dragColKey.current = c.statusKey;
-                                setDraggingDev(null);
-                                setDraggingCol(c.statusKey);
-                                e.dataTransfer.effectAllowed = 'move';
-                                e.dataTransfer.setData('text/plain', c.statusKey);
-                                setMoveGhost(e, c.alias);
-                              }}
-                              onDragEnd={() => {
-                                dragColKey.current = null;
-                                setDraggingCol(null);
-                                setDropColKey(null);
-                              }}
-                            >
-                              <MoveIcon className="h-3 w-3" />
-                            </span>
-                          </>
                         )}
                       </span>
                     </th>
@@ -3175,45 +3228,41 @@ export default function BoardPage(props: Props) {
                       >
                         <span className="flex items-center gap-1">
                           <span
-                            className="font-medium text-sm leading-tight block min-w-0 flex-1 truncate pr-1"
+                            className={`font-medium text-sm leading-tight block min-w-0 flex-1 truncate pr-1 ${
+                              reorderMode && !readOnly && !rowFixed ? 'cursor-grab active:cursor-grabbing' : ''
+                            }`}
                             title={away ? 'В отпуске' : row.developer.displayName}
+                            draggable={reorderMode && !readOnly && !rowFixed}
+                            onDragStart={(e) => {
+                              if (!reorderMode || readOnly || rowFixed) return;
+                              dragColKey.current = null;
+                              dragDevId.current = row.developer.id;
+                              setDraggingCol(null);
+                              setDraggingDev(row.developer.id);
+                              e.dataTransfer.effectAllowed = 'move';
+                              e.dataTransfer.setData('text/plain', String(row.developer.id));
+                              setMoveGhost(e, row.developer.displayName);
+                            }}
+                            onDragEnd={() => {
+                              dragDevId.current = null;
+                              setDraggingDev(null);
+                              setDropDevId(null);
+                            }}
                           >
                             {row.developer.displayName}
                           </span>
                           {reorderMode && !readOnly && !rowFixed && (
-                            <>
-                              <button
-                                type="button"
-                                title="Скрыть с этой доски"
-                                className="inline-flex shrink-0 items-center justify-center text-slate-400 hover:text-slate-800"
-                                onClick={() => {
-                                  if (props.activeBoardId == null) return;
-                                  updateRowPrefs(props.activeBoardId, row.developer, 'hide');
-                                }}
-                              >
-                                <EyeOffIcon className="h-3 w-3" />
-                              </button>
-                              <span
-                                draggable
-                                className="inline-flex shrink-0 cursor-grab text-slate-500 active:cursor-grabbing"
-                                onDragStart={(e) => {
-                                  dragColKey.current = null;
-                                  dragDevId.current = row.developer.id;
-                                  setDraggingCol(null);
-                                  setDraggingDev(row.developer.id);
-                                  e.dataTransfer.effectAllowed = 'move';
-                                  e.dataTransfer.setData('text/plain', String(row.developer.id));
-                                  setMoveGhost(e, row.developer.displayName);
-                                }}
-                                onDragEnd={() => {
-                                  dragDevId.current = null;
-                                  setDraggingDev(null);
-                                  setDropDevId(null);
-                                }}
-                              >
-                                <MoveIcon className="h-3 w-3" />
-                              </span>
-                            </>
+                            <button
+                              type="button"
+                              title="Скрыть с доски"
+                              className="inline-flex shrink-0 items-center justify-center text-slate-400 hover:text-red-700"
+                              onClick={() => {
+                                if (props.activeBoardId == null) return;
+                                updateRowPrefs(props.activeBoardId, row.developer, 'hide');
+                              }}
+                            >
+                              <EyeOffIcon className="h-3 w-3" />
+                            </button>
                           )}
                         </span>
                       </td>
@@ -3240,14 +3289,23 @@ export default function BoardPage(props: Props) {
                         const highlighted =
                           highlightIssueKey != null &&
                           issues.some((i) => i.key === highlightIssueKey);
-                        const hasChanges = issues.some((issue) => changeByKey.get(issue.key)?.seen === false);
+                        const changeCount = issues.filter((issue) => changeByKey.get(issue.key)?.seen === false).length;
                         const cellBadges: CellBadgeModel = {
                           ...badges,
                           hasNote,
                           timeWarn,
                           bookmarked,
                           pastSprint,
-                          changes: hasChanges,
+                          changes: changeCount > 0,
+                          reviewerCount: issues.filter((issue) => !issue.reviewerDisplay?.trim()).length,
+                          testerCount: issues.filter((issue) => !issue.qaDisplay?.trim()).length,
+                          timeCount: activeIssues.filter((issue) => issueTimeWarn(issue) != null).length,
+                          sprintCount: activeIssues.filter(
+                            (issue) => issue.sprintId != null && issue.sprintId !== currentSprintId,
+                          ).length,
+                          changeCount,
+                          reviewerFilled: badges.reviewerTone === 'warn',
+                          testerFilled: badges.testerTone === 'warn',
                         };
                         return (
                           <td
@@ -3293,8 +3351,9 @@ export default function BoardPage(props: Props) {
                             )}
                             {!cellPending && (
                               <ChangeBell
-                                show={hasChanges}
+                                show={changeCount > 0}
                                 count={count}
+                                heat={changeCount}
                                 onClick={() =>
                                   chooseByBadge('changes', {
                                     kind: 'issues',
@@ -3542,10 +3601,12 @@ export default function BoardPage(props: Props) {
           summary={summaryOpen}
           width={panelWidth}
           onOpenChange={(open) => {
+            leaveReorder();
             setSummaryOpen(false);
             setDraftsOpen(open);
           }}
           onToggleSummary={() => {
+            leaveReorder();
             setSummaryOpen((open) => {
               if (open) {
                 setDraftsOpen(false);
@@ -3587,7 +3648,10 @@ export default function BoardPage(props: Props) {
             />
           }
           consoleOpen={consoleOpen}
-          onToggleConsole={() => setConsoleOpen((open) => !open)}
+          onToggleConsole={() => {
+            leaveReorder();
+            setConsoleOpen((open) => !open);
+          }}
         />
       </div>
       <ConsoleDock open={consoleOpen} height={consoleHeight} onHeight={setConsoleHeight} />
@@ -3600,7 +3664,7 @@ function scopeBadgeClass(active: boolean, idle: string, on: string): string {
   return `inline-flex h-5 items-center gap-0.5 rounded px-1.5 text-[10px] font-semibold leading-none tabular-nums ${active ? on : idle}`;
 }
 
-function ChangeBell(props: { show: boolean; count: number; onClick?: () => void }) {
+function ChangeBell(props: { show: boolean; count: number; heat?: number; onClick?: () => void }) {
   if (!props.show) return null;
   return (
     <span className="bro-change-beside">
@@ -3610,7 +3674,8 @@ function ChangeBell(props: { show: boolean; count: number; onClick?: () => void 
       <InstantTip text="Есть изменения" className="inline-flex">
         <button
           type="button"
-          className="bro-change-bell pointer-events-auto"
+          className="bro-change-bell bro-heat pointer-events-auto"
+          style={{ color: heatColor(props.heat || 1) }}
           onClick={(event) => {
             event.stopPropagation();
             props.onClick?.();
@@ -4030,6 +4095,28 @@ const modeIcon = {
   shapeRendering: 'geometricPrecision' as const,
   'aria-hidden': true,
 };
+
+function FeatherMaximizeIcon() {
+  return (
+    <svg {...modeIcon}>
+      <polyline points="15 3 21 3 21 9" />
+      <polyline points="9 21 3 21 3 15" />
+      <line x1="21" y1="3" x2="14" y2="10" />
+      <line x1="3" y1="21" x2="10" y2="14" />
+    </svg>
+  );
+}
+
+function FeatherMinimizeIcon() {
+  return (
+    <svg {...modeIcon}>
+      <polyline points="4 14 10 14 10 20" />
+      <polyline points="20 10 14 10 14 4" />
+      <line x1="14" y1="10" x2="21" y2="3" />
+      <line x1="3" y1="21" x2="10" y2="14" />
+    </svg>
+  );
+}
 
 function FeatherListIcon() {
   return (

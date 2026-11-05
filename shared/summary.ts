@@ -12,6 +12,7 @@ export type SummaryBoardRef = {
   queueKey: string;
   name: string;
   alias: string;
+  color?: string;
 };
 
 export type SummaryBuildRequest = {
@@ -88,6 +89,7 @@ export type SummaryRow = {
   changedByIds?: number[];
   boardLocalId?: number | null;
   boardLabel?: string;
+  boardColor?: string;
   columns: SummaryColumnTime[];
   shuffles: SummaryShuffle[];
   emphasizeTesting: boolean;

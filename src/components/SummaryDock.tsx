@@ -181,6 +181,7 @@ export default function SummaryDock(props: {
           queueKey: board.queueKey,
           name: board.name,
           alias: board.alias || '',
+          color: board.color || '',
         })),
       columns: props.columns
         .filter((column) => column.enabled)
@@ -894,7 +895,13 @@ function SummaryCard(props: {
           <span className="h-2 w-2 rounded-full" style={{ backgroundColor: props.color }} />
         </InstantTip>
         {row.boardLabel ? (
-          <span className="shrink-0 rounded bg-slate-100 px-1 py-px text-[10px] font-medium text-slate-600">
+          <span
+            className="shrink-0 rounded border bg-slate-50 px-1 py-px text-[10px] font-medium"
+            style={{
+              color: row.boardColor || '#475569',
+              borderColor: row.boardColor || '#e2e8f0',
+            }}
+          >
             {row.boardLabel}
           </span>
         ) : null}
@@ -927,10 +934,12 @@ function SummaryCard(props: {
         />
       </div>
       {!props.open && (
-        <div className="mt-0.5 grid grid-cols-4 gap-1.5 pl-3.5 text-[10px] text-slate-500">
-          <CollapsedRole role="Исполнитель" current={assigneeRole.current} past={assigneeRole.past} selected={props.personName} />
-          <CollapsedRole role="Ревьюер" current={reviewerRole.current} past={reviewerRole.past} selected={props.personName} />
-          <CollapsedRole role="Тестировщик" current={qaRole.current} past={qaRole.past} selected={props.personName} />
+        <div className="mt-0.5 flex items-center gap-1.5 pl-3.5 text-[10px] text-slate-500">
+          <span className="min-w-0 flex-1 truncate">
+            {[assigneeRole.current, reviewerRole.current, qaRole.current]
+              .map((name) => name?.trim() || '—')
+              .join(' · ')}
+          </span>
           <span className="min-w-0 truncate text-right">
             {dayOf(taken)} - {dayOf(row.finalStatusAt)}
             {periodDayCount(taken, row.finalStatusAt) != null ? ` (${periodDayCount(taken, row.finalStatusAt)})` : ''}

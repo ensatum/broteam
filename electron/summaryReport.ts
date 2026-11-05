@@ -645,6 +645,7 @@ function interpretIssue(
     changedByIds: [...changedBy],
     boardLocalId: origin?.boardLocalId ?? null,
     boardLabel: (origin?.alias || '').trim() || origin?.name || '',
+    boardColor: origin?.color || '',
     columns,
     shuffles,
     emphasizeTesting: role === 'qa',

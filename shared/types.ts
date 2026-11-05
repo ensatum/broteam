@@ -62,6 +62,8 @@ export type SavedBoard = {
   name: string;
   /** Name shown on board badges. Empty keeps the Tracker name. */
   alias: string;
+  /** Accent for the board tab and summary badge. Empty keeps the neutral tab. */
+  color: string;
   queueKey: string;
   enabled: boolean;
   sortOrder: number;

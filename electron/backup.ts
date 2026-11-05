@@ -346,6 +346,54 @@ export async function exportBackupToFile(
   return { ok: true, path: result.filePath };
 }
 
+export function backupContents(backup: AppBackup): BackupSections {
+  return {
+    settings: Boolean(backup.settings),
+    tasks: Boolean(backup.tasks),
+    summary: Boolean(backup.summary),
+    drafts: Boolean(backup.drafts?.length),
+  };
+}
+
+async function chooseBackupFile(
+  win: BrowserWindow | null,
+): Promise<{ ok: true; path: string; backup: AppBackup } | { ok: false; reason: 'cancelled' }> {
+  const openOpts: Electron.OpenDialogOptions = {
+    title: 'Импорт BroTeam',
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+    properties: ['openFile'],
+  };
+  const result = win
+    ? await dialog.showOpenDialog(win, openOpts)
+    : await dialog.showOpenDialog(openOpts);
+  if (result.canceled || !result.filePaths[0]) return { ok: false, reason: 'cancelled' };
+  const backup = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf8')) as AppBackup;
+  if (backup.format !== 'bro-team-backup') throw new Error('Это не файл настроек BroTeam.');
+  return { ok: true, path: result.filePaths[0], backup };
+}
+
+export async function inspectBackupFile(
+  win: BrowserWindow | null,
+): Promise<
+  { ok: true; path: string; found: BackupSections } | { ok: false; reason: 'cancelled' }
+> {
+  const picked = await chooseBackupFile(win);
+  if (!picked.ok) return picked;
+  return { ok: true, path: picked.path, found: backupContents(picked.backup) };
+}
+
+export async function importBackupFromPath(
+  filePath: string,
+  sections: BackupSections,
+): Promise<{ ok: true; applied: string[]; path: string }> {
+  if (!sections.settings && !sections.tasks && !sections.summary && !sections.drafts) {
+    throw new Error('Выберите хотя бы один раздел для импорта');
+  }
+  const backup = JSON.parse(fs.readFileSync(filePath, 'utf8')) as AppBackup;
+  if (backup.format !== 'bro-team-backup') throw new Error('Это не файл настроек BroTeam.');
+  return { ok: true, applied: applyBackup(backup, sections), path: filePath };
+}
+
 export async function importBackupFromFile(
   win: BrowserWindow | null,
   sections: BackupSections,

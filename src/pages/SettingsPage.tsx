@@ -78,11 +78,13 @@ export default function SettingsPage(props: Props) {
   const [columnListsOpen, setColumnListsOpen] = useState<Record<number, boolean>>({});
   const [busy, setBusy] = useState(false);
   const [importSections, setImportSections] = useState<BackupChoice>(() => ({
-    settings: true,
+    settings: false,
     tasks: false,
     summary: false,
     drafts: false,
   }));
+  const [importReady, setImportReady] = useState<BackupChoice | null>(null);
+  const [importPath, setImportPath] = useState<string | null>(null);
   const [exportSections, setExportSections] = useState<BackupChoice>(() => ({
     settings: true,
     tasks: false,
@@ -261,7 +263,25 @@ export default function SettingsPage(props: Props) {
     }
   }
 
+  async function chooseImportFile() {
+    setBusy(true);
+    props.onError(null);
+    try {
+      const result = await window.api.inspectBackup();
+      if (!result.ok) return;
+      setImportPath(result.path);
+      setImportReady(result.found);
+      setImportSections(result.found);
+      if (!Object.values(result.found).some(Boolean)) publishOk('Не найдено данных для импорта.');
+    } catch (e) {
+      publishErr(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function importBackup() {
+    if (!importPath) return;
     const ok = window.confirm(
       'Импорт заменит выбранные разделы данными из файла. Продолжить?',
     );
@@ -269,7 +289,7 @@ export default function SettingsPage(props: Props) {
     setBusy(true);
     props.onError(null);
     try {
-      const result = await window.api.importBackup(importSections);
+      const result = await window.api.importBackupPath(importPath, importSections);
       if (!result.ok) return;
       publishOk(`Импортировано: ${result.applied.join(', ')}`);
       // Refresh local drafts of settings from DB
@@ -338,6 +358,7 @@ export default function SettingsPage(props: Props) {
           trackerBoardId: board.id,
           name: board.name,
           alias: '',
+          color: '',
           queueKey: board.queueKey || '',
           enabled: true,
           sortOrder: savedBoards.length,
@@ -519,8 +540,8 @@ export default function SettingsPage(props: Props) {
   const boardsDirty =
     Boolean(boardDraft.columnHeadersNoWrap) !== Boolean(props.board.columnHeadersNoWrap) ||
     JSON.stringify(colDraft) !== JSON.stringify(props.columns) ||
-    JSON.stringify(savedBoards.map((board) => ({ id: board.id, alias: board.alias || '' }))) !==
-      JSON.stringify(props.boards.map((board) => ({ id: board.id, alias: board.alias || '' })));
+    JSON.stringify(savedBoards.map((board) => ({ id: board.id, alias: board.alias || '', color: board.color || '' }))) !==
+      JSON.stringify(props.boards.map((board) => ({ id: board.id, alias: board.alias || '', color: board.color || '' })));
 
   return (
     <div className="flex w-full items-start gap-6">
@@ -926,6 +947,16 @@ export default function SettingsPage(props: Props) {
                   <span className="min-w-0 truncate font-medium text-slate-900">
                     {board.name}#{board.trackerBoardId}
                   </span>
+                  <span onClick={(event) => event.stopPropagation()}>
+                    <ColorField
+                      value={board.color || '#64748b'}
+                      onChange={(hex) => {
+                        setSavedBoards((prev) =>
+                          prev.map((item) => (item.id === board.id ? { ...item, color: hex } : item)),
+                        );
+                      }}
+                    />
+                  </span>
                   <input
                     className="h-7 w-36 shrink-0 rounded border border-slate-300 px-2 text-xs"
                     placeholder="Своё название"
@@ -1029,20 +1060,35 @@ export default function SettingsPage(props: Props) {
           Перенос данных между установками. Токен и подключение к Tracker не входят в файл.
           «Задачи» — текущее сохранение доски и заметки к задачам. «Сводка» — последняя повседневная сводка.
         </p>
+        <div className="grid gap-4 md:grid-cols-2">
         <SettingsSection title="Импорт">
           <BackupChecks
             sections={importSections}
+            enabled={importReady ?? { settings: false, tasks: false, summary: false, drafts: false }}
             onChange={(key, checked) => setImportSections((current) => ({ ...current, [key]: checked }))}
           />
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"
-            disabled={busy || !Object.values(importSections).some(Boolean)}
-            onClick={() => void importBackup()}
-          >
-            <DownloadIcon className="h-4 w-4" />
-            Загрузить
-          </button>
+          {importReady && !Object.values(importReady).some(Boolean) && (
+            <p className="text-sm text-slate-500">Не найдено данных для импорта.</p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"
+              disabled={busy}
+              onClick={() => void chooseImportFile()}
+            >
+              <DownloadIcon className="h-4 w-4" />
+              Выбрать файл
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+              disabled={busy || !importPath || !Object.values(importSections).some(Boolean)}
+              onClick={() => void importBackup()}
+            >
+              Применить
+            </button>
+          </div>
         </SettingsSection>
         <SettingsSection title="Экспорт">
           <BackupChecks
@@ -1059,6 +1105,7 @@ export default function SettingsPage(props: Props) {
             Выгрузить
           </button>
         </SettingsSection>
+        </div>
       </>
       )}
       </div>
@@ -1372,20 +1419,25 @@ function SettingsSection(props: { title: string; children: ReactNode }) {
 
 function BackupChecks(props: {
   sections: BackupChoice;
+  enabled?: BackupChoice;
   onChange: (key: keyof BackupChoice, checked: boolean) => void;
 }) {
   return (
     <div className="flex flex-col gap-2 text-sm">
-      {BACKUP_OPTIONS.map(([key, label]) => (
-        <label key={key} className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={props.sections[key]}
-            onChange={(event) => props.onChange(key, event.target.checked)}
-          />
-          {label}
-        </label>
-      ))}
+      {BACKUP_OPTIONS.map(([key, label]) => {
+        const locked = props.enabled ? !props.enabled[key] : false;
+        return (
+          <label key={key} className={`flex items-center gap-2 ${locked ? 'text-slate-400' : ''}`}>
+            <input
+              type="checkbox"
+              checked={props.sections[key]}
+              disabled={locked}
+              onChange={(event) => props.onChange(key, event.target.checked)}
+            />
+            {label}
+          </label>
+        );
+      })}
     </div>
   );
 }

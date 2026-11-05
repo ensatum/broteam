@@ -253,6 +253,16 @@ body.bro-drag-col * {
   background: #fde68a;
 }
 
+.bro-change-bell.bro-heat,
+.bro-change-bell.bro-heat:hover {
+  background: transparent;
+  filter: none;
+}
+
+.bro-change-bell.bro-heat:hover {
+  filter: brightness(0.85);
+}
+
 .bro-change-beside {
   position: absolute;
   inset: 0;

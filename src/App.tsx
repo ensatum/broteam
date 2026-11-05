@@ -41,6 +41,7 @@ const MENU_ITEMS: Array<{ id: Tab; label: string }> = [
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('board');
+  const [editExit, setEditExit] = useState(0);
   const [settingsSection, setSettingsSection] = useState<'app' | 'integrations' | 'boards'>('app');
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -323,6 +324,8 @@ export default function App() {
 
   const switchBoard = (id: number) => {
     if (id === activeBoardId) return;
+    setEditExit((value) => value + 1);
+    setActiveBoardId(id);
     if (refreshLock.current) {
       const ticket = ++boardSwitch.current;
       paintBoardBadge(id);
@@ -403,7 +406,10 @@ export default function App() {
                           goLiveBoard();
                           return;
                         }
-                        if (id === 'settings') setSettingsSection('app');
+                        if (id === 'settings') {
+                          setSettingsSection('app');
+                          setEditExit((value) => value + 1);
+                        }
                         setTab(id);
                         setMenuOpen(false);
                       }}
@@ -432,7 +438,8 @@ export default function App() {
                     type="button"
                     data-board-badge={item.id}
                     disabled={refreshingBoardId != null}
-                    className={`relative inline-flex h-7 shrink-0 items-center rounded-md py-1 pl-2.5 pr-3.5 text-sm disabled:cursor-default ${badgeClass}`}
+                    className={`relative inline-flex h-7 shrink-0 items-center rounded-md border-b-2 py-1 pl-2.5 pr-3.5 text-sm disabled:cursor-default ${badgeClass}`}
+                    style={{ borderBottomColor: item.color || 'transparent' }}
                     onClick={() => switchBoard(item.id)}
                   >
                     {(item.alias || '').trim() || item.name}
@@ -542,6 +549,7 @@ export default function App() {
             setupKind={setupKind}
             onRefresh={() => void refreshBoard()}
             refreshingBoardId={refreshingBoardId}
+            editExit={editExit}
             onMatrixChange={handleMatrixChange}
             onDevelopersChange={setDevelopers}
             onColumnsChange={setColumns}

@@ -555,10 +555,10 @@ export default function IssuePanel(props: Props) {
               >
                 {header}
                 <div className="mt-0.5 grid grid-cols-2 gap-2 px-2 pb-1 text-[10px] text-slate-500">
-                  <div className="grid min-w-0 grid-cols-3 gap-1.5">
-                    <RoleName role="Исполнитель" name={issue.assigneeDisplay} />
-                    <RoleName role="Ревьюер" name={issue.reviewerDisplay} />
-                    <RoleName role="Тестировщик" name={issue.qaDisplay} />
+                  <div className="min-w-0 truncate">
+                    {[issue.assigneeDisplay, issue.reviewerDisplay, issue.qaDisplay]
+                      .map((name) => name?.trim() || '—')
+                      .join(' · ')}
                   </div>
                   <div className="flex min-w-0 items-center gap-1.5">
                     {change ? (
