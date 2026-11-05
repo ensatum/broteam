@@ -216,9 +216,10 @@ const COMPACT_COL_PX = 34;
 /** Column width at which digits and icons reach their cap. Wider cells keep growing. */
 const FULL_COL_PX = 72;
 const COMPACT_HEADER_PX = 32;
-const COMPACT_ROW_PX = 26;
+const COMPACT_ROW_PX = 22;
 const FULL_HEADER_PX = 34;
-/** Below this row height icons disappear and the table is compact. */
+/** Cell size from which icons stay readable. Smaller than this is compact. */
+const ICON_COL_PX = 48;
 const ICON_ROW_PX = 36;
 /** Natural full row. Digits do not grow past this. */
 const MAX_ROW_PX = 46;
@@ -720,7 +721,8 @@ export default function BoardPage(props: Props) {
   const appliedTableFit = useRef('');
   const draggedTable = useRef(false);
   const iconFit = useRef({ col: 0, row: 0, pref: 'full' as TablePref, shown: true, id: null as number | null });
-  const modeHold = useRef<{ w: number; h: number; fraction: number } | null>(null);
+  const modeExpect = useRef<'mini' | 'full' | null>(null);
+  const sizeSide = useRef<'above' | 'below' | null>(null);
   const renderStamp = useRef('');
   const layoutRef = useRef({
     filtersOpen: true,
@@ -1494,6 +1496,8 @@ export default function BoardPage(props: Props) {
     if (props.activeBoardId == null) return;
     const saved = readBoardScales()[String(props.activeBoardId)];
     if (!saved) return;
+    modeExpect.current = saved.mode === 'mini' || saved.mode === 'full' ? saved.mode : null;
+    sizeSide.current = null;
     setTableFraction(saved.fraction);
     setTablePref(saved.mode);
   }, [props.activeBoardId]);
@@ -1506,18 +1510,18 @@ export default function BoardPage(props: Props) {
     const watch = iconFit.current;
     if (!watch.shown || watch.id == null || watch.col <= 0 || watch.row <= 0) return;
     if (watch.pref !== 'mini' && watch.pref !== 'full') return;
-    const hold = modeHold.current;
-    if (
-      hold &&
-      Math.abs(hold.w - centerBox.w) < 24 &&
-      Math.abs(hold.h - centerBox.h) < 24 &&
-      Math.abs(hold.fraction - tableFraction) < 0.02
-    ) {
-      return;
+    const above = watch.col >= ICON_COL_PX && watch.row >= ICON_ROW_PX;
+    const side = above ? 'above' : 'below';
+    if (modeExpect.current) {
+      if (sizeSide.current == null) {
+        sizeSide.current = side;
+        return;
+      }
+      if (sizeSide.current === side) return;
+      modeExpect.current = null;
     }
-    const toFull = watch.col >= 56 && watch.row >= 40;
-    const toMini = watch.col < 48 || watch.row < 36;
-    const next = watch.pref === 'full' ? (toMini ? 'mini' : 'full') : toFull ? 'full' : 'mini';
+    sizeSide.current = side;
+    const next = above ? 'full' : 'mini';
     if (next !== watch.pref) {
       setTablePref(next);
       saveTableMode(next);
@@ -2176,7 +2180,6 @@ export default function BoardPage(props: Props) {
   }
 
   function rememberTablePref(mode: TablePref) {
-    modeHold.current = { w: centerBox.w, h: centerBox.h, fraction: tableFraction };
     draggedTable.current = false;
     setTablePref(mode);
     saveTableMode(mode);
@@ -2477,6 +2480,25 @@ export default function BoardPage(props: Props) {
       ? RIGHT_RAIL_PX + Math.round(Math.max(DRAFTS_MIN_PX, rowWidth * fraction))
       : RIGHT_RAIL_PX;
     return rowWidth - filtersW - draftsW;
+  }
+
+  function chooseTableMode(mode: 'mini' | 'full') {
+    const rowPx = mode === 'mini' ? COMPACT_ROW_PX : ICON_ROW_PX;
+    const headerPx = mode === 'mini' ? COMPACT_HEADER_PX : FULL_HEADER_PX;
+    const needH = tableHeight(bodyRows, headerPx, rowPx);
+    modeExpect.current = mode;
+    sizeSide.current = null;
+    draggedTable.current = true;
+    if (centerBox.h > 0) {
+      const fraction = (needH + 16) / centerBox.h;
+      if (mode === 'full' && issuesOpen && fraction > 0.92) setIssuesOpen(false);
+      else {
+        if (!issuesOpen && mode === 'mini') setIssuesOpen(true);
+        setTableFraction(Math.min(0.92, Math.max(0.08, fraction)));
+      }
+    }
+    setTablePref(mode);
+    saveTableMode(mode);
   }
 
   function revealTable(mode: 'mini' | 'full', heightOnly = false) {
@@ -3002,7 +3024,7 @@ export default function BoardPage(props: Props) {
               type="button"
               title={tablePref === 'mini' ? 'Таблица с иконками' : 'Компактная таблица'}
               className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:shadow-sm"
-              onClick={() => rememberTablePref(tablePref === 'mini' ? 'full' : 'mini')}
+              onClick={() => chooseTableMode(tablePref === 'mini' ? 'full' : 'mini')}
             >
               {tablePref === 'mini' ? <FeatherMaximizeIcon /> : <FeatherMinimizeIcon />}
             </button>

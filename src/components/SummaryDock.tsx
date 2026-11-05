@@ -896,8 +896,8 @@ function SummaryCard(props: {
         </InstantTip>
         {row.boardLabel ? (
           <span
-            className="shrink-0 rounded border border-slate-300 border-l-[3px] bg-slate-50 px-1 py-px text-[10px] font-normal text-slate-600"
-            style={{ borderLeftColor: row.boardColor || '#cbd5e1' }}
+            className="shrink-0 rounded border border-slate-300 bg-slate-50 px-1 py-px text-[10px] font-normal text-slate-600"
+            style={row.boardColor ? { color: row.boardColor } : undefined}
           >
             {row.boardLabel}
           </span>
