@@ -1,8 +1,8 @@
 {
   "name": "bro-team",
-  "version": "2026.4.193",
+  "version": "2026.5.193",
   "broteam": {
-    "release": 4,
+    "release": 5,
     "build": 193
   },
   "description": "BroTeam — доска задач по Yandex Tracker",
