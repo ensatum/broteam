@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Вливает develop в main, поднимает номер релиза (билд не сбрасывается)
-# и собирает пакеты всех систем в release/. Год берётся из текущей даты.
+# и собирает пакеты Linux и macOS в release/. Год берётся из текущей даты.
 # Коммит — полная версия со сборкой, тег — Год.Релиз без номера сборки.
 # Коммит и тег отправляются в origin. Пакеты остаются в release/ и в git не входят.
 set -euo pipefail
@@ -57,14 +57,10 @@ build_target() {
 
 build_target "Linux" npx electron-builder --linux AppImage deb -c.directories.output=release -c.linux.artifactName="BroTeam-${version}-\${arch}.\${ext}"
 build_target "macOS" node scripts/dist-mac.mjs
-build_target "Windows" npx electron-builder --win nsis -c.directories.output=release -c.win.artifactName="BroTeam-${version}.\${ext}"
-if [[ " ${failed[*]-} " == *" Windows "* ]]; then
-  rm -f "release/BroTeam-${version}.exe" release/*"${version}"*.nsis.7z
-fi
 node scripts/prune-artifacts.mjs release 1
 
 shopt -s nullglob
-artifacts=(release/*.AppImage release/*.deb release/*-mac.zip release/*.exe)
+artifacts=(release/*.AppImage release/*.deb release/*-mac.zip)
 if [[ ${#artifacts[@]} -eq 0 ]]; then
   echo "Ни один пакет не собран." >&2
   exit 1

@@ -1,0 +1,9 @@
+version: 2026.4.192
+files:
+  - url: BroTeam-2026.4.192-x86_64.AppImage
+    sha512: UfTBgoVdj6VGS1kRs7nCagp/0nSXLSx2F5AFbrC6S738WRLMVLlL0dUdx9Zuoyn/3uePf4wcixJQlRZBqWuL5Q==
+    size: 122452936
+    blockMapSize: 130012
+path: BroTeam-2026.4.192-x86_64.AppImage
+sha512: UfTBgoVdj6VGS1kRs7nCagp/0nSXLSx2F5AFbrC6S738WRLMVLlL0dUdx9Zuoyn/3uePf4wcixJQlRZBqWuL5Q==
+releaseDate: '2026-11-03T20:54:41.443Z'

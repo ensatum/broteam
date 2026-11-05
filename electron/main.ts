@@ -312,13 +312,14 @@ function registerIpc(): void {
   ipcMain.handle('tracker:refreshIssue', async (_e, issueKey: string) => {
     const issue = await getClient().getIssue(issueKey);
     const activeId = getActiveBoardLocalId();
-    const current =
-      latestMatrix &&
-      (activeId == null ||
-        latestMatrix.sourceBoardLocalId == null ||
-        latestMatrix.sourceBoardLocalId === activeId)
+    const remembered =
+      latestMatrix && activeId != null && latestMatrix.sourceBoardLocalId === activeId
         ? latestMatrix
         : getLastMatrix<BoardMatrix>();
+    const current =
+      remembered && activeId != null && remembered.sourceBoardLocalId === activeId
+        ? remembered
+        : null;
     if (!current) {
       const matrix = await buildLiveMatrix();
       latestMatrix = matrix;
@@ -355,12 +356,13 @@ function registerIpc(): void {
     const activeId = getActiveBoardLocalId();
     try {
       const memoryMatches =
-        latestMatrix != null &&
-        (activeId == null ||
-          latestMatrix.sourceBoardLocalId == null ||
-          latestMatrix.sourceBoardLocalId === activeId);
+        latestMatrix != null && activeId != null && latestMatrix.sourceBoardLocalId === activeId;
       const memory = memoryMatches ? latestMatrix : null;
-      const m = memory || getLastMatrix<BoardMatrix>();
+      const loaded = memory || getLastMatrix<BoardMatrix>();
+      const loadedOwns =
+        loaded != null &&
+        (activeId == null || loaded.sourceBoardLocalId === activeId);
+      const m = loadedOwns ? loaded : null;
       sessionLog('info', 'board:getLast', {
         activeId,
         memory: memory ? describeMatrix(memory) : null,
@@ -368,7 +370,9 @@ function registerIpc(): void {
         loaded: describeMatrix(m),
       });
       if (!m) {
-        latestMatrix = null;
+        if (latestMatrix?.sourceBoardLocalId == null || latestMatrix?.sourceBoardLocalId === activeId) {
+          latestMatrix = null;
+        }
         return null;
       }
       const remapped = remapMatrixPersonNames(m, listDevelopers());
@@ -533,7 +537,9 @@ function registerIpc(): void {
     return exportBackupToFile(mainWindow, sections);
   });
   ipcMain.handle('backup:import', async (_e, sections: BackupSections) => {
-    return importBackupFromFile(mainWindow, sections);
+    const result = await importBackupFromFile(mainWindow, sections);
+    if (result.ok && sections.settings) latestMatrix = null;
+    return result;
   });
 
   subscribeTrackerActivity((state) => {

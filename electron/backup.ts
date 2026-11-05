@@ -5,14 +5,19 @@ import type {
   BoardColumnConfig,
   BoardConfig,
   Developer,
+  SavedBoard,
   SnapshotPayload,
 } from '../shared/types';
 import {
   getBoardConfig,
+  clearCachedMatrices,
+  getActiveBoardLocalId,
+  importSavedBoards,
   listColumns,
   listDevelopers,
   listDrafts,
   listIssueNotes,
+  listSavedBoards,
   listSnapshots,
   getSnapshotById,
   replaceColumns,
@@ -37,6 +42,8 @@ export type AppBackup = {
   exportedAt: string;
   settings?: {
     board: BoardConfig;
+    boards?: SavedBoard[];
+    activeBoardLocalId?: number | null;
     columns: BoardColumnConfig[];
     developers: Developer[];
   };
@@ -99,6 +106,8 @@ export function buildBackup(sections: BackupSections): AppBackup {
   if (sections.settings) {
     backup.settings = {
       board: getBoardConfig(),
+      boards: listSavedBoards(),
+      activeBoardLocalId: getActiveBoardLocalId(),
       columns: listColumns(),
       developers: listDevelopers(),
     };
@@ -185,32 +194,41 @@ export function applyBackup(backup: AppBackup, sections: BackupSections): string
 
   if (sections.settings) {
     if (!backup.settings) throw new Error('В файле нет блока настроек');
-    saveBoardConfig(backup.settings.board);
-    replaceDevelopers(
-      backup.settings.developers.map((d, index) => ({
-        login: d.login,
-        displayName: d.displayName,
-        uid: String(d.uid),
-        color: d.color,
-        sortOrder: d.sortOrder ?? index,
-        role: d.role,
-        onVacation: Boolean(d.onVacation),
-        hidden: Boolean(d.hidden),
-      })),
-    );
-    replaceColumns(
-      backup.settings.columns.map((c, index) => ({
-        columnId: c.columnId,
-        columnName: c.columnName,
-        statusKey: c.statusKey,
-        statusDisplay: c.statusDisplay,
-        alias: c.alias,
-        color: c.color,
-        enabled: c.enabled,
-        sortOrder: c.sortOrder ?? index,
-        boardLocalId: c.boardLocalId || 0,
-      })),
-    );
+    const settings = backup.settings;
+    getDb().transaction(() => {
+      saveBoardConfig(settings.board);
+      if (Array.isArray(settings.boards)) {
+        importSavedBoards(settings.boards, settings.activeBoardLocalId ?? null);
+      }
+      replaceDevelopers(
+        settings.developers.map((d, index) => ({
+          login: d.login,
+          displayName: d.displayName,
+          uid: String(d.uid),
+          color: d.color,
+          sortOrder: d.sortOrder ?? index,
+          role: d.role,
+          onVacation: Boolean(d.onVacation),
+          hidden: Boolean(d.hidden),
+        })),
+      );
+      replaceColumns(
+        settings.columns.map((c, index) => ({
+          columnId: c.columnId,
+          columnName: c.columnName,
+          statusKey: c.statusKey,
+          statusDisplay: c.statusDisplay,
+          alias: c.alias,
+          color: c.color,
+          enabled: c.enabled,
+          sortOrder: c.sortOrder ?? index,
+          boardLocalId: c.boardLocalId || 0,
+        })),
+      );
+      // The previous install kept one board's tasks. Those rows must not stay
+      // on screen as if they belonged to every imported board.
+      clearCachedMatrices();
+    })();
     applied.push('настройки');
   }
 

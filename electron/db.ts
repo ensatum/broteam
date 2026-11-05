@@ -432,6 +432,16 @@ export function replaceDevelopers(
 ): Developer[] {
   const database = getDb();
   const tx = database.transaction(() => {
+    const existing = database.prepare(`SELECT id, login FROM developers`).all() as Array<{
+      id: number;
+      login: string;
+    }>;
+    const byLogin = new Map(existing.map((row) => [row.login.toLowerCase(), row.id]));
+    const byId = new Set(existing.map((row) => row.id));
+    // Park current logins first. An old install already has these people under
+    // different ids, and renaming one row onto another's login trips UNIQUE.
+    const park = database.prepare(`UPDATE developers SET login = ? WHERE id = ?`);
+    for (const row of existing) park.run(`\u0000${row.id}`, row.id);
     const keep = new Set<number>();
     const update = database.prepare(
       `UPDATE developers
@@ -447,15 +457,16 @@ export function replaceDevelopers(
       const vacation = d.onVacation ? 1 : 0;
       const hidden = d.hidden ? 1 : 0;
       const order = d.sortOrder ?? index;
-      if (d.id && database.prepare(`SELECT id FROM developers WHERE id = ?`).get(d.id)) {
-        update.run(d.login, d.displayName, d.uid, d.color, order, role, vacation, hidden, d.id);
-        keep.add(d.id);
+      const loginId = byLogin.get(d.login.toLowerCase());
+      const id = loginId ?? (d.id && byId.has(d.id) ? d.id : null);
+      if (id != null) {
+        update.run(d.login, d.displayName, d.uid, d.color, order, role, vacation, hidden, id);
+        keep.add(id);
       } else {
         const info = insert.run(d.login, d.displayName, d.uid, d.color, order, role, vacation, hidden);
         keep.add(Number(info.lastInsertRowid));
       }
     }
-    const existing = database.prepare(`SELECT id FROM developers`).all() as Array<{ id: number }>;
     const remove = database.prepare(`DELETE FROM developers WHERE id = ?`);
     for (const row of existing) {
       if (!keep.has(row.id)) remove.run(row.id);
@@ -540,6 +551,42 @@ export function getActiveBoardLocalId(): number | null {
 
 export function setActiveBoardLocalId(id: number): void {
   setSetting('activeBoardLocalId', String(id));
+}
+
+/** Replace the board list with the exported rows, keeping their local ids. */
+export function importSavedBoards(boards: SavedBoard[], activeLocalId: number | null): SavedBoard[] {
+  const database = getDb();
+  const tx = database.transaction(() => {
+    database.prepare('DELETE FROM agile_boards').run();
+    const insert = database.prepare(
+      `INSERT INTO agile_boards(id, tracker_board_id, name, alias, queue_key, enabled, sort_order)
+       VALUES(?, ?, ?, ?, ?, ?, ?)`,
+    );
+    for (const [index, board] of boards.entries()) {
+      insert.run(
+        board.id,
+        board.trackerBoardId,
+        board.name,
+        board.alias || '',
+        board.queueKey || '',
+        board.enabled ? 1 : 0,
+        board.sortOrder ?? index,
+      );
+    }
+    const ids = new Set(boards.map((board) => board.id));
+    const active =
+      activeLocalId != null && ids.has(activeLocalId)
+        ? activeLocalId
+        : (boards.find((board) => board.enabled)?.id ?? boards[0]?.id ?? null);
+    if (active != null) setActiveBoardLocalId(active);
+    else database.prepare(`DELETE FROM settings WHERE key = 'activeBoardLocalId'`).run();
+  });
+  tx();
+  return listSavedBoards();
+}
+
+export function clearCachedMatrices(): void {
+  getDb().prepare(`DELETE FROM settings WHERE key IN ('lastMatrix', 'lastMatrices')`).run();
 }
 
 export function listIssueNoteLinks(): Record<string, number[]> {
@@ -959,14 +1006,22 @@ export function getLastMatrix<T = unknown>(boardLocalId?: number | null): T | nu
   const all = readMatrixMap();
   if (id != null) {
     const cached = all[String(id)];
-    if (cached) return cached as T;
+    if (cached && typeof cached === 'object') {
+      const source = (cached as { sourceBoardLocalId?: number | null }).sourceBoardLocalId;
+      if (source == null || source === id) return cached as T;
+    } else if (cached) {
+      return cached as T;
+    }
     if (Object.keys(all).length === 0) {
       const legacy = readLegacyMatrix<T>();
-      if (!legacy) return null;
-      const stamped =
-        legacy && typeof legacy === 'object'
-          ? { ...(legacy as object), sourceBoardLocalId: id }
-          : legacy;
+      if (!legacy || typeof legacy !== 'object') return null;
+      const source = (legacy as { sourceBoardLocalId?: number | null }).sourceBoardLocalId;
+      const enabled = listSavedBoards().filter((board) => board.enabled);
+      // A build that stored one board left a single cache with no owner.
+      // Keep it for that one board. Do not hand it to every board added later.
+      if (source != null && source !== id) return null;
+      if (source == null && enabled.length !== 1) return null;
+      const stamped = { ...(legacy as object), sourceBoardLocalId: id };
       all[String(id)] = stamped;
       setSetting('lastMatrices', JSON.stringify(all));
       return stamped as T;

@@ -446,7 +446,15 @@ export type CellSelection = {
 };
 
 export default function BoardPage(props: Props) {
-  const { matrix: sourceMatrix, readOnly } = props;
+  const { readOnly } = props;
+  // A matrix belongs to one board. The previous install stored a single
+  // BROCARDDEV cache with no owner; it must not fill every other board.
+  const sourceMatrix =
+    props.matrix != null &&
+    props.activeBoardId != null &&
+    props.matrix.sourceBoardLocalId === props.activeBoardId
+      ? props.matrix
+      : null;
   const [selection, setSelection] = useState<CellSelection | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(() => loadBoardLayout().filtersOpen);
   const [issuesOpen, setIssuesOpen] = useState(() => loadBoardLayout().issuesOpen);
@@ -1328,6 +1336,10 @@ export default function BoardPage(props: Props) {
       document.body.classList.remove('bro-drag-row', 'bro-drag-col');
     };
   }, []);
+
+  useLayoutEffect(() => {
+    reapplyFade();
+  });
 
   useLayoutEffect(() => {
     const row = boardRowRef.current;
@@ -2462,9 +2474,6 @@ export default function BoardPage(props: Props) {
         .map((issue) => issue.key),
     ),
   ];
-  useLayoutEffect(() => {
-    reapplyFade();
-  });
   /** Name col: compact + ellipsis (no wrap). */
   const nameColW = 'w-[9.75rem] min-w-[9.75rem]';
   const tasksDock = (

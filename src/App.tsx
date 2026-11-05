@@ -95,7 +95,7 @@ export default function App() {
     setBoards(savedBoards);
     setActiveBoardId(activeId);
     setChanges(await window.api.listIssueChanges());
-    if (last) setMatrix(last);
+    setMatrix(last && last.sourceBoardLocalId === activeId ? last : null);
     setReady(true);
     if (!conn.token) {
       setSettingsSection('integrations');
@@ -186,14 +186,23 @@ export default function App() {
     setError(null);
     let nextMatrix: Awaited<ReturnType<typeof window.api.refreshBoard>> | null = null;
     let stopped = false;
+    const failures: string[] = [];
     try {
       for (const item of queue) {
         setRefreshingBoardId(item.id);
-        await window.api.setActiveBoard(item.id);
-        const data = await window.api.refreshBoard();
-        await window.api.saveLastBoard(data);
-        if (item.id === returnTo) nextMatrix = data;
+        try {
+          await window.api.setActiveBoard(item.id);
+          const data = await window.api.refreshBoard();
+          await window.api.saveLastBoard(data);
+          if (item.id === returnTo) nextMatrix = data;
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e);
+          if (message.includes('Запросы остановлены')) throw e;
+          failures.push(`${(item.alias || '').trim() || item.name}: ${message}`);
+          sessionLog('error', 'board refresh failed', { id: item.id, error: message });
+        }
       }
+      if (failures.length) setError(failures.join('\n'));
       const listed = await window.api.listIssueChanges();
       await held;
       if (nextMatrix) setMatrix(nextMatrix);
@@ -211,10 +220,10 @@ export default function App() {
     } finally {
       try {
         if (returnTo != null) await window.api.setActiveBoard(returnTo);
-        if (nextMatrix) setMatrix(nextMatrix);
+        if (nextMatrix && nextMatrix.sourceBoardLocalId === returnTo) setMatrix(nextMatrix);
         else if (!stopped && returnTo != null) {
           const last = await window.api.getLastBoard();
-          if (last) setMatrix(last);
+          setMatrix(last && last.sourceBoardLocalId === returnTo ? last : null);
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -337,7 +346,7 @@ export default function App() {
         if (boardSwitch.current !== ticket) return;
         setBoard(cfg);
         setActiveBoardId(id);
-        if (last) setMatrix(last);
+        setMatrix(last && last.sourceBoardLocalId === id ? last : null);
         window.setTimeout(() => revealContentFade(), 0);
       } catch (error) {
         if (boardSwitch.current !== ticket) return;
