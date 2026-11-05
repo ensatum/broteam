@@ -41,7 +41,7 @@ const MENU_ITEMS: Array<{ id: Tab; label: string }> = [
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('board');
-  const [settingsSection, setSettingsSection] = useState<'app' | 'integrations'>('app');
+  const [settingsSection, setSettingsSection] = useState<'app' | 'integrations' | 'boards'>('app');
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [autoRefresh, setAutoRefresh] = useState(loadAutoRefresh);
@@ -203,6 +203,7 @@ export default function App() {
         }
       }
       if (failures.length) setError(failures.join('\n'));
+      setDevelopers(await window.api.listDevelopers());
       const listed = await window.api.listIssueChanges();
       await held;
       if (nextMatrix) setMatrix(nextMatrix);
@@ -299,10 +300,11 @@ export default function App() {
     };
   }, [ready, autoSaveTime, boards, columns, activeBoardId, refreshingBoardId]);
 
-  const needsSetup = useMemo(
-    () => !connection.token || !developers.length || !columns.some((c) => c.enabled),
-    [connection.token, developers.length, columns],
-  );
+  const setupKind = !connection.token
+    ? 'integration'
+    : boards.some((item) => item.enabled)
+      ? null
+      : 'boards';
 
   const activeMatrix = matrix;
 
@@ -527,7 +529,7 @@ export default function App() {
             readOnly={false}
             snapshotDate={null}
             columnHeadersNoWrap={board.columnHeadersNoWrap}
-            needsSetup={needsSetup}
+            setupKind={setupKind}
             onRefresh={() => void refreshBoard()}
             refreshingBoardId={refreshingBoardId}
             onMatrixChange={handleMatrixChange}
@@ -540,8 +542,8 @@ export default function App() {
             onActiveBoard={switchBoard}
             onHeaderChange={setBoardHeader}
             onError={setError}
-            onGoSettings={() => {
-              setSettingsSection('integrations');
+            onGoSettings={(section) => {
+              setSettingsSection(section);
               setTab('settings');
             }}
             onSnapshotContentChange={markSnapshotDirty}

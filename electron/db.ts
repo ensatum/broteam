@@ -476,6 +476,50 @@ export function replaceDevelopers(
   return listDevelopers();
 }
 
+/** Insert assignees that are not already participants. Existing rows stay as they are. */
+export function ensureAssigneeDevelopers(
+  people: Array<{ login: string; displayName: string; uid: string }>,
+): Developer[] {
+  const incoming = people.filter((person) => person.login.trim() || person.uid.trim());
+  if (!incoming.length) return listDevelopers();
+  const database = getDb();
+  const tx = database.transaction(() => {
+    const existing = database.prepare(`SELECT login, uid FROM developers`).all() as Array<{
+      login: string;
+      uid: string;
+    }>;
+    const byLogin = new Set(existing.map((row) => row.login.toLowerCase()));
+    const byUid = new Set(existing.map((row) => row.uid).filter(Boolean));
+    const nextOrder = database.prepare(`SELECT COALESCE(MAX(sort_order), -1) AS n FROM developers`).get() as {
+      n: number;
+    };
+    const insert = database.prepare(
+      `INSERT INTO developers(login, display_name, uid, color, sort_order, role, on_vacation, hidden)
+       VALUES(?, ?, ?, 'auto', ?, 'developer', 0, 0)`,
+    );
+    let order = nextOrder.n + 1;
+    for (const person of incoming) {
+      const login = person.login.trim();
+      const uid = person.uid.trim();
+      if (
+        (login && byLogin.has(login.toLowerCase())) ||
+        (uid && byUid.has(uid)) ||
+        (login && byUid.has(login))
+      ) {
+        continue;
+      }
+      const storedLogin = login || `uid-${uid}`;
+      if (byLogin.has(storedLogin.toLowerCase())) continue;
+      insert.run(storedLogin, person.displayName.trim() || storedLogin, uid, order);
+      byLogin.add(storedLogin.toLowerCase());
+      if (uid) byUid.add(uid);
+      order += 1;
+    }
+  });
+  tx();
+  return listDevelopers();
+}
+
 export function listSavedBoards(): SavedBoard[] {
   const rows = getDb()
     .prepare(

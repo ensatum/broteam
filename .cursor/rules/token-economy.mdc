@@ -1,0 +1,35 @@
+---
+description: Token economy — minimize token usage without quality loss
+alwaysApply: true
+---
+
+# Token Economy
+
+## Files
+- Read only needed lines (offset/limit), not whole large files
+- Grep/Glob first to locate, then read targeted sections
+- Don't re-read files already in conversation unless edited
+
+## Tools
+- Batch independent tool calls in one message
+- Grep for exact matches, SemanticSearch for meaning
+- Native tools over shell commands for file ops
+
+## Output
+- No narrating comments in code
+- Minimal StrReplace context — just enough for uniqueness
+- Reference code by line numbers, don't reproduce
+
+## Context
+- Subagents for isolated exploration
+- Don't repeat info already available in conversation
+
+## Rules Authoring
+- `alwaysApply: false` + precise `description` for conditional rules
+- Bullet points over prose; under 50 lines per rule
+- No duplication across rules
+
+## Responses
+- No preambles — answer directly
+- Don't announce actions — just execute
+- Concise results: outcome + next step

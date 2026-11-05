@@ -341,6 +341,7 @@ export default function SettingsPage(props: Props) {
       }
       setBoardHits([]);
       setBoardSearch('');
+      if (added) await loadColumns(added.id, added.trackerBoardId);
       setStatus(`Добавлена доска ${board.name}#${board.id}`);
     } catch (e) {
       props.onError(e instanceof Error ? e.message : String(e));

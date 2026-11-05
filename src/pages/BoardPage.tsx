@@ -145,12 +145,18 @@ function saveShowDone(on: boolean): void {
   localStorage.setItem(SHOW_DONE_KEY, on ? '1' : '0');
 }
 
-function rowVisible(person: Developer, boardId: number | null, prefs: BoardRowPrefs): boolean {
+function rowVisible(
+  person: Developer,
+  boardId: number | null,
+  prefs: BoardRowPrefs,
+  assigneeIds: Set<number>,
+): boolean {
   if (person.role === 'contact') return false;
   const slot = boardId == null ? undefined : prefs[String(boardId)];
   if (slot?.shown?.includes(person.id)) return true;
   if (slot?.hidden?.includes(person.id)) return false;
-  return !person.hidden;
+  if (person.hidden) return false;
+  return assigneeIds.has(person.id);
 }
 
 type BoardPersonPick = {
@@ -407,14 +413,14 @@ type Props = {
   readOnly: boolean;
   snapshotDate?: string | null;
   columnHeadersNoWrap?: boolean;
-  needsSetup: boolean;
+  setupKind: 'integration' | 'boards' | null;
   onRefresh: () => void;
   refreshingBoardId?: number | null;
   onMatrixChange: (m: BoardMatrix) => void;
   onDevelopersChange: (d: Developer[]) => void;
   onColumnsChange: (c: BoardColumnConfig[]) => void;
   onError: (msg: string | null) => void;
-  onGoSettings: () => void;
+  onGoSettings: (section: 'integrations' | 'boards') => void;
   onSnapshotContentChange: () => void;
   participants: Developer[];
   columns: BoardColumnConfig[];
@@ -699,13 +705,26 @@ export default function BoardPage(props: Props) {
   });
   if (matrixMatches && props.activeBoardId != null) displayBoardRef.current = props.activeBoardId;
   const displayBoardId = matrixMatches ? props.activeBoardId : displayBoardRef.current;
+  const assigneeIds = useMemo(() => {
+    const ids = new Set<number>();
+    if (!sourceMatrix) return ids;
+    for (const row of sourceMatrix.developers) {
+      for (const list of Object.values(row.issuesByColumn)) {
+        for (const issue of list) {
+          const person = props.participants.find((item) => sameAssignee(item, issue));
+          if (person) ids.add(person.id);
+        }
+      }
+    }
+    return ids;
+  }, [sourceMatrix, props.participants]);
   const visibleIds = useMemo(() => {
     const ids = new Set<number>();
     for (const person of props.participants) {
-      if (rowVisible(person, displayBoardId, rowPrefs)) ids.add(person.id);
+      if (rowVisible(person, displayBoardId, rowPrefs, assigneeIds)) ids.add(person.id);
     }
     return ids;
-  }, [props.participants, displayBoardId, rowPrefs]);
+  }, [props.participants, displayBoardId, rowPrefs, assigneeIds]);
   const reflowed = useMemo(() => {
     if (!sourceMatrix) return null;
     try {
@@ -2191,7 +2210,7 @@ export default function BoardPage(props: Props) {
     void persistDevelopers(next);
   }
 
-  if (props.needsSetup && !sourceMatrix) {
+  if (!sourceMatrix && props.setupKind === 'integration') {
     return (
       <div className="m-4 rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
         <h2 className="text-lg font-semibold mb-2">Нужна начальная настройка</h2>
@@ -2200,9 +2219,26 @@ export default function BoardPage(props: Props) {
         </p>
         <button
           className="rounded-md bg-slate-900 px-3 py-2 text-sm text-white"
-          onClick={props.onGoSettings}
+          onClick={() => props.onGoSettings('integrations')}
         >
           Открыть настройки
+        </button>
+      </div>
+    );
+  }
+
+  if (!sourceMatrix && props.setupKind === 'boards') {
+    return (
+      <div className="m-4 rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
+        <h2 className="text-lg font-semibold mb-2">Добавьте доску</h2>
+        <p className="mb-4 text-sm">
+          Подключение есть. Добавьте доску в разделе «Доски и колонки», колонки подтянутся сами.
+        </p>
+        <button
+          className="rounded-md bg-slate-900 px-3 py-2 text-sm text-white"
+          onClick={() => props.onGoSettings('boards')}
+        >
+          Доски и колонки
         </button>
       </div>
     );

@@ -9,6 +9,7 @@ import {
   getIssueNoteUpdatedAt,
   getIssueBookmarks,
   getIssueBookmarkCreatedAt,
+  ensureAssigneeDevelopers,
   listColumns,
   listDevelopers,
   saveLastMatrix,
@@ -255,7 +256,6 @@ export async function buildLiveMatrix(options?: {
     throw new Error('Не задан токен Tracker. Откройте настройки подключения.');
   }
 
-  const developers = listDevelopers().filter((d) => d.role !== 'contact' && !d.hidden);
   const activeBoardId = getActiveBoardLocalId();
   const columns = listColumns().filter(
     (c) => activeBoardId == null || c.boardLocalId === activeBoardId,
@@ -269,23 +269,6 @@ export async function buildLiveMatrix(options?: {
   const todosByDev = getDeveloperTodosByDeveloper();
   const metaEmpty = emptyMeta();
   const ignoreSprint = Boolean(options?.ignoreSprintFilter);
-
-  if (!developers.length) {
-    const empty: BoardMatrix = {
-      columns,
-      developers: [],
-      columnTotals: Object.fromEntries(columns.map((c) => [c.statusKey, 0])),
-      grandTotal: 0,
-      issueNotes,
-      issueNoteUpdatedAt,
-      issueBookmarks,
-      issueBookmarkCreatedAt,
-      fetchedAt: new Date().toISOString(),
-      ...metaEmpty,
-    };
-    if (!ignoreSprint) saveLastMatrix(empty);
-    return empty;
-  }
 
   const client = new TrackerClient(connection);
   const sprintById = new Map<number, TrackerSprint>();
@@ -337,14 +320,9 @@ export async function buildLiveMatrix(options?: {
   });
 
   const statusToColumn = new Map(columns.map((c) => [c.statusKey, c]));
-  const byDev = new Map<string, TrackerIssue[]>();
-  const loginByLower = new Map(developers.map((d) => [d.login.toLowerCase(), d.login]));
-  const loginByUid = new Map(developers.map((d) => [String(d.uid), d.login]));
-  const visibleIssues: TrackerIssue[] = [];
   const requiredBoardId = board.boardId;
-
+  const boardIssues: TrackerIssue[] = [];
   for (const issue of issues) {
-    // Drop only when Tracker reported boards and the configured board is absent.
     if (
       requiredBoardId != null &&
       (issue.boardIds?.length ?? 0) > 0 &&
@@ -357,6 +335,24 @@ export async function buildLiveMatrix(options?: {
       const sprint = sprintById.get(issue.sprintId);
       if (sprint && !isOpenSprint(sprint)) continue;
     }
+    if (!statusToColumn.has(issue.statusKey)) continue;
+    boardIssues.push(issue);
+  }
+  ensureAssigneeDevelopers(
+    boardIssues
+      .filter((issue) => !isUnassignedIssue(issue))
+      .map((issue) => ({
+        login: issue.assigneeLogin || '',
+        displayName: issue.assigneeDisplay || issue.assigneeLogin || '',
+        uid: issue.assigneeUid ? String(issue.assigneeUid) : '',
+      })),
+  );
+  const developers = listDevelopers().filter((d) => d.role !== 'contact' && !d.hidden);
+  const byDev = new Map<string, TrackerIssue[]>();
+  const loginByLower = new Map(developers.map((d) => [d.login.toLowerCase(), d.login]));
+  const loginByUid = new Map(developers.map((d) => [String(d.uid), d.login]));
+  const visibleIssues: TrackerIssue[] = [];
+  for (const issue of boardIssues) {
     const matched =
       (issue.assigneeLogin && loginByLower.get(issue.assigneeLogin.toLowerCase())) ||
       (issue.assigneeUid && loginByUid.get(issue.assigneeUid)) ||
@@ -364,7 +360,6 @@ export async function buildLiveMatrix(options?: {
       null;
     const unassigned = isUnassignedIssue(issue);
     const login = unassigned ? '__unassigned__' : matched || '__others__';
-    if (!statusToColumn.has(issue.statusKey)) continue;
     const resolved = applyDeveloperDisplayNames(issue, developers);
     if (!byDev.has(login)) byDev.set(login, []);
     byDev.get(login)!.push(resolved);
