@@ -15,6 +15,8 @@ release/*.zip
 release/*.exe
 release/*.blockmap
 release/*.7z
+release/latest-linux.yml
+release/latest-mac.yml
 release/builder-debug.yml
 release/builder-effective-config.yaml
 .data/
