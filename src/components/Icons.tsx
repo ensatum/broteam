@@ -939,10 +939,14 @@ function roleToneClass(tone: 'warn' | 'muted') {
   return tone === 'warn' ? 'text-red-700' : 'text-slate-500';
 }
 
-export function heatColor(count: number): string {
-  const t = Math.max(0, Math.min(1, ((count || 1) - 1) / 9));
+export function heatStyle(count: number): CSSProperties {
+  const steps = Math.max(0, (count || 1) - 1);
+  const t = Math.max(0, Math.min(1, steps * 0.2));
   const mix = (from: number, to: number) => Math.round(from + (to - from) * t);
-  return `rgb(${mix(148, 185)}, ${mix(163, 28)}, ${mix(184, 28)})`;
+  return {
+    color: `rgb(${mix(148, 185)}, ${mix(163, 28)}, ${mix(184, 28)})`,
+    ['--bro-heat' as string]: String(0.35 + 0.65 * t),
+  } as CSSProperties;
 }
 
 /** Missing reviewer (shield) or tester (user-check). Faded until hover, then fully opaque. */
@@ -1163,8 +1167,8 @@ export function CellBadgeStack(props: {
       <CellIconButton
         key="R"
         title="Есть задачи без ревьюера"
-        className={`bro-fade-mark hover:brightness-75 ${model.reviewerFilled ? '[&_svg]:fill-current' : ''}`}
-        style={{ color: heatColor(model.reviewerCount || 1) }}
+        className={`bro-heat-mark hover:brightness-75 ${model.reviewerFilled ? '[&_svg]:fill-current' : ''}`}
+        style={heatStyle(model.reviewerCount || 1)}
         onClick={() => pick('reviewer')}
       >
         <ShieldIcon className="bro-role-icon h-3.5 w-3.5" />
@@ -1176,8 +1180,8 @@ export function CellBadgeStack(props: {
       <CellIconButton
         key="T"
         title="Есть задачи без тестировщика"
-        className={`bro-fade-mark hover:brightness-75 ${model.testerFilled ? '[&_svg]:fill-current' : ''}`}
-        style={{ color: heatColor(model.testerCount || 1) }}
+        className={`bro-heat-mark hover:brightness-75 ${model.testerFilled ? '[&_svg]:fill-current' : ''}`}
+        style={heatStyle(model.testerCount || 1)}
         onClick={() => pick('tester')}
       >
         <UserCheckIcon className="bro-role-icon h-3.5 w-3.5" />
@@ -1193,8 +1197,8 @@ export function CellBadgeStack(props: {
             ? 'Есть задачи без активности больше 7 дней'
             : 'Есть просроченные задачи'
         }
-        className="bro-fade-mark hover:brightness-75"
-        style={{ color: heatColor(model.timeCount || 1) }}
+        className="bro-heat-mark hover:brightness-75"
+        style={heatStyle(model.timeCount || 1)}
         onClick={() => pick('time')}
       >
         <ClockIcon className="h-3.5 w-3.5" />
@@ -1203,7 +1207,7 @@ export function CellBadgeStack(props: {
   }
   if (model.pastSprint) {
     bottom.push(
-      <CellIconButton key="past" title="Есть задачи из другого спринта" className="hover:brightness-75" style={{ color: heatColor(model.sprintCount || 1) }} onClick={() => pick('sprint')}>
+      <CellIconButton key="past" title="Есть задачи из другого спринта" className="bro-heat-mark hover:brightness-75" style={heatStyle(model.sprintCount || 1)} onClick={() => pick('sprint')}>
         <CalendarIcon className="h-3.5 w-3.5" />
       </CellIconButton>,
     );

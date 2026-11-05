@@ -896,11 +896,8 @@ function SummaryCard(props: {
         </InstantTip>
         {row.boardLabel ? (
           <span
-            className="shrink-0 rounded border bg-slate-50 px-1 py-px text-[10px] font-medium"
-            style={{
-              color: row.boardColor || '#475569',
-              borderColor: row.boardColor || '#e2e8f0',
-            }}
+            className="shrink-0 rounded border border-slate-300 border-l-[3px] bg-slate-50 px-1 py-px text-[10px] font-normal text-slate-600"
+            style={{ borderLeftColor: row.boardColor || '#cbd5e1' }}
           >
             {row.boardLabel}
           </span>
@@ -934,12 +931,12 @@ function SummaryCard(props: {
         />
       </div>
       {!props.open && (
-        <div className="mt-0.5 flex items-center gap-1.5 pl-3.5 text-[10px] text-slate-500">
-          <span className="min-w-0 flex-1 truncate">
-            {[assigneeRole.current, reviewerRole.current, qaRole.current]
-              .map((name) => name?.trim() || '—')
-              .join(' · ')}
-          </span>
+        <div className="mt-0.5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1 pl-3.5 text-[10px] text-slate-500">
+          <CollapsedRole role="Исполнитель" current={assigneeRole.current} past={assigneeRole.past} selected={props.personName} />
+          <span className="text-slate-300" aria-hidden>·</span>
+          <CollapsedRole role="Ревьюер" current={reviewerRole.current} past={reviewerRole.past} selected={props.personName} />
+          <span className="text-slate-300" aria-hidden>·</span>
+          <CollapsedRole role="Тестировщик" current={qaRole.current} past={qaRole.past} selected={props.personName} />
           <span className="min-w-0 truncate text-right">
             {dayOf(taken)} - {dayOf(row.finalStatusAt)}
             {periodDayCount(taken, row.finalStatusAt) != null ? ` (${periodDayCount(taken, row.finalStatusAt)})` : ''}

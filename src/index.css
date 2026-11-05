@@ -350,6 +350,14 @@ body.bro-drag-col * {
   opacity: 0.5;
 }
 
+.bro-heat-mark {
+  opacity: var(--bro-heat, 0.35);
+}
+
+.bro-heat-mark:hover {
+  opacity: 1;
+}
+
 .bro-fade-mark:hover {
   opacity: 1;
 }

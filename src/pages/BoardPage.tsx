@@ -28,7 +28,7 @@ import {
   SlashIcon,
   CompassIcon,
   CellBadgeStack,
-  heatColor,
+  heatStyle,
   type CellBadgeKind,
   type CellBadgeModel,
   ArrowRightIcon,
@@ -720,6 +720,7 @@ export default function BoardPage(props: Props) {
   const appliedTableFit = useRef('');
   const draggedTable = useRef(false);
   const iconFit = useRef({ col: 0, row: 0, pref: 'full' as TablePref, shown: true, id: null as number | null });
+  const modeHold = useRef<{ w: number; h: number; fraction: number } | null>(null);
   const renderStamp = useRef('');
   const layoutRef = useRef({
     filtersOpen: true,
@@ -1335,9 +1336,9 @@ export default function BoardPage(props: Props) {
         const rect = boardRowRef.current.getBoundingClientRect();
         if (rect.width > 0) {
           const leftW = metrics.filtersOpen ? DRAFTS_MIN_PX + LEFT_RAIL_PX : LEFT_RAIL_PX;
-          const maxDrafts = rect.width - leftW - RIGHT_RAIL_PX - 240;
+          const room = Math.max(0, rect.width - leftW - RIGHT_RAIL_PX);
           let contentW = rect.right - e.clientX - RIGHT_RAIL_PX;
-          contentW = Math.max(DRAFTS_MIN_PX, Math.min(contentW, Math.max(DRAFTS_MIN_PX, maxDrafts)));
+          contentW = Math.min(room, Math.max(Math.min(DRAFTS_MIN_PX, room), contentW));
           const fraction = contentW / rect.width;
           const draftsW = RIGHT_RAIL_PX + contentW;
           const filtersW = leftW;
@@ -1474,12 +1475,12 @@ export default function BoardPage(props: Props) {
   const matrixReady =
     matrix != null &&
     (matrix.sourceBoardLocalId == null || matrix.sourceBoardLocalId === props.activeBoardId);
-  const fitKey = `${props.activeBoardId}|${tablePref ?? ''}|${fitRows}`;
+  const fitKey = `${props.activeBoardId}|${fitRows}`;
   useEffect(() => {
     if (!matrix || !matrixReady) return;
     if (appliedTableFit.current === fitKey) return;
-    const sameBoardMode = appliedTableFit.current.startsWith(`${props.activeBoardId}|${tablePref ?? ''}|`);
-    if (sameBoardMode && draggedTable.current) return;
+    const sameBoard = appliedTableFit.current.startsWith(`${props.activeBoardId}|`);
+    if (sameBoard && draggedTable.current) return;
     if (!issuesOpen || tablePref == null) return;
     if (centerBox.h <= 0 && tablePref !== 'hidden') return;
     const previousBoard = appliedTableFit.current.split('|')[0];
@@ -1488,7 +1489,7 @@ export default function BoardPage(props: Props) {
     draggedTable.current = false;
     if (tablePref === 'hidden') collapseTable();
     else revealTable(tablePref, boardChanged);
-  }, [fitKey, matrix, matrixReady, issuesOpen, tablePref, centerBox.h, props.activeBoardId]);
+  }, [fitKey, matrix, matrixReady, issuesOpen, centerBox.h, props.activeBoardId]);
   useEffect(() => {
     if (props.activeBoardId == null) return;
     const saved = readBoardScales()[String(props.activeBoardId)];
@@ -1504,13 +1505,24 @@ export default function BoardPage(props: Props) {
   useEffect(() => {
     const watch = iconFit.current;
     if (!watch.shown || watch.id == null || watch.col <= 0 || watch.row <= 0) return;
-    const fits = watch.col >= 48 && watch.row >= 36;
-    const next = fits ? 'full' : 'mini';
-    if (next !== watch.pref && (watch.pref === 'mini' || watch.pref === 'full')) {
+    if (watch.pref !== 'mini' && watch.pref !== 'full') return;
+    const hold = modeHold.current;
+    if (
+      hold &&
+      Math.abs(hold.w - centerBox.w) < 24 &&
+      Math.abs(hold.h - centerBox.h) < 24 &&
+      Math.abs(hold.fraction - tableFraction) < 0.02
+    ) {
+      return;
+    }
+    const toFull = watch.col >= 56 && watch.row >= 40;
+    const toMini = watch.col < 48 || watch.row < 36;
+    const next = watch.pref === 'full' ? (toMini ? 'mini' : 'full') : toFull ? 'full' : 'mini';
+    if (next !== watch.pref) {
       setTablePref(next);
       saveTableMode(next);
     }
-  }, [centerBox.w, centerBox.h, tableFraction, tableShown, tablePref, props.activeBoardId]);
+  }, [centerBox.w, centerBox.h, tableFraction, tableShown, props.activeBoardId]);
   const sprintCounts = sourceMatrix?.sprintCounts || [];
   const reviewerCounts = sourceMatrix?.reviewerCounts || [];
   const qaCounts = sourceMatrix?.qaCounts || [];
@@ -2164,20 +2176,11 @@ export default function BoardPage(props: Props) {
   }
 
   function rememberTablePref(mode: TablePref) {
+    modeHold.current = { w: centerBox.w, h: centerBox.h, fraction: tableFraction };
     draggedTable.current = false;
     setTablePref(mode);
     saveTableMode(mode);
   }
-
-  const panelWidth = (() => {
-    const wanted =
-      rowWidth > 0 ? Math.round(Math.max(DRAFTS_MIN_PX, rowWidth * draftsFraction)) : 420;
-    const width = Math.max(DRAFTS_MIN_PX, wanted);
-    if (!draftsOpen || rowWidth <= 0) return width;
-    const sideW = filtersOpen ? DRAFTS_MIN_PX + LEFT_RAIL_PX : LEFT_RAIL_PX;
-    const maxDrafts = rowWidth - sideW - RIGHT_RAIL_PX - 240;
-    return Math.max(DRAFTS_MIN_PX, Math.min(width, Math.max(DRAFTS_MIN_PX, maxDrafts)));
-  })();
 
   function changeListSort(next: ListSort) {
     setListSort(next);
@@ -2328,7 +2331,14 @@ export default function BoardPage(props: Props) {
         </div>
         <DraftsSide
           open={draftsOpen}
-          width={panelWidth}
+          width={
+            rowWidth > 0
+              ? Math.min(
+                  Math.max(0, rowWidth - LEFT_RAIL_PX - RIGHT_RAIL_PX),
+                  Math.max(DRAFTS_MIN_PX, Math.round(rowWidth * draftsFraction)),
+                )
+              : 420
+          }
           onOpenChange={setDraftsOpen}
           onResizeStart={startPanelResize}
           onError={props.onError}
@@ -2398,6 +2408,20 @@ export default function BoardPage(props: Props) {
   }
   const bodyRows = matrix.developers.length + 1;
   const compactW = tableWidth(dataCols, COMPACT_COL_PX);
+  const panelWanted =
+    rowWidth > 0 ? Math.round(Math.max(DRAFTS_MIN_PX, rowWidth * draftsFraction)) : 420;
+  const panelRoom =
+    rowWidth > 0
+      ? Math.max(0, rowWidth - (filtersOpen ? DRAFTS_MIN_PX + LEFT_RAIL_PX : LEFT_RAIL_PX) - RIGHT_RAIL_PX)
+      : panelWanted;
+  const panelShown = (draftsOpen || summaryOpen) && !reorderMode;
+  const panelWidth = panelShown
+    ? Math.min(panelRoom, Math.max(Math.min(DRAFTS_MIN_PX, panelRoom), panelWanted))
+    : panelWanted;
+  const panelFlex = panelShown
+    ? Math.min(panelWidth, tableShown ? Math.max(0, panelRoom - compactW) : panelWidth)
+    : panelWidth;
+  const panelOverlap = Math.max(0, panelWidth - panelFlex);
   const compactH = tableHeight(bodyRows, COMPACT_HEADER_PX, COMPACT_ROW_PX);
   const fullW = tableWidth(dataCols, FULL_COL_PX);
   const fullNeedH = tableHeight(bodyRows, FULL_HEADER_PX, MAX_ROW_PX);
@@ -2961,7 +2985,6 @@ export default function BoardPage(props: Props) {
         <div
           ref={centerRef}
           className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-          style={tableShown ? { minWidth: compactW } : undefined}
         >
           {props.refreshingBoardId != null && props.refreshingBoardId === props.activeBoardId && (
             <>
@@ -2973,7 +2996,8 @@ export default function BoardPage(props: Props) {
               </div>
             </>
           )}
-          <div className="relative flex h-8 shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50 px-2">
+          <div className="grid h-8 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-slate-200 bg-slate-50 px-2">
+            <div className="flex min-w-0 items-center gap-2">
             <button
               type="button"
               title={tablePref === 'mini' ? 'Таблица с иконками' : 'Компактная таблица'}
@@ -2982,7 +3006,7 @@ export default function BoardPage(props: Props) {
             >
               {tablePref === 'mini' ? <FeatherMaximizeIcon /> : <FeatherMinimizeIcon />}
             </button>
-            <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden text-[11px]">
+            <div className="flex min-w-0 items-center gap-1.5 overflow-hidden text-[11px]">
               <span className="truncate font-semibold text-slate-900">{sprintTitle}</span>
               {sprintHeader.extra != null && sprintHeader.extra > 0 && (
                 <span className="shrink-0 font-semibold text-sky-600">(+{sprintHeader.extra})</span>
@@ -2996,10 +3020,11 @@ export default function BoardPage(props: Props) {
                 <span className="shrink-0 text-[10px] font-semibold text-red-600">{sprintOutdated}</span>
               )}
             </div>
+            </div>
             <button
               type="button"
               title="Режим редактирования"
-              className={`absolute left-1/2 top-1/2 z-10 inline-flex h-6 -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-md border px-2 text-[11px] font-medium ${
+              className={`inline-flex h-6 items-center gap-1 rounded-md border px-2 text-[11px] font-medium ${
                 reorderMode
                   ? 'border-slate-800 bg-slate-800 text-white'
                   : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
@@ -3009,7 +3034,7 @@ export default function BoardPage(props: Props) {
               <GearIcon className="h-3.5 w-3.5" />
               Режим редактирования
             </button>
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="flex min-w-0 items-center justify-end gap-1">
               {boardScope === 'changes' && boardChanges.length > 0 && (
                 <InstantTip text="Пропустить изменения" className="inline-flex h-5 items-center">
                   <button
@@ -3093,10 +3118,11 @@ export default function BoardPage(props: Props) {
           <div
             ref={setTableHost}
             className="bro-fade-host h-full min-h-0 overflow-x-auto overflow-y-hidden bg-white"
+            style={panelOverlap > 0 ? { width: `calc(100% - ${panelOverlap}px)` } : undefined}
           >
             <table
               className="h-full w-full table-fixed border-collapse text-sm"
-              style={tableVars}
+              style={tableShown ? { ...tableVars, minWidth: compactW } : tableVars}
               onMouseLeave={() => setTableHover(null)}
             >
               <colgroup>
@@ -3600,6 +3626,7 @@ export default function BoardPage(props: Props) {
           hidePanel={reorderMode}
           summary={summaryOpen}
           width={panelWidth}
+          flexWidth={panelFlex}
           onOpenChange={(open) => {
             leaveReorder();
             setSummaryOpen(false);
@@ -3674,8 +3701,8 @@ function ChangeBell(props: { show: boolean; count: number; heat?: number; onClic
       <InstantTip text="Есть изменения" className="inline-flex">
         <button
           type="button"
-          className="bro-change-bell bro-heat pointer-events-auto"
-          style={{ color: heatColor(props.heat || 1) }}
+          className="bro-change-bell bro-heat bro-heat-mark pointer-events-auto"
+          style={heatStyle(props.heat || 1)}
           onClick={(event) => {
             event.stopPropagation();
             props.onClick?.();
@@ -4195,6 +4222,7 @@ function DraftsSide(props: {
   summary?: boolean;
   hidePanel?: boolean;
   width: number;
+  flexWidth?: number;
   onOpenChange: (open: boolean) => void;
   onToggleSummary?: () => void;
   summaryPanel?: ReactNode;
@@ -4208,13 +4236,11 @@ function DraftsSide(props: {
   const panelOpen = props.open && !props.hidePanel;
   return (
     <div className="relative z-30 flex h-full shrink-0 bg-white">
+      {panelOpen && (
+      <div className="relative h-full shrink-0" style={{ width: props.flexWidth ?? props.width }}>
       <div
-        className={
-          panelOpen
-            ? 'relative flex h-full min-h-0 shrink-0 flex-col border-l border-slate-200 shadow-[-2px_0_4px_-2px_rgba(15,23,42,0.18)]'
-            : 'hidden'
-        }
-        style={panelOpen ? { width: Math.max(DRAFTS_MIN_PX, props.width) } : undefined}
+        className="absolute inset-y-0 right-0 z-30 flex min-h-0 flex-col overflow-hidden border-l border-slate-200 bg-white shadow-[-2px_0_4px_-2px_rgba(15,23,42,0.18)]"
+        style={{ width: props.width }}
       >
         {panelOpen && (
           <div
@@ -4236,6 +4262,8 @@ function DraftsSide(props: {
           />
         )}
       </div>
+      </div>
+      )}
       <div
         className={`flex w-11 shrink-0 flex-col items-center gap-1.5 border-l border-slate-200 bg-slate-50 p-1.5 ${
           panelOpen ? '' : 'shadow-[-2px_0_4px_-2px_rgba(15,23,42,0.18)]'

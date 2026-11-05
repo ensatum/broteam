@@ -94,17 +94,31 @@ export default function SettingsPage(props: Props) {
   const [section, setSection] = useState<SettingsTab>(props.initialSection ?? 'app');
   const sectionRef = useRef(section);
   sectionRef.current = section;
-  const [notice, setNotice] = useState<{ section: SettingsTab; tone: 'ok' | 'err'; text: string } | null>(null);
-  function publishOk(text: string) {
+  const [notice, setNotice] = useState<{ section: SettingsTab; block: string; tone: 'ok' | 'err'; text: string } | null>(null);
+  function publishOk(block: string, text: string) {
     const where = sectionRef.current;
-    setNotice({ section: where, tone: 'ok', text });
-    sessionLog('info', 'settings', { section: where, text });
+    setNotice({ section: where, block, tone: 'ok', text });
+    sessionLog('info', 'settings', { section: where, block, text });
   }
-  function publishErr(error: unknown) {
+  function publishErr(block: string, error: unknown) {
     const text = error instanceof Error ? error.message : String(error);
     const where = sectionRef.current;
-    setNotice({ section: where, tone: 'err', text });
-    sessionLog('error', 'settings', { section: where, text });
+    setNotice({ section: where, block, tone: 'err', text });
+    sessionLog('error', 'settings', { section: where, block, text });
+  }
+  function noteFor(block: string) {
+    if (!notice || notice.section !== section || notice.block !== block) return null;
+    return (
+      <div
+        className={`rounded-md px-3 py-2 text-sm ${
+          notice.tone === 'err'
+            ? 'border border-red-200 bg-red-50 text-red-800'
+            : 'border border-emerald-200 bg-emerald-50 text-emerald-800'
+        }`}
+      >
+        {notice.text}
+      </div>
+    );
   }
   const [githubDraft, setGithubDraft] = useState<GithubSource>(DEFAULT_GITHUB);
   const [githubSaved, setGithubSaved] = useState<GithubSource>(DEFAULT_GITHUB);
@@ -141,9 +155,9 @@ export default function SettingsPage(props: Props) {
       const saved = await window.api.saveGithub(githubDraft);
       setGithubDraft(saved);
       setGithubSaved(saved);
-      publishOk('Источник сохранён');
+      publishOk('github', 'Источник сохранён');
     } catch (e) {
-      publishErr(e);
+      publishErr('github', e);
     } finally {
       setBusy(false);
     }
@@ -154,9 +168,9 @@ export default function SettingsPage(props: Props) {
     props.onError(null);
     try {
       await window.api.testGithub(githubDraft);
-      publishOk('Репозиторий доступен');
+      publishOk('github', 'Репозиторий доступен');
     } catch (e) {
-      publishErr(e);
+      publishErr('github', e);
     } finally {
       setBusy(false);
     }
@@ -168,9 +182,9 @@ export default function SettingsPage(props: Props) {
     try {
       const saved = await window.api.saveConnection(connDraft);
       props.onConnectionChange(saved);
-      publishOk('Подключение сохранено');
+      publishOk('tracker', 'Подключение сохранено');
     } catch (e) {
-      publishErr(e);
+      publishErr('tracker', e);
     } finally {
       setBusy(false);
     }
@@ -181,9 +195,9 @@ export default function SettingsPage(props: Props) {
     props.onError(null);
     try {
       const me = await window.api.testConnection(connDraft);
-      publishOk(`OK: ${me.display} (${me.login})`);
+      publishOk('tracker', `OK: ${me.display} (${me.login})`);
     } catch (e) {
-      publishErr(e);
+      publishErr('tracker', e);
     } finally {
       setBusy(false);
     }
@@ -196,7 +210,7 @@ export default function SettingsPage(props: Props) {
       const users = await window.api.searchUsers(userQuery);
       setUserResults(users);
     } catch (e) {
-      publishErr(e);
+      publishErr('people', e);
     } finally {
       setBusy(false);
     }
@@ -242,9 +256,9 @@ export default function SettingsPage(props: Props) {
     try {
       const saved = await window.api.replaceDevelopers(devDraft);
       props.onDevelopersChange(saved);
-      publishOk('Участники сохранены');
+      publishOk('people', 'Участники сохранены');
     } catch (e) {
-      publishErr(e);
+      publishErr('people', e);
     } finally {
       setBusy(false);
     }
@@ -255,9 +269,9 @@ export default function SettingsPage(props: Props) {
     props.onError(null);
     try {
       const result = await window.api.exportBackup(exportSections);
-      if (result.ok) publishOk(`Экспорт сохранён: ${result.path}`);
+      if (result.ok) publishOk('export', `Экспорт сохранён: ${result.path}`);
     } catch (e) {
-      publishErr(e);
+      publishErr('export', e);
     } finally {
       setBusy(false);
     }
@@ -272,9 +286,9 @@ export default function SettingsPage(props: Props) {
       setImportPath(result.path);
       setImportReady(result.found);
       setImportSections(result.found);
-      if (!Object.values(result.found).some(Boolean)) publishOk('Не найдено данных для импорта.');
+      if (!Object.values(result.found).some(Boolean)) publishOk('import', 'Не найдено данных для импорта.');
     } catch (e) {
-      publishErr(e);
+      publishErr('import', e);
     } finally {
       setBusy(false);
     }
@@ -291,7 +305,7 @@ export default function SettingsPage(props: Props) {
     try {
       const result = await window.api.importBackupPath(importPath, importSections);
       if (!result.ok) return;
-      publishOk(`Импортировано: ${result.applied.join(', ')}`);
+      publishOk('import', `Импортировано: ${result.applied.join(', ')}`);
       // Refresh local drafts of settings from DB
       const [boardCfg, devs, cols, nextBoards, activeId] = await Promise.all([
         window.api.getBoard(),
@@ -311,7 +325,7 @@ export default function SettingsPage(props: Props) {
       props.onActiveBoardChange(activeId);
       props.onReloadAll?.();
     } catch (e) {
-      publishErr(e);
+      publishErr('import', e);
     } finally {
       setBusy(false);
     }
@@ -377,9 +391,9 @@ export default function SettingsPage(props: Props) {
       setBoardHits([]);
       setBoardSearch('');
       if (added) await loadColumns(added.id, added.trackerBoardId);
-      publishOk(`Добавлена доска ${board.name}#${board.id}`);
+      publishOk('boards', `Добавлена доска ${board.name}#${board.id}`);
     } catch (e) {
-      publishErr(e);
+      publishErr('boards', e);
     } finally {
       setBusy(false);
     }
@@ -415,7 +429,7 @@ export default function SettingsPage(props: Props) {
       setColDraft(savedCols);
       props.onColumnsChange(savedCols);
     } catch (e) {
-      publishErr(e);
+      publishErr('boards', e);
     } finally {
       setBusy(false);
     }
@@ -481,7 +495,7 @@ export default function SettingsPage(props: Props) {
           ...prev.filter((column) => column.boardLocalId !== localId),
           ...withDraftEdits(ordered),
         ]);
-        publishOk(`Колонки доски обновлены: ${ordered.length}`);
+        publishOk('boards', `Колонки доски обновлены: ${ordered.length}`);
         return;
       }
       const others = props.columns.filter((column) => column.boardLocalId !== localId);
@@ -490,9 +504,9 @@ export default function SettingsPage(props: Props) {
       columnDraftHold.current = overlay;
       props.onColumnsChange(savedCols);
       setColDraft(overlay);
-      publishOk(`Колонки сохранены: ${ordered.length}`);
+      publishOk('boards', `Колонки сохранены: ${ordered.length}`);
     } catch (e) {
-      publishErr(e);
+      publishErr('boards', e);
     } finally {
       setBusy(false);
     }
@@ -526,9 +540,9 @@ export default function SettingsPage(props: Props) {
       props.onColumnsChange(savedCols);
       setBoardDraft(savedBoard);
       setColDraft(savedCols);
-      publishOk('Настройки доски сохранены');
+      publishOk('boards', 'Настройки доски сохранены');
     } catch (e) {
-      publishErr(e);
+      publishErr('boards', e);
     } finally {
       setBusy(false);
     }
@@ -562,17 +576,6 @@ export default function SettingsPage(props: Props) {
         ))}
       </nav>
       <div className="min-w-0 flex-1 space-y-4">
-      {notice && notice.section === section && (
-        <div
-          className={`rounded-md px-3 py-2 text-sm ${
-            notice.tone === 'err'
-              ? 'border border-red-200 bg-red-50 text-red-800'
-              : 'border border-emerald-200 bg-emerald-50 text-emerald-800'
-          }`}
-        >
-          {notice.text}
-        </div>
-      )}
 
       {section === 'app' && (
       <SettingsSection title="Приложение">
@@ -602,7 +605,7 @@ export default function SettingsPage(props: Props) {
 
       {section === 'integrations' && (
       <>
-      <SettingsSection title="Интеграция с Yandex Tracker">
+      <SettingsSection title="Интеграция с Yandex Tracker" note={noteFor('tracker')}>
         <p className="text-sm text-slate-600">
           Те же параметры, что у MCP-сервера: OAuth-токен и Cloud Org ID.
         </p>
@@ -660,7 +663,7 @@ export default function SettingsPage(props: Props) {
           </button>
         </div>
       </SettingsSection>
-      <SettingsSection title="Источник на GitHub">
+      <SettingsSection title="Источник на GitHub" note={noteFor('github')}>
         <p className="text-sm text-slate-600">
           Репозиторий и ветка, откуда читается номер версии. Файлы обновления берутся из релизов GitHub.
         </p>
@@ -706,7 +709,7 @@ export default function SettingsPage(props: Props) {
       )}
 
       {section === 'people' && (
-      <SettingsSection title="Участники">
+      <SettingsSection title="Участники" note={noteFor('people')}>
         <div className="flex gap-2">
           <input
             className="flex-1 rounded border border-slate-300 px-3 py-2 text-sm"
@@ -860,7 +863,7 @@ export default function SettingsPage(props: Props) {
         busy={busy}
         onSave={props.onScheduleSave}
       />
-      <SettingsSection title="Доски и колонки">
+      <SettingsSection title="Доски и колонки" note={noteFor('boards')}>
 
         <div className="space-y-2">
           <p className="text-xs text-slate-500">Точный id доски или точный ключ очереди.</p>
@@ -1061,7 +1064,7 @@ export default function SettingsPage(props: Props) {
           «Задачи» — текущее сохранение доски и заметки к задачам. «Сводка» — последняя повседневная сводка.
         </p>
         <div className="grid gap-4 md:grid-cols-2">
-        <SettingsSection title="Импорт">
+        <SettingsSection title="Импорт" note={noteFor('import')}>
           <BackupChecks
             sections={importSections}
             enabled={importReady ?? { settings: false, tasks: false, summary: false, drafts: false }}
@@ -1090,7 +1093,7 @@ export default function SettingsPage(props: Props) {
             </button>
           </div>
         </SettingsSection>
-        <SettingsSection title="Экспорт">
+        <SettingsSection title="Экспорт" note={noteFor('export')}>
           <BackupChecks
             sections={exportSections}
             onChange={(key, checked) => setExportSections((current) => ({ ...current, [key]: checked }))}
@@ -1406,13 +1409,16 @@ function SaveActions(props: {
   );
 }
 
-function SettingsSection(props: { title: string; children: ReactNode }) {
+function SettingsSection(props: { title: string; note?: ReactNode; children: ReactNode }) {
   return (
     <section className="w-full rounded-xl border border-slate-200 bg-white overflow-hidden">
       <div className="border-b border-slate-100 px-4 py-3">
         <h2 className="text-lg font-semibold text-slate-900">{props.title}</h2>
       </div>
-      <div className="space-y-3 px-4 py-3">{props.children}</div>
+      <div className="space-y-3 px-4 py-3">
+        {props.note}
+        {props.children}
+      </div>
     </section>
   );
 }

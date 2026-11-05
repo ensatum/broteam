@@ -438,8 +438,8 @@ export default function App() {
                     type="button"
                     data-board-badge={item.id}
                     disabled={refreshingBoardId != null}
-                    className={`relative inline-flex h-7 shrink-0 items-center rounded-md border-b-2 py-1 pl-2.5 pr-3.5 text-sm disabled:cursor-default ${badgeClass}`}
-                    style={{ borderBottomColor: item.color || 'transparent' }}
+                    className={`relative inline-flex h-7 shrink-0 items-center rounded-[1px] border-l-[3px] py-1 pl-2 pr-3.5 text-sm disabled:cursor-default ${badgeClass}`}
+                    style={{ borderLeftColor: item.color || (active ? '#000000' : '#cbd5e1') }}
                     onClick={() => switchBoard(item.id)}
                   >
                     {(item.alias || '').trim() || item.name}
