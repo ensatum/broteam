@@ -24,6 +24,10 @@ import {
   saveLastMatrix,
   replaceColumns,
   replaceDevelopers,
+  readBoardRowPrefs,
+  writeBoardRowPrefs,
+  readRightTool,
+  writeRightTool,
   saveBoardConfig,
   saveConnection,
   setDeveloperNote,
@@ -254,6 +258,10 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('developers:list', () => listDevelopers());
+  ipcMain.handle('boardRows:get', () => readBoardRowPrefs());
+  ipcMain.handle('boardRows:save', (_e, prefs: unknown) => writeBoardRowPrefs(prefs));
+  ipcMain.handle('rightTool:get', () => readRightTool());
+  ipcMain.handle('rightTool:save', (_e, tool: unknown) => writeRightTool(tool));
   ipcMain.handle(
     'developers:replace',
     (_e, developers: Array<Omit<Developer, 'id'> & { id?: number }>) => {

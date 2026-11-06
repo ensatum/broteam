@@ -61,6 +61,23 @@ const UNASSIGNED_FILTER = '__none__';
 /** Sprint-filter id for tasks that are not in any sprint. Not a Tracker sprint id. */
 const NO_SPRINT = -1;
 const LAYOUT_KEY = 'broteam.boardLayout';
+const RIGHT_TOOL_KEY = 'broteam.rightTool';
+
+type RightTool = 'summary' | 'drafts' | 'off';
+
+function loadRightTool(): RightTool {
+  try {
+    const raw = localStorage.getItem(RIGHT_TOOL_KEY);
+    if (raw === 'summary' || raw === 'drafts' || raw === 'off') return raw;
+  } catch {
+    /* ignore broken storage */
+  }
+  return 'off';
+}
+
+function saveRightToolLocal(tool: RightTool): void {
+  localStorage.setItem(RIGHT_TOOL_KEY, tool);
+}
 const FILTER_GROUPS_KEY = 'broteam.filterGroups';
 const LEFT_FILTERS_KEY = 'broteam.leftFilters';
 const BOARD_ROWS_KEY = 'broteam.boardRows';
@@ -492,7 +509,10 @@ export default function BoardPage(props: Props) {
   const [selection, setSelection] = useState<CellSelection | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(() => loadBoardLayout().filtersOpen);
   const [issuesOpen, setIssuesOpen] = useState(() => loadBoardLayout().issuesOpen);
-  const [draftsOpen, setDraftsOpen] = useState(() => loadBoardLayout().draftsOpen);
+  const [rightTool, setRightToolState] = useState<RightTool>(loadRightTool);
+  const rightToolTouched = useRef(false);
+  const summaryOpen = rightTool === 'summary';
+  const draftsOpen = rightTool !== 'off';
   const [draftsFraction, setDraftsFraction] = useState(() => loadBoardLayout().draftsFraction);
   const [filtersWidth, setFiltersWidth] = useState(() => loadBoardLayout().filtersWidth);
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
@@ -582,7 +602,6 @@ export default function BoardPage(props: Props) {
   const [appliedIcon, setAppliedIcon] = useState<CellBadgeKind | null>(null);
   const [appliedPinnedIcons, setAppliedPinnedIcons] = useState<Set<CellBadgeKind>>(() => new Set());
   const [appliedShowDone, setAppliedShowDone] = useState(loadShowDone);
-  const [summaryOpen, setSummaryOpen] = useState(false);
   const [summaryPersonId, setSummaryPersonId] = useState<number | null>(null);
   const [summaryPeriod, setSummaryPeriod] = useState<SummaryPeriod>(defaultSummaryPeriod);
   const [consoleOpen, setConsoleOpen] = useState(false);
@@ -619,6 +638,25 @@ export default function BoardPage(props: Props) {
     if (props.editExit) setReorderMode(false);
   }, [props.editExit]);
   const [rowPrefs, setRowPrefs] = useState<BoardRowPrefs>(loadBoardRowPrefs);
+  const rowPrefsTouched = useRef(false);
+  useEffect(() => {
+    let cancel = false;
+    void window.api.getBoardRowPrefs().then((stored) => {
+      if (cancel || rowPrefsTouched.current) return;
+      const filled = (prefs: BoardRowPrefs) =>
+        Object.values(prefs).some((slot) => slot.hidden.length > 0 || slot.shown.length > 0);
+      if (filled(stored)) {
+        setRowPrefs(stored);
+        saveBoardRowPrefs(stored);
+        return;
+      }
+      const local = loadBoardRowPrefs();
+      if (filled(local)) void window.api.saveBoardRowPrefs(local);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, []);
   const [columnPrefs, setColumnPrefs] = useState<BoardColPrefs>(loadBoardColPrefs);
   const [columnAutoSkip, setColumnAutoSkip] = useState<ColumnAutoSkip>(loadColumnAutoSkip);
   const autoSkipKey = (columnAutoSkip[String(props.activeBoardId ?? '')] || []).join('\0');
@@ -640,6 +678,7 @@ export default function BoardPage(props: Props) {
     if (keys.length) props.onDismissChanges(keys);
   }, [autoSkipKey, unseenKey, sourceMatrix, props.activeBoardId]);
   const [othersMenu, setOthersMenu] = useState<{ top: number; left: number } | null>(null);
+  const peopleButtonRef = useRef<HTMLButtonElement>(null);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set());
   const [tableFraction, setTableFraction] = useState(() => loadBoardLayout().tableFraction);
   const [tablePref, setTablePref] = useState<TablePref>(loadTableMode);
@@ -2031,6 +2070,29 @@ export default function BoardPage(props: Props) {
     );
   }
 
+  function setRightTool(next: RightTool) {
+    rightToolTouched.current = true;
+    setRightToolState(next);
+    saveRightToolLocal(next);
+    void window.api.saveRightTool(next);
+  }
+
+  useEffect(() => {
+    let cancel = false;
+    void window.api.getRightTool().then((stored) => {
+      if (cancel || rightToolTouched.current) return;
+      if (stored == null) {
+        void window.api.saveRightTool(loadRightTool());
+        return;
+      }
+      setRightToolState(stored);
+      saveRightToolLocal(stored);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
   useEffect(() => {
     localStorage.setItem(
       LAYOUT_KEY,
@@ -2068,7 +2130,9 @@ export default function BoardPage(props: Props) {
           ? { hidden: [...hidden, person.id], shown }
           : { hidden, shown: person.hidden ? [...shown, person.id] : shown };
       const next = { ...prev, [key]: nextSlot };
+      rowPrefsTouched.current = true;
       saveBoardRowPrefs(next);
+      void window.api.saveBoardRowPrefs(next);
       return next;
     });
     setOthersMenu(null);
@@ -2160,6 +2224,7 @@ export default function BoardPage(props: Props) {
     return (
       <div className="flex h-full w-full items-center justify-center">
         <button
+          ref={peopleButtonRef}
           type="button"
           title="Исполнители"
           disabled={readOnly}
@@ -2168,6 +2233,10 @@ export default function BoardPage(props: Props) {
           }`}
           onClick={(event) => {
             if (readOnly) return;
+            if (othersMenu) {
+              setOthersMenu(null);
+              return;
+            }
             openPeopleMenu(event);
           }}
         >
@@ -2318,6 +2387,35 @@ export default function BoardPage(props: Props) {
     });
   }
 
+  const summaryPanel = (
+    <SummaryDock
+      boardLocalId={props.activeBoardId}
+      trackerBoardId={props.boards.find((item) => item.id === props.activeBoardId)?.trackerBoardId ?? null}
+      queueKey={props.boards.find((item) => item.id === props.activeBoardId)?.queueKey || ''}
+      boards={props.boards}
+      participants={props.participants}
+      columns={props.columns}
+      personId={summaryPersonId}
+      period={summaryPeriod}
+      onPersonId={setSummaryPersonId}
+      onPeriod={setSummaryPeriod}
+      onIssueHover={(issueKey, boardLocalId) => {
+        if (!issueKey) {
+          setHighlightIssueKey(null);
+          setHighlightBoardId(null);
+          return;
+        }
+        if (boardLocalId != null && boardLocalId !== props.activeBoardId) {
+          setHighlightIssueKey(null);
+          setHighlightBoardId(boardLocalId);
+          return;
+        }
+        setHighlightIssueKey(issueKey);
+        setHighlightBoardId(null);
+      }}
+    />
+  );
+
   if (!matrix || !sourceMatrix) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
@@ -2341,7 +2439,16 @@ export default function BoardPage(props: Props) {
                 )
               : 420
           }
-          onOpenChange={setDraftsOpen}
+          summary={summaryOpen}
+          onOpenChange={(open) => {
+            leaveReorder();
+            setRightTool(open ? 'drafts' : 'off');
+          }}
+          onToggleSummary={() => {
+            leaveReorder();
+            setRightTool(summaryOpen ? 'off' : 'summary');
+          }}
+          summaryPanel={summaryPanel}
           onResizeStart={startPanelResize}
           onError={props.onError}
           onSnapshotContentChange={props.onSnapshotContentChange}
@@ -2511,7 +2618,7 @@ export default function BoardPage(props: Props) {
       if (drafts && predictCenterWidth(filters, drafts, fraction) < needW) drafts = false;
       if (filters && predictCenterWidth(filters, drafts, fraction) < needW) filters = false;
       setFiltersOpen(filters);
-      setDraftsOpen(drafts);
+      if (!drafts && rightTool === 'drafts') setRightTool('off');
       setDraftsFraction(fraction);
     }
     if (centerBox.h > 0 && issuesOpen) {
@@ -2719,6 +2826,16 @@ export default function BoardPage(props: Props) {
     />
   );
 
+  const refreshOnThisBoard =
+    props.refreshingBoardId != null && props.refreshingBoardId === props.activeBoardId;
+  const refreshVeil = refreshOnThisBoard ? (
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/60">
+      <div className="pointer-events-auto">
+        <RunSpinner countId="bro-api-count" />
+      </div>
+    </div>
+  ) : null;
+
   return (
     <>
       {modeMenuOpen &&
@@ -2759,6 +2876,7 @@ export default function BoardPage(props: Props) {
           <OthersAssigneeMenu
             top={othersMenu.top}
             left={othersMenu.left}
+            anchor={peopleButtonRef.current}
             fromOthers={countedPicks.fromOthers}
             fromParticipants={countedPicks.fromParticipants}
             onClose={() => setOthersMenu(null)}
@@ -3007,16 +3125,6 @@ export default function BoardPage(props: Props) {
           ref={centerRef}
           className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
         >
-          {props.refreshingBoardId != null && props.refreshingBoardId === props.activeBoardId && (
-            <>
-              <div className="absolute inset-0 z-30 bg-white/60" />
-              <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
-                <div className="pointer-events-auto">
-                  <RunSpinner countId="bro-api-count" />
-                </div>
-              </div>
-            </>
-          )}
           <div className="grid h-8 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-slate-200 bg-slate-50 px-2">
             <div className="flex min-w-0 items-center gap-2">
             <button
@@ -3130,7 +3238,9 @@ export default function BoardPage(props: Props) {
               </InstantTip>
             </div>
           </div>
-          {tableMode === 'hidden' ? null : (
+          {tableMode === 'hidden' ? (
+            refreshOnThisBoard ? <div className="relative min-h-0 flex-1">{refreshVeil}</div> : null
+          ) : (
           <div
             className="flex min-h-0 flex-col overflow-hidden"
             style={issuesOpen ? { flex: `${tableFraction} 1 0%` } : { flex: '1 1 auto' }}
@@ -3607,6 +3717,7 @@ export default function BoardPage(props: Props) {
           >
             <RunSpinner countId="bro-api-count" />
           </div>
+          {refreshVeil}
           </div>
           </div>
           )}
@@ -3650,51 +3761,16 @@ export default function BoardPage(props: Props) {
           flexWidth={panelFlex}
           onOpenChange={(open) => {
             leaveReorder();
-            setSummaryOpen(false);
-            setDraftsOpen(open);
+            setRightTool(open ? 'drafts' : 'off');
           }}
           onToggleSummary={() => {
             leaveReorder();
-            setSummaryOpen((open) => {
-              if (open) {
-                setDraftsOpen(false);
-                return false;
-              }
-              setDraftsOpen(true);
-              return true;
-            });
+            setRightTool(summaryOpen ? 'off' : 'summary');
           }}
           onResizeStart={startPanelResize}
           onError={props.onError}
           onSnapshotContentChange={props.onSnapshotContentChange}
-          summaryPanel={
-            <SummaryDock
-              boardLocalId={props.activeBoardId}
-              trackerBoardId={props.boards.find((item) => item.id === props.activeBoardId)?.trackerBoardId ?? null}
-              queueKey={props.boards.find((item) => item.id === props.activeBoardId)?.queueKey || ''}
-              boards={props.boards}
-              participants={props.participants}
-              columns={props.columns}
-              personId={summaryPersonId}
-              period={summaryPeriod}
-              onPersonId={setSummaryPersonId}
-              onPeriod={setSummaryPeriod}
-              onIssueHover={(issueKey, boardLocalId) => {
-                if (!issueKey) {
-                  setHighlightIssueKey(null);
-                  setHighlightBoardId(null);
-                  return;
-                }
-                if (boardLocalId != null && boardLocalId !== props.activeBoardId) {
-                  setHighlightIssueKey(null);
-                  setHighlightBoardId(boardLocalId);
-                  return;
-                }
-                setHighlightIssueKey(issueKey);
-                setHighlightBoardId(null);
-              }}
-            />
-          }
+          summaryPanel={summaryPanel}
           consoleOpen={consoleOpen}
           onToggleConsole={() => {
             leaveReorder();
@@ -3715,11 +3791,12 @@ function scopeBadgeClass(active: boolean, idle: string, on: string): string {
 function changeBellStyle(count: number): CSSProperties {
   const t = Math.max(0, Math.min(1, ((count || 1) - 1) * 0.2));
   const mix = (from: number, to: number) => Math.round(from + (to - from) * t);
+  const rgb = (a: [number, number, number], b: [number, number, number]) =>
+    `rgb(${mix(a[0], b[0])}, ${mix(a[1], b[1])}, ${mix(a[2], b[2])})`;
   return {
-    ['--bro-bell' as string]: `${mix(255, 251)}, ${mix(255, 191)}, ${mix(255, 36)}`,
-    ['--bro-bell-a' as string]: (0.5 + 0.5 * t).toFixed(2),
-    color: '#451a03',
-  } as CSSProperties;
+    color: rgb([255, 146, 87], [96, 39, 11]),
+    backgroundColor: rgb([249, 249, 199], [255, 146, 87]),
+  };
 }
 
 function ChangeBell(props: { show: boolean; count: number; heat?: number; onClick?: () => void }) {
@@ -3729,7 +3806,7 @@ function ChangeBell(props: { show: boolean; count: number; heat?: number; onClic
       <span className="bro-change-digit" aria-hidden>
         {props.count}
       </span>
-      <InstantTip text="Есть изменения" className="inline-flex">
+      <InstantTip text="Есть изменения" place="top" className="bro-change-tip inline-flex">
         <button
           type="button"
           className="bro-change-bell pointer-events-auto"
@@ -4624,20 +4701,26 @@ function FilterRow(props: {
 function OthersAssigneeMenu(props: {
   top: number;
   left: number;
+  anchor: HTMLElement | null;
   fromOthers: BoardPersonPick[];
   fromParticipants: BoardPersonPick[];
   onClose: () => void;
   onPick: (pick: BoardPersonPick) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(props.onClose);
+  closeRef.current = props.onClose;
   useEffect(() => {
     const onDoc = (event: MouseEvent) => {
-      if (ref.current?.contains(event.target as Node)) return;
-      props.onClose();
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (ref.current?.contains(target)) return;
+      if (props.anchor?.contains(target)) return;
+      closeRef.current();
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
-  }, [props.onClose]);
+  }, [props.anchor]);
   const empty = !props.fromOthers.length && !props.fromParticipants.length;
   return (
     <div

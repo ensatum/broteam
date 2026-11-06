@@ -38,6 +38,12 @@ export type ElectronApi = {
   getBoard: () => Promise<BoardConfig>;
   saveBoard: (board: BoardConfig) => Promise<BoardConfig>;
   listDevelopers: () => Promise<Developer[]>;
+  getBoardRowPrefs: () => Promise<Record<string, { hidden: number[]; shown: number[] }>>;
+  saveBoardRowPrefs: (
+    prefs: Record<string, { hidden: number[]; shown: number[] }>,
+  ) => Promise<Record<string, { hidden: number[]; shown: number[] }>>;
+  getRightTool: () => Promise<'summary' | 'drafts' | 'off' | null>;
+  saveRightTool: (tool: 'summary' | 'drafts' | 'off') => Promise<'summary' | 'drafts' | 'off'>;
   replaceDevelopers: (
     developers: Array<Omit<Developer, 'id'> & { id?: number }>,
   ) => Promise<Developer[]>;
@@ -195,6 +201,10 @@ const api: ElectronApi = {
   getBoard: () => ipcRenderer.invoke('settings:getBoard'),
   saveBoard: (board) => ipcRenderer.invoke('settings:saveBoard', board),
   listDevelopers: () => ipcRenderer.invoke('developers:list'),
+  getBoardRowPrefs: () => ipcRenderer.invoke('boardRows:get'),
+  saveBoardRowPrefs: (prefs) => ipcRenderer.invoke('boardRows:save', prefs),
+  getRightTool: () => ipcRenderer.invoke('rightTool:get'),
+  saveRightTool: (tool) => ipcRenderer.invoke('rightTool:save', tool),
   replaceDevelopers: (developers) => ipcRenderer.invoke('developers:replace', developers),
   listSavedBoards: () => ipcRenderer.invoke('boards:list'),
   replaceSavedBoards: (boards) => ipcRenderer.invoke('boards:replace', boards),

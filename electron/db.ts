@@ -325,6 +325,51 @@ function setSetting(key: string, value: string): void {
     .run(key, value);
 }
 
+export type BoardRowPrefs = Record<string, { hidden: number[]; shown: number[] }>;
+
+function normalizeBoardRowPrefs(value: unknown): BoardRowPrefs {
+  if (!value || typeof value !== 'object') return {};
+  const out: BoardRowPrefs = {};
+  for (const [key, slot] of Object.entries(value as Record<string, unknown>)) {
+    if (!/^\d+$/.test(key) || !slot || typeof slot !== 'object') continue;
+    const row = slot as { hidden?: unknown; shown?: unknown };
+    const ids = (list: unknown) =>
+      Array.isArray(list) ? [...new Set(list.map(Number).filter((id) => Number.isInteger(id)))] : [];
+    out[key] = { hidden: ids(row.hidden), shown: ids(row.shown) };
+  }
+  return out;
+}
+
+export function readBoardRowPrefs(): BoardRowPrefs {
+  const raw = getSetting('boardRows');
+  if (!raw) return {};
+  try {
+    return normalizeBoardRowPrefs(JSON.parse(raw));
+  } catch {
+    return {};
+  }
+}
+
+export function writeBoardRowPrefs(prefs: unknown): BoardRowPrefs {
+  const next = normalizeBoardRowPrefs(prefs);
+  setSetting('boardRows', JSON.stringify(next));
+  return next;
+}
+
+export type RightTool = 'summary' | 'drafts' | 'off';
+
+export function readRightTool(): RightTool | null {
+  const raw = getSetting('rightTool');
+  if (raw === 'summary' || raw === 'drafts' || raw === 'off') return raw;
+  return null;
+}
+
+export function writeRightTool(tool: unknown): RightTool {
+  const next: RightTool = tool === 'summary' || tool === 'drafts' || tool === 'off' ? tool : 'off';
+  setSetting('rightTool', next);
+  return next;
+}
+
 export function readApiDayCount(): { date: string; total: number } {
   const raw = getSetting('apiDayCount');
   if (!raw) return { date: '', total: 0 };

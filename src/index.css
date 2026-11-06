@@ -245,12 +245,12 @@ body.bro-drag-col * {
   line-height: 0;
   border: 0;
   border-radius: 9999px !important;
-  background: rgba(var(--bro-bell, 255, 255, 255), var(--bro-bell-a, 0.5));
-  color: #451a03;
+  background: #f9f9c7;
+  color: #ff9257;
 }
 
 .bro-change-bell:hover {
-  background: color-mix(in srgb, rgba(var(--bro-bell, 255, 255, 255), var(--bro-bell-a, 0.5)) 35%, #fbbf24);
+  filter: brightness(0.92);
 }
 
 .bro-change-beside {
@@ -265,11 +265,14 @@ body.bro-drag-col * {
   pointer-events: none;
 }
 
+.bro-change-beside .bro-change-tip {
+  transform: translateY(calc(0.875rem - var(--bro-digit, 1.75rem)));
+}
+
 .bro-change-beside .bro-change-bell {
   width: 0.875rem;
   height: 0.875rem;
   margin: 0;
-  transform: translateY(calc(0.875rem - var(--bro-digit, 1.75rem)));
 }
 
 .bro-change-beside .bro-change-bell svg {
@@ -295,12 +298,15 @@ body.bro-drag-col * {
   display: none;
 }
 
+.bro-cell-mini .bro-change-beside .bro-change-tip {
+  transform: none;
+}
+
 .bro-cell-mini .bro-change-bell {
   width: 1rem;
   height: 1rem;
   margin: 0;
   pointer-events: auto;
-  transform: none;
 }
 
 .bro-cell-mini .bro-change-bell svg {

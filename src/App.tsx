@@ -56,6 +56,7 @@ export default function App() {
   const [columns, setColumns] = useState<BoardColumnConfig[]>([]);
   const [boards, setBoards] = useState<SavedBoard[]>([]);
   const [activeBoardId, setActiveBoardId] = useState<number | null>(null);
+  const [shownBoardId, setShownBoardId] = useState<number | null>(null);
   const [boardHeader, setBoardHeader] = useState<BoardHeaderModel>({
     title: '',
     period: null,
@@ -95,6 +96,7 @@ export default function App() {
     setColumns(cols);
     setBoards(savedBoards);
     setActiveBoardId(activeId);
+    setShownBoardId(activeId);
     setChanges(await window.api.listIssueChanges());
     setMatrix(last && last.sourceBoardLocalId === activeId ? last : null);
     setReady(true);
@@ -172,7 +174,7 @@ export default function App() {
   }, []);
 
   const viewRef = useRef(activeBoardId);
-  viewRef.current = activeBoardId;
+  viewRef.current = shownBoardId ?? activeBoardId;
 
   const refreshBoard = useCallback(async () => {
     if (refreshLock.current || refreshingBoardId != null) return;
@@ -323,16 +325,16 @@ export default function App() {
   }
 
   const switchBoard = (id: number) => {
-    if (id === activeBoardId) return;
+    if (id === (shownBoardId ?? activeBoardId)) return;
     setEditExit((value) => value + 1);
-    setActiveBoardId(id);
+    viewRef.current = id;
+    setShownBoardId(id);
+    paintBoardBadge(id);
     if (refreshLock.current) {
       const ticket = ++boardSwitch.current;
-      paintBoardBadge(id);
-      viewRef.current = id;
-      setActiveBoardId(id);
       void window.api.getLastBoard(id).then((last) => {
         if (boardSwitch.current !== ticket || viewRef.current !== id) return;
+        setActiveBoardId(id);
         setMatrix(last && last.sourceBoardLocalId === id ? last : null);
       });
       return;
@@ -361,12 +363,14 @@ export default function App() {
         if (boardSwitch.current !== ticket) return;
         setBoard(cfg);
         setActiveBoardId(id);
+        setShownBoardId(id);
         setMatrix(last && last.sourceBoardLocalId === id ? last : null);
         window.setTimeout(() => revealContentFade(), 0);
       } catch (error) {
         if (boardSwitch.current !== ticket) return;
         sessionLog('error', 'switch board failed', error);
         paintBoardBadge(previousId ?? id);
+        setShownBoardId(previousId);
         setActiveBoardId(previousId);
         setError(error instanceof Error ? error.message : String(error));
         revealContentFade();
@@ -424,7 +428,7 @@ export default function App() {
           {onBoardPage ? (
             <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
               {boards.filter((item) => item.enabled).map((item) => {
-                const active = item.id === activeBoardId;
+                const active = item.id === (shownBoardId ?? activeBoardId);
                 const refreshing = refreshingBoardId === item.id;
                 const badgeClass = refreshing
                   ? 'bro-board-progress font-semibold text-white'
@@ -437,8 +441,7 @@ export default function App() {
                     key={item.id}
                     type="button"
                     data-board-badge={item.id}
-                    disabled={refreshingBoardId != null}
-                    className={`relative inline-flex h-7 shrink-0 items-center rounded-none border-l-[3px] py-1 pl-2 pr-3.5 text-sm disabled:cursor-default ${badgeClass}`}
+                    className={`relative inline-flex h-7 shrink-0 items-center rounded-none border-l-[3px] py-1 pl-2 pr-3.5 text-sm ${badgeClass}`}
                     style={{ borderLeftColor: item.color || (active ? '#000000' : '#cbd5e1') }}
                     onClick={() => switchBoard(item.id)}
                   >
