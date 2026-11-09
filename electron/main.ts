@@ -164,6 +164,7 @@ function createWindow(): void {
 
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    if (allowQuit) return;
     sessionLog('error', 'render-process-gone', details);
     const file = sessionLogPath();
     void dialog
@@ -176,7 +177,7 @@ function createWindow(): void {
         defaultId: 0,
       })
       .then(({ response }) => {
-        if (file && response === 0) shell.showItemInFolder(file);
+        if (file && response === 0) void shell.openPath(file);
       });
   });
   mainWindow.webContents.on('did-fail-load', (_event, code, description, url) => {
@@ -266,45 +267,18 @@ function paintTrayIcon(): void {
   }
 }
 
-function isBroTeamCommand(cmd: string): boolean {
-  const text = cmd.replace(/\0/g, ' ');
-  if (/cursor|code helper|chrome-sandbox/i.test(text)) return false;
-  if (/BroTeam[-.\s]|\/bro-team(\s|$)|bro-team\.AppImage/i.test(text)) return true;
-  return /dist-electron\/main\.js/.test(text) && /bro-team/i.test(text);
-}
-
-function closeForeignInstances(): void {
-  let names: string[] = [];
-  try {
-    names = fs.readdirSync('/proc');
-  } catch {
-    return;
-  }
-  for (const name of names) {
-    if (!/^\d+$/.test(name)) continue;
-    const pid = Number(name);
-    if (pid === process.pid) continue;
-    let cmd = '';
-    try {
-      cmd = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8');
-    } catch {
-      continue;
-    }
-    if (!isBroTeamCommand(cmd)) continue;
-    try {
-      process.kill(pid, 'SIGTERM');
-    } catch {
-      /* already gone */
-    }
-  }
-}
-
 function instanceFile(): string {
   return path.join(app.getPath('userData'), 'instance.json');
 }
 
 function askRunningInstance(port: number, version: string): Promise<string> {
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: string) => {
+      if (settled) return;
+      settled = true;
+      resolve(value.trim());
+    };
     const socket = net.connect({ host: '127.0.0.1', port }, () => {
       socket.write(`${JSON.stringify({ version })}\n`);
     });
@@ -313,7 +287,6 @@ function askRunningInstance(port: number, version: string): Promise<string> {
     socket.on('data', (buf) => {
       data += buf.toString();
     });
-    const finish = (value: string) => resolve(value.trim());
     socket.on('timeout', () => {
       socket.destroy();
       finish('');
@@ -323,19 +296,42 @@ function askRunningInstance(port: number, version: string): Promise<string> {
   });
 }
 
+function peerStillListening(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host: '127.0.0.1', port }, () => {
+      socket.end();
+      resolve(true);
+    });
+    socket.setTimeout(200);
+    socket.on('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.on('error', () => resolve(false));
+  });
+}
+
+async function waitForPeerExit(port: number): Promise<void> {
+  const deadline = Date.now() + 2500;
+  while (Date.now() < deadline) {
+    if (!(await peerStillListening(port))) return;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+}
+
 async function claimInstance(version: string): Promise<boolean> {
-  let peer: { port?: number } | null = null;
+  let peer: { port?: number; version?: string } | null = null;
   try {
-    peer = JSON.parse(fs.readFileSync(instanceFile(), 'utf8')) as { port?: number };
+    peer = JSON.parse(fs.readFileSync(instanceFile(), 'utf8')) as { port?: number; version?: string };
   } catch {
     peer = null;
   }
   if (peer?.port) {
     const answer = await askRunningInstance(peer.port, version);
+    sessionLog('info', 'instance handshake', { version, peer: peer.version || '', answer: answer || 'none' });
     if (answer === 'stay') return false;
-    if (answer === 'yield') await new Promise((resolve) => setTimeout(resolve, 500));
+    if (answer === 'yield') await waitForPeerExit(peer.port);
   }
-  closeForeignInstances();
   await new Promise<void>((resolve, reject) => {
     const server = net.createServer((socket) => {
       let buf = '';
@@ -349,6 +345,7 @@ async function claimInstance(version: string): Promise<boolean> {
           incoming = '';
         }
         if (isNewerVersion(incoming, version)) {
+          sessionLog('info', 'instance yield', { version, incoming });
           socket.end('yield\n');
           allowQuit = true;
           setTimeout(() => app.quit(), 80);
@@ -925,14 +922,14 @@ app.whenReady().then(async () => {
   app.setName('BroTeam');
   app.setPath('userData', resolveUserData(app.getPath('appData')));
   initDb(app.getPath('userData'), app.getVersion());
+  initApiUsage();
+  initSessionLog(app.getPath('userData'));
   const version = liveVersion(app.getVersion()).full;
   const claimed = await claimInstance(version).catch(() => true);
   if (!claimed) {
     app.quit();
     return;
   }
-  initApiUsage();
-  initSessionLog(app.getPath('userData'));
   latestMatrix = getLastMatrix<BoardMatrix>();
   sessionLog('info', 'startup matrix', describeMatrix(latestMatrix));
   registerIpc();
