@@ -1675,6 +1675,9 @@ export default function BoardPage(props: Props) {
       saveTableMode(next);
     }
   }, [centerBox.w, centerBox.h, tableFraction, tableShown, issuesOpen, props.activeBoardId]);
+  useEffect(() => {
+    if (!tableShown && !issuesOpen) setFiltersOpen(false);
+  }, [tableShown, issuesOpen]);
   const sprintCounts = sourceMatrix?.sprintCounts || [];
   const reviewerCounts = sourceMatrix?.reviewerCounts || [];
   const qaCounts = sourceMatrix?.qaCounts || [];
@@ -3197,7 +3200,15 @@ export default function BoardPage(props: Props) {
             <RailButton
               title="Фильтры"
               pressed={filtersOpen}
-              onClick={() => setFiltersOpen((open) => !open)}
+              onClick={() => {
+                if (!tableShown && !issuesOpen) {
+                  setTableShown(true);
+                  saveTableShown(true);
+                  setFiltersOpen(true);
+                  return;
+                }
+                setFiltersOpen((open) => !open);
+              }}
             >
               <FilterIcon className="h-4 w-4" />
               {activeFilterCount > 0 && (
@@ -3438,7 +3449,7 @@ export default function BoardPage(props: Props) {
           ref={centerRef}
           className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
         >
-          <div className="grid h-8 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-slate-200 bg-slate-50 px-2">
+          {(tableShown || issuesOpen) && <div className="grid h-8 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-slate-200 bg-slate-50 px-2">
             <div className="flex min-w-0 items-center gap-2">
             <InstantTip text={tablePref === 'mini' ? 'Компактная таблица' : 'Таблица с иконками'}>
             <button
@@ -3543,7 +3554,7 @@ export default function BoardPage(props: Props) {
                 </button>
               </InstantTip>
             </div>
-          </div>
+          </div>}
           {reorderMode && tableMode !== 'hidden' && (
             <div className="flex h-5 shrink-0 items-center gap-1.5 border-b border-amber-300 bg-amber-50 px-2 text-[11px] text-amber-950">
               <span className="font-medium">Редактирование таблицы</span>
