@@ -230,7 +230,7 @@ export default function DraftDock(props: Props) {
     const text = composerSource().replace(/\s+$/, '');
     const title = firstLine(text);
     if (!title) {
-      onError('Черновик не может быть пустым');
+      onError('Заметка не может быть пустой');
       return;
     }
     setBusy(true);
@@ -276,7 +276,7 @@ export default function DraftDock(props: Props) {
     const text = editSource().replace(/\s+$/, '');
     const title = firstLine(text);
     if (!title) {
-      onError('Черновик не может быть пустым');
+      onError('Заметка не может быть пустой');
       return;
     }
     const changed = text !== fullText(row).replace(/\s+$/, '');
@@ -299,7 +299,7 @@ export default function DraftDock(props: Props) {
   }
 
   async function removeDraft(id: number, titleLabel: string) {
-    const ok = window.confirm(`Удалить черновик «${titleLabel.trim() || 'без заголовка'}»?`);
+    const ok = window.confirm(`Удалить заметку «${titleLabel.trim() || 'без заголовка'}»?`);
     if (!ok) return;
     setBusy(true);
     onError(null);
@@ -440,7 +440,7 @@ export default function DraftDock(props: Props) {
             onClick={() => setDoneOnly((value) => !value)}
           />
           <span className="shrink-0 px-1 text-xs font-semibold text-slate-800">
-            Черновики
+            Заметки
             <span className="ml-1.5 text-[11px] font-normal text-slate-400">{visible.length}</span>
           </span>
           <label className="relative min-w-0 flex-1">
@@ -462,7 +462,7 @@ export default function DraftDock(props: Props) {
           </button>
           <button
             type="button"
-            title={creating ? 'Скрыть форму' : 'Новый черновик'}
+            title={creating ? 'Скрыть форму' : 'Новая заметка'}
             aria-pressed={creating}
             className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-600 text-white hover:bg-sky-700"
             onClick={() => (creating ? closeComposer() : openComposer())}
@@ -487,7 +487,7 @@ export default function DraftDock(props: Props) {
               <textarea
                 ref={composerArea}
                 className="min-h-[72px] w-full resize-y bg-transparent pr-6 text-xs outline-none"
-                placeholder="Текст черновика"
+                placeholder="Текст заметки"
                 value={draftText}
                 onChange={(event) => setDraftText(event.target.value)}
                 onKeyDown={(event) => onMarkdownKey(event, draftText, setDraftText, 'composer')}
@@ -540,7 +540,7 @@ export default function DraftDock(props: Props) {
                   ? 'Нет избранных'
                   : doneOnly
                     ? 'Нет готовых'
-                    : 'Пока нет черновиков'}
+                    : 'Пока нет заметок'}
             </div>
           ) : openId == null || !opened ? (
             visible.map((row) => (

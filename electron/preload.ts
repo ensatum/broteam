@@ -68,6 +68,9 @@ export type ElectronApi = {
   getTransitions: (
     issueKey: string,
   ) => Promise<Array<{ id: string; display: string; toKey?: string; toDisplay?: string }>>;
+  getIssueStory: (
+    issueKey: string,
+  ) => Promise<{ description: string; commentText: string; commentUrl: string }>;
   refreshIssue: (issueKey: string) => Promise<BoardMatrix>;
   executeTransition: (issueKey: string, transitionId: string) => Promise<boolean>;
   refreshBoard: (boardLocalId?: number) => Promise<BoardMatrix>;
@@ -223,6 +226,7 @@ const api: ElectronApi = {
   listStatusTypes: () => ipcRenderer.invoke('tracker:statusTypes'),
   getBoardSprints: (boardId) => ipcRenderer.invoke('tracker:getBoardSprints', boardId),
   getTransitions: (issueKey) => ipcRenderer.invoke('tracker:getTransitions', issueKey),
+  getIssueStory: (issueKey) => ipcRenderer.invoke('tracker:issueStory', issueKey),
   refreshIssue: (issueKey) => ipcRenderer.invoke('tracker:refreshIssue', issueKey),
   executeTransition: (issueKey, transitionId) =>
     ipcRenderer.invoke('tracker:executeTransition', issueKey, transitionId),

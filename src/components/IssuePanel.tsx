@@ -1,7 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
-import type { BoardColumnConfig, BoardMatrix, Developer, TrackerIssue } from '@shared/types';
+import type { BoardColumnConfig, BoardMatrix, Developer, SavedBoard, TrackerIssue } from '@shared/types';
 import { resolvePersonDisplayName } from '@shared/personDisplay';
+import { trackerLastChange } from '@shared/issueChanges';
+import { issueSearchParts, textHit } from '@shared/issueSearch';
+import { renderMarkdown } from '../markdown';
 import {
   PENDING_COLUMN,
   cellMissingBadges,
@@ -39,6 +42,8 @@ type Props = {
   width: number;
   selection: Selection;
   columns: BoardColumnConfig[];
+  people?: Developer[];
+  boards?: SavedBoard[];
   issueNotes: Record<string, string>;
   issueBookmarks: Record<string, boolean>;
   issueNoteUpdatedAt?: Record<string, string>;
@@ -208,10 +213,8 @@ export default function IssuePanel(props: Props) {
       matched = matched.filter((issue) => props.changeByKey?.get(issue.key)?.seen === false);
     }
     if (q) {
-      matched = matched.filter(
-        (issue) =>
-          issue.key.toLowerCase().includes(q) ||
-          (issue.summary || '').toLowerCase().includes(q),
+      matched = matched.filter((issue) =>
+        textHit(q, issueSearchParts(issue, props.people?.length ? props.people : people, props.boards || [])),
       );
     }
     return sortIssues(matched, props.listSort, (issue) => issue.createdAt);
@@ -231,6 +234,9 @@ export default function IssuePanel(props: Props) {
     props.currentSprintId,
     props.issueNotes,
     props.issueBookmarks,
+    props.people,
+    props.boards,
+    people,
   ]);
   const [paintCount, setPaintCount] = useState(40);
   const paintKey = `${selection?.developerId ?? ''}|${selection?.statusKey ?? ''}|${filteredIssues.length}|${search}|${props.listSort ?? ''}`;
@@ -350,7 +356,7 @@ export default function IssuePanel(props: Props) {
         <input
           type="search"
           className="w-1/2 shrink-0 rounded border border-slate-300 bg-white px-2 py-1 text-xs"
-          placeholder="Поиск по ключу или названию"
+          placeholder="Поиск по ключу"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -505,6 +511,8 @@ export default function IssuePanel(props: Props) {
             .map((id) => people.find((person) => person.id === id)?.displayName)
             .filter((name): name is string => Boolean(name));
           const change = props.changeByKey?.get(issue.key);
+          const freshChange = change && change.seen === false ? change : null;
+          const shownChange = freshChange || trackerLastChange(issue);
           const header = (
             <div
               className="flex cursor-pointer items-center gap-1.5 bg-slate-100 px-2 py-1 hover:bg-slate-200"
@@ -563,15 +571,17 @@ export default function IssuePanel(props: Props) {
                     <RoleName role="Тестировщик" name={issue.qaDisplay} />
                   </div>
                   <div className="flex min-w-0 items-center gap-1.5">
-                    {change ? (
+                    {shownChange ? (
                       <ChangeBadge
                         inline
-                        text={change.text}
-                        at={change.at}
+                        text={shownChange.text}
+                        at={shownChange.at}
                         actor={resolvePersonDisplayName(issue.updatedByMatchKeys, issue.updatedByDisplay, people) || ''}
                         rawActor={issue.updatedByDisplay}
-                        seen={change.seen}
-                        onDismiss={() => props.onDismissChange?.(issue.key)}
+                        seen={!freshChange}
+                        onDismiss={() => {
+                          if (freshChange) props.onDismissChange?.(issue.key);
+                        }}
                       />
                     ) : (
                       <span className="min-w-0 flex-1" />
@@ -594,7 +604,7 @@ export default function IssuePanel(props: Props) {
               {header}
               <div className="px-2 py-1.5">
                 <div className="flex items-stretch gap-1.5">
-                  <div className="min-w-0 flex-1 leading-snug">
+                  <div className="w-44 shrink-0 leading-snug">
                     <div className="mt-0.5 text-[10px] text-slate-500">
                       {issue.statusDisplay}
                       {issue.daysInStatus != null ? ` · ${formatDays(issue.daysInStatus)}` : ''}
@@ -609,11 +619,12 @@ export default function IssuePanel(props: Props) {
                       )}
                       {hasNote && noteUpdatedAt && (
                         <div className="mt-0.5 text-[10px] text-slate-400">
-                          Дата заметки {new Date(noteUpdatedAt).toLocaleString('ru-RU')}
+                          Дата примечания {new Date(noteUpdatedAt).toLocaleString('ru-RU')}
                         </div>
                       )}
                     </div>
                   </div>
+                  <IssueStory issueKey={issue.key} />
                   <IssueListIconStack>
                     {badges.missingTester && (
                       <MissingRoleMark kind="tester" tone={badges.testerTone} title="Нет тестировщика" />
@@ -639,15 +650,17 @@ export default function IssuePanel(props: Props) {
                 <div className="mt-1 grid grid-cols-2 gap-2">
                   <span />
                   <div className="flex min-w-0 items-center gap-1.5">
-                    {change ? (
+                    {shownChange ? (
                       <ChangeBadge
                         inline
-                        text={change.text}
-                        at={change.at}
+                        text={shownChange.text}
+                        at={shownChange.at}
                         actor={resolvePersonDisplayName(issue.updatedByMatchKeys, issue.updatedByDisplay, people) || ''}
                         rawActor={issue.updatedByDisplay}
-                        seen={change.seen}
-                        onDismiss={() => props.onDismissChange?.(issue.key)}
+                        seen={!freshChange}
+                        onDismiss={() => {
+                          if (freshChange) props.onDismissChange?.(issue.key);
+                        }}
                       />
                     ) : (
                       <span className="min-w-0 flex-1" />
@@ -662,6 +675,61 @@ export default function IssuePanel(props: Props) {
         })}
       </div>
     </aside>
+  );
+}
+
+function IssueStory(props: { issueKey: string }) {
+  const [story, setStory] = useState<{ description: string; commentText: string; commentUrl: string } | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    setStory(null);
+    setFailed(false);
+    void window.api
+      .getIssueStory(props.issueKey)
+      .then((next) => {
+        if (alive) setStory(next);
+      })
+      .catch(() => {
+        if (alive) setFailed(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [props.issueKey]);
+  return (
+    <div className="min-w-0 flex-1 text-[11px] leading-snug text-slate-700">
+      {!story && !failed && <div className="text-slate-400">Загрузка описания…</div>}
+      {failed && <div className="text-slate-400">Описание не загрузилось</div>}
+      {story && (
+        <>
+          {story.description ? (
+            <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(story.description) }} />
+          ) : (
+            <div className="text-slate-400">Нет описания</div>
+          )}
+          {story.commentText ? (
+            <div className="mt-2 border-t border-slate-100 pt-1">
+              <a
+                href={story.commentUrl}
+                className="text-[10px] font-medium text-sky-700 hover:underline"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void window.api.openExternal(story.commentUrl);
+                }}
+              >
+                Последний комментарий
+              </a>
+              <div
+                className="markdown-body mt-0.5"
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(story.commentText) }}
+              />
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
   );
 }
 

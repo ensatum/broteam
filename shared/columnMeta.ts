@@ -3,23 +3,13 @@ import type { BoardColumnConfig, TrackerIssue } from './types';
 export type ColumnRole = 'review' | 'testing' | 'other';
 
 export function columnRole(col: {
-  alias: string;
+  duty?: string;
+  alias?: string;
   statusKey?: string;
   statusDisplay?: string;
   columnName?: string;
-  duty?: string;
 }): ColumnRole {
   if (col.duty === 'review' || col.duty === 'testing') return col.duty;
-  const label = `${col.alias} ${col.statusDisplay || ''} ${col.statusKey || ''} ${col.columnName || ''}`;
-  if (/\b(review|ревью)\b/i.test(label) || /inReview/i.test(col.statusKey || '')) {
-    return 'review';
-  }
-  if (
-    /\b(test|testing|qa|тест)\b/i.test(label) ||
-    /testirovanie|testing|readyForTest|rc/i.test(col.statusKey || '')
-  ) {
-    return 'testing';
-  }
   return 'other';
 }
 
@@ -45,7 +35,7 @@ export type CellMissingBadges = {
   testerTone: MissingBadgeTone;
 };
 
-/** Missing R/T in any column; red only in Review / Testing columns, otherwise muted. */
+/** Missing R/T in any column. Filled danger icons only when the column tag is Ревью or Тесты. */
 export function cellMissingBadges(
   issues: TrackerIssue[],
   col: BoardColumnConfig | { alias: string; statusKey: string; statusDisplay?: string },

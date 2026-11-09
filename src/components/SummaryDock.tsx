@@ -15,6 +15,7 @@ import {
   type SummarySlice,
 } from '@shared/summary';
 import { resolvePersonDisplayName } from '@shared/personDisplay';
+import { summarySearchParts, textHit } from '@shared/issueSearch';
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -24,10 +25,8 @@ import {
   EyeIcon,
   HashIcon,
   NoteClipboardButton,
-  PlayIcon,
   UsersIcon,
   XIcon,
-  ZapIcon,
 } from './Icons';
 import { CopyIssueButton } from './IssuePanel';
 import { RunSpinner } from './ApiRunControls';
@@ -94,15 +93,11 @@ export default function SummaryDock(props: {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [reportNote, setReportNote] = useState('');
   const [issueNotes, setIssueNotes] = useState<Record<string, string>>({});
-  const [onlyChanged, setOnlyChanged] = useState(false);
+  const [query, setQuery] = useState('');
   const [personOpen, setPersonOpen] = useState(false);
   const [sort, setSort] = useState<SummarySort>(loadSummarySort);
   const personRef = useRef<HTMLDivElement>(null);
   const selected = people.find((person) => person.id === props.personId) || null;
-
-  useEffect(() => {
-    if (props.personId == null) setOnlyChanged(false);
-  }, [props.personId]);
 
   useEffect(() => {
     if (props.boardLocalId == null || props.personId == null) {
@@ -158,21 +153,22 @@ export default function SummaryDock(props: {
         : namedRows
             .filter((row) => (row.touchedIds || []).includes(person.id))
             .map((row) => focusSummaryRow(row, person));
-    if (person && onlyChanged) {
-      filtered = filtered.filter((row) => (row.changedByIds || []).includes(person.id));
+    const needle = query.trim();
+    if (needle) {
+      filtered = filtered.filter((row) => textHit(needle, summarySearchParts(row, people, props.boards)));
     }
     return sortRows(filtered, sort);
-  }, [namedRows, people, props.personId, onlyChanged, sort]);
+  }, [namedRows, people, props.personId, props.boards, query, sort]);
   runningRef.current = running;
 
-  function summaryRequest(): SummaryBuildRequest | null {
+  function summaryRequest(period: SummaryPeriod = props.period): SummaryBuildRequest | null {
     if (props.boardLocalId == null) return null;
     return {
       boardLocalId: props.boardLocalId,
       trackerBoardId: props.trackerBoardId,
       queueKey: props.queueKey,
       participant: null,
-      period: props.period,
+      period,
       boards: props.boards
         .filter((board) => board.enabled)
         .map((board) => ({
@@ -219,9 +215,10 @@ export default function SummaryDock(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.boardLocalId, props.period, props.trackerBoardId, props.queueKey, props.boards, props.columns]);
 
-  async function build() {
-    const request = summaryRequest();
+  async function build(period: SummaryPeriod = props.period) {
+    const request = summaryRequest(period);
     if (!request) return;
+    runningRef.current = true;
     viewGen.current += 1;
     setRunning(true);
     setError(null);
@@ -236,19 +233,20 @@ export default function SummaryDock(props: {
       setRows(report.rows);
       setFormedAt(report.formedAt);
       setRequests(report.requests);
-      const bounds = periodBounds(props.period);
+      const bounds = periodBounds(period);
       setCoverage({ from: bounds.from, to: bounds.to, complete: true });
       props.onCached?.();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes('Запросы остановлены')) {
-        const bounds = periodBounds(props.period);
+        const bounds = periodBounds(period);
         setCoverage({ from: bounds.from, to: bounds.to, complete: false });
         props.onCached?.();
       } else {
         setError(message);
       }
     } finally {
+      runningRef.current = false;
       setRunning(false);
     }
   }
@@ -272,6 +270,13 @@ export default function SummaryDock(props: {
     <div className="flex h-full min-h-0 flex-col bg-white">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-slate-200 px-2 text-sm font-semibold text-slate-900">
         Сводка
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Поиск по ключу"
+          className="h-6 w-40 min-w-0 rounded border border-slate-300 bg-white px-2 text-xs font-normal text-slate-800"
+        />
         <div className="ml-auto flex min-w-0 items-center gap-1">
           <div className="inline-flex shrink-0 items-center gap-0.5">
             <button
@@ -378,33 +383,12 @@ export default function SummaryDock(props: {
             </div>
           )}
         </div>
-        <button
-          type="button"
-          title={
-            selected
-              ? 'Только задачи, которые изменял выбранный участник'
-              : 'Сначала выберите участника'
-          }
-          aria-pressed={Boolean(selected) && onlyChanged}
-          disabled={!selected}
-          className={`ml-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded disabled:text-slate-300 disabled:hover:bg-transparent ${
-            selected && onlyChanged ? 'bg-amber-100 text-amber-600' : 'text-slate-600 hover:bg-white'
-          }`}
-          onClick={() => setOnlyChanged((value) => !value)}
-        >
-          <ZapIcon className="h-3.5 w-3.5" />
-        </button>
-        <span className="shrink-0 text-[11px] text-slate-600">{periodLabel(props.period)}</span>
-        <PeriodField period={props.period} onChange={props.onPeriod} />
-        <button
-          type="button"
-          title="Сформировать"
-          className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-40"
+        <PeriodField
+          period={props.period}
+          onChange={props.onPeriod}
+          onFetch={(period) => void build(period)}
           disabled={running || props.boardLocalId == null}
-          onClick={() => void build()}
-        >
-          <PlayIcon className="h-3 w-3" />
-        </button>
+        />
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2 text-xs [&>*]:shrink-0">
         {formedAt && (
@@ -456,7 +440,7 @@ export default function SummaryDock(props: {
           );
         })}
         <label className="mt-1 block text-[11px] text-slate-500">
-          Заметка к отчёту
+          Примечание к отчёту
           <textarea
             className="mt-1 h-16 w-full resize-none rounded border border-slate-300 px-1 py-0.5 text-xs text-slate-800"
             value={reportNote}
@@ -492,9 +476,7 @@ export default function SummaryDock(props: {
 
 function periodLabel(period: SummaryPeriod): string {
   const bounds = periodBounds(period);
-  const fromTime = period.kind === 'custom' ? period.fromTime || '00:00' : '00:00';
-  const toTime = period.kind === 'custom' ? period.toTime || '23:59' : '23:59';
-  return `${formatDay(bounds.from)} ${fromTime} - ${formatDay(bounds.to)} ${toTime}`;
+  return `${formatDay(bounds.from)} - ${formatDay(bounds.to)}`;
 }
 
 function periodBounds(period: SummaryPeriod): { from: string; to: string } {
@@ -526,7 +508,12 @@ function todayIso(): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-function PeriodField(props: { period: SummaryPeriod; onChange: (period: SummaryPeriod) => void }) {
+function PeriodField(props: {
+  period: SummaryPeriod;
+  onChange: (period: SummaryPeriod) => void;
+  onFetch: (period: SummaryPeriod) => void;
+  disabled?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -556,7 +543,8 @@ function PeriodField(props: { period: SummaryPeriod; onChange: (period: SummaryP
   }, [open]);
 
   return (
-    <div ref={rootRef}>
+    <div ref={rootRef} className="flex items-center gap-1">
+      <span className="shrink-0 text-[11px] font-normal text-slate-600">{label}</span>
       <button
         ref={buttonRef}
         type="button"
@@ -571,9 +559,13 @@ function PeriodField(props: { period: SummaryPeriod; onChange: (period: SummaryP
           panelRef={panelRef}
           anchor={anchor}
           period={props.period}
+          disabled={props.disabled}
           onChange={(period, close) => {
             props.onChange(period);
-            if (close) setOpen(false);
+            if (close) {
+              setOpen(false);
+              props.onFetch(period);
+            }
           }}
         />
       )}
@@ -585,6 +577,7 @@ function PeriodPopover(props: {
   panelRef: RefObject<HTMLDivElement | null>;
   anchor: { top: number; left: number };
   period: SummaryPeriod;
+  disabled?: boolean;
   onChange: (period: SummaryPeriod, close: boolean) => void;
 }) {
   const initial = props.period.kind === 'custom' ? props.period.from : todayIso();
@@ -592,6 +585,8 @@ function PeriodPopover(props: {
   const [draftFrom, setDraftFrom] = useState<string | null>(props.period.kind === 'custom' ? props.period.from : null);
   const [draftTo, setDraftTo] = useState<string | null>(props.period.kind === 'custom' ? props.period.to : null);
   const [hover, setHover] = useState<string | null>(null);
+  const [fromTime, setFromTime] = useState(props.period.kind === 'custom' ? props.period.fromTime || '12:00' : '12:00');
+  const [toTime, setToTime] = useState(props.period.kind === 'custom' ? props.period.toTime || '12:00' : '12:00');
   const [pos, setPos] = useState(props.anchor);
   const days = useMemo(() => buildCalendar(month.year, month.month), [month]);
   const monthTitle = useMemo(() => {
@@ -631,21 +626,14 @@ function PeriodPopover(props: {
     }
     const from = iso < draftFrom ? iso : draftFrom;
     const to = iso < draftFrom ? draftFrom : iso;
-    props.onChange(
-      {
-        kind: 'custom',
-        from,
-        to,
-        fromTime: props.period.kind === 'custom' ? props.period.fromTime || '12:00' : '12:00',
-        toTime: props.period.kind === 'custom' ? props.period.toTime || '12:00' : '12:00',
-      },
-      true,
-    );
+    setDraftFrom(from);
+    setDraftTo(to);
   }
 
-  function setTimes(fromTime: string, toTime: string) {
-    if (props.period.kind !== 'custom') return;
-    props.onChange({ ...props.period, fromTime, toTime }, false);
+  function applyRange() {
+    const from = rangeFrom || today;
+    const to = rangeTo || from;
+    props.onChange({ kind: 'custom', from, to, fromTime, toTime }, true);
   }
 
   return createPortal(
@@ -714,20 +702,16 @@ function PeriodPopover(props: {
         <input
           type="time"
           aria-label="Время начала сводки"
-          value={props.period.kind === 'custom' ? props.period.fromTime || '12:00' : '12:00'}
-          onChange={(event) =>
-            setTimes(event.target.value, props.period.kind === 'custom' ? props.period.toTime || '12:00' : '12:00')
-          }
+          value={fromTime}
+          onChange={(event) => setFromTime(event.target.value)}
           className="h-7 min-w-0 flex-1 rounded border border-slate-300 px-1 text-[11px] text-slate-700"
         />
         <ArrowRightIcon className="h-3 w-3 shrink-0 text-slate-400" />
         <input
           type="time"
           aria-label="Время конца сводки"
-          value={props.period.kind === 'custom' ? props.period.toTime || '12:00' : '12:00'}
-          onChange={(event) =>
-            setTimes(props.period.kind === 'custom' ? props.period.fromTime || '12:00' : '12:00', event.target.value)
-          }
+          value={toTime}
+          onChange={(event) => setToTime(event.target.value)}
           className="h-7 min-w-0 flex-1 rounded border border-slate-300 px-1 text-[11px] text-slate-700"
         />
       </div>
@@ -736,11 +720,10 @@ function PeriodPopover(props: {
         {RANGE_PRESETS.map((preset) => {
           const range = preset.range();
           const selected =
-            props.period.kind === 'custom' &&
-            props.period.from === range.from &&
-            props.period.to === range.to &&
-            (props.period.fromTime || '12:00') === range.fromTime &&
-            (props.period.toTime || '12:00') === range.toTime;
+            draftFrom === range.from &&
+            draftTo === range.to &&
+            fromTime === range.fromTime &&
+            toTime === range.toTime;
           return (
             <button
               key={preset.id}
@@ -750,12 +733,13 @@ function PeriodPopover(props: {
                   ? 'border-sky-600 bg-sky-600 text-white'
                   : 'border-slate-300 text-slate-700 hover:bg-slate-50'
               }`}
-              onClick={() =>
-                props.onChange(
-                  { kind: 'custom', from: range.from, to: range.to, fromTime: range.fromTime, toTime: range.toTime },
-                  true,
-                )
-              }
+              onClick={() => {
+                setDraftFrom(range.from);
+                setDraftTo(range.to);
+                setFromTime(range.fromTime);
+                setToTime(range.toTime);
+                setMonth(monthOf(range.to));
+              }}
             >
               {preset.label}
             </button>
@@ -763,13 +747,11 @@ function PeriodPopover(props: {
         })}
         <button
           type="button"
-          className="mt-auto h-7 rounded border border-slate-300 px-1 text-[11px] text-slate-700 hover:bg-slate-50"
-          onClick={() => {
-            setDraftFrom(null);
-            setDraftTo(null);
-          }}
+          disabled={props.disabled}
+          className="mt-auto h-7 rounded border border-emerald-600 bg-emerald-600 px-1 text-[11px] font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
+          onClick={applyRange}
         >
-          Произвольная
+          Получить
         </button>
       </div>
     </div>,
@@ -880,15 +862,13 @@ function SummaryCard(props: {
   const showNote = props.open && (editingNote || Boolean(props.note.trim()));
   return (
     <div
-      className={`relative shrink-0 cursor-pointer overflow-hidden rounded border py-1 pr-2 hover:bg-slate-50 ${
-        props.authored ? 'pl-3.5' : 'pl-2'
-      } ${FRAME_CLASS[props.frame]}`}
+      className={`relative shrink-0 cursor-pointer overflow-hidden rounded border py-1 pl-2 pr-2 hover:bg-slate-50 ${FRAME_CLASS[props.frame]}`}
       onClick={props.onToggle}
       onMouseEnter={() => props.onHover(row.key, row.boardLocalId ?? null)}
       onMouseLeave={() => props.onHover(null, null)}
     >
       {props.authored && (
-        <span title="Автор" className="absolute inset-y-0 left-0 w-1.5 bg-sky-500" aria-hidden />
+        <span title="Автор" className="absolute inset-y-0 left-0 w-1.5 bg-emerald-500" aria-hidden />
       )}
       <div className="flex items-center gap-1.5">
         <InstantTip text={row.currentStatus || '—'} className="inline-flex shrink-0 items-center">
@@ -1333,7 +1313,7 @@ function SummaryNote(props: {
   }
 
   return (
-    <div className="mt-1.5 flex items-start gap-1.5 border-t border-slate-100 pt-1" onClick={(event) => event.stopPropagation()}>
+    <div className="mt-1.5 flex items-stretch gap-1.5 border-t border-slate-100 pt-1" onClick={(event) => event.stopPropagation()}>
       <div className="flex shrink-0 flex-col items-center gap-1">
         <button
           type="button"
@@ -1365,21 +1345,21 @@ function SummaryNote(props: {
           />
         )}
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="flex min-h-full min-w-0 flex-1">
       {props.editing && view === 'markdown' ? (
         <textarea
           ref={areaRef}
           rows={Math.max(1, draft.split('\n').length)}
-          className="m-0 block w-full resize-none border-0 bg-transparent p-0 text-xs leading-snug outline-none"
+          className="m-0 block min-h-full w-full resize-none rounded border border-slate-300 bg-white p-1 text-xs leading-snug outline-none"
           value={draft}
-          placeholder="Заметка к задаче"
+          placeholder="Примечание к задаче"
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onMarkdownKey}
         />
       ) : props.editing ? (
         <div
           ref={previewRef}
-          className="summary-note markdown-body m-0 w-full border-0 bg-transparent p-0 text-xs leading-snug outline-none"
+          className="summary-note markdown-body m-0 min-h-full w-full rounded border border-slate-300 bg-white p-1 text-xs leading-snug outline-none"
           contentEditable
           suppressContentEditableWarning
           onInput={() => {

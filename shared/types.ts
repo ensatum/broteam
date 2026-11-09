@@ -42,7 +42,7 @@ export type Developer = {
   hidden: boolean;
 };
 
-/** Optional column duty. Empty means the table infers it from the column name. */
+/** Optional column duty. Empty means no role tag; the name of the column does not count. */
 export type ColumnDuty = '' | 'review' | 'testing';
 
 export type BoardColumnConfig = {

@@ -1019,7 +1019,7 @@ export function assignDraftToDeveloper(draftId: number, developerId: number): De
   const draft = getDb()
     .prepare(`SELECT id, title, body FROM drafts WHERE id = ?`)
     .get(draftId) as { id: number; title: string; body: string } | undefined;
-  if (!draft) throw new Error('Черновик не найден');
+  if (!draft) throw new Error('Заметка не найдена');
   const todo = createDeveloperTodo(developerId, draft.title, draft.body);
   getDb().prepare('DELETE FROM drafts WHERE id = ?').run(draftId);
   return todo;

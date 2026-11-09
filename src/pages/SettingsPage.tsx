@@ -36,7 +36,7 @@ const BACKUP_OPTIONS: Array<[keyof BackupChoice, string]> = [
   ['settings', 'Настройки'],
   ['tasks', 'Задачи'],
   ['summary', 'Сводка'],
-  ['drafts', 'Черновики'],
+  ['drafts', 'Заметки'],
 ];
 
 type Props = {
@@ -1084,7 +1084,7 @@ export default function SettingsPage(props: Props) {
       <>
         <p className="text-xs text-slate-500">
           Перенос данных между установками. Токен и подключение к Tracker не входят в файл.
-          «Задачи» — текущее сохранение доски и заметки к задачам. «Сводка» — последняя повседневная сводка.
+          «Задачи» — текущее сохранение доски и примечания к задачам. «Сводка» — последняя повседневная сводка.
         </p>
         <div className="grid gap-4 md:grid-cols-2">
         <SettingsSection title="Импорт" note={noteFor('import')}>

@@ -553,6 +553,18 @@ function interpretIssue(
     for (const field of event.fields || []) {
       const role = roleOf(field.field);
       if (role === 'status') {
+        if (!statusKey) {
+          const bornKey = valueKey(field.from) || valueDisplay(field.from);
+          const bornAt = issue.createdAt ? Date.parse(issue.createdAt) : Number.NaN;
+          if (bornKey && Number.isFinite(bornAt) && Number.isFinite(at) && at > bornAt) {
+            statusSpans.push({
+              key: bornKey,
+              display: valueDisplay(field.from) || bornKey,
+              from: bornAt,
+              to: at,
+            });
+          }
+        }
         closeSpan(at);
         statusKey = valueKey(field.to) || statusKey;
         statusDisplay = valueDisplay(field.to) || statusDisplay;
@@ -645,6 +657,11 @@ function interpretIssue(
   noteRole('qa', personLabel(issue.qaDisplay || qa));
   noteRole('reviewer', personLabel(issue.reviewerDisplay || reviewer));
   noteSprint(issue.sprintName || '');
+  if (!statusKey && issue.statusKey) {
+    statusKey = issue.statusKey;
+    statusDisplay = issue.statusDisplay || statusDisplay;
+    if (!Number.isFinite(spanStart)) spanStart = stamp(issue.createdAt || undefined) || Date.now();
+  }
   const doneNow = statusTypes.get(statusKey) === 'done' || statusTypes.get(issue.statusKey) === 'done';
   const doneMs = finalStatusAt ? Date.parse(finalStatusAt) : Number.NaN;
   const end = doneNow && Number.isFinite(doneMs) ? doneMs : Date.now();

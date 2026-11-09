@@ -48,22 +48,39 @@ export function describeIssueChange(
     bits.push({ at: updatedAt, text: withActor('Изменилось название', actor) });
   }
   if (
-    (prev.assigneeDisplay || '') !== (next.assigneeDisplay || '') ||
-    (prev.assigneeUid || '') !== (next.assigneeUid || '') ||
-    (prev.assigneeLogin || '') !== (next.assigneeLogin || '')
+    personChanged(
+      [prev.assigneeUid, prev.assigneeLogin],
+      [next.assigneeUid, next.assigneeLogin],
+      prev.assigneeDisplay,
+      next.assigneeDisplay,
+    )
   ) {
     bits.push({
       at: updatedAt,
       text: withActor(`Исполнитель ${prev.assigneeDisplay || '—'} → ${next.assigneeDisplay || '—'}`, actor),
     });
   }
-  if ((prev.reviewerDisplay || '') !== (next.reviewerDisplay || '')) {
+  if (
+    personChanged(
+      [prev.reviewerUid, ...(prev.reviewerMatchKeys || [])],
+      [next.reviewerUid, ...(next.reviewerMatchKeys || [])],
+      prev.reviewerDisplay,
+      next.reviewerDisplay,
+    )
+  ) {
     bits.push({
       at: updatedAt,
       text: withActor(`Ревьюер ${prev.reviewerDisplay || '—'} → ${next.reviewerDisplay || '—'}`, actor),
     });
   }
-  if ((prev.qaDisplay || '') !== (next.qaDisplay || '')) {
+  if (
+    personChanged(
+      [prev.qaUid, ...(prev.qaMatchKeys || [])],
+      [next.qaUid, ...(next.qaMatchKeys || [])],
+      prev.qaDisplay,
+      next.qaDisplay,
+    )
+  ) {
     bits.push({
       at: updatedAt,
       text: withActor(`Тестировщик ${prev.qaDisplay || '—'} → ${next.qaDisplay || '—'}`, actor),
@@ -90,4 +107,52 @@ export function describeIssueChange(
   bits.sort((a, b) => b.at - a.at);
   const latest = bits[0];
   return { text: latest.text, at: stamp(latest.at, fallback) };
+}
+
+function personIds(values: Array<string | null | undefined>): string[] {
+  const out: string[] = [];
+  for (const value of values) {
+    const text = (value || '').trim();
+    if (text && !out.includes(text)) out.push(text);
+  }
+  return out;
+}
+
+/** A local alias rewrite changes the display and keeps the Tracker id. That is not a Tracker change. */
+function personChanged(
+  prevIds: Array<string | null | undefined>,
+  nextIds: Array<string | null | undefined>,
+  prevDisplay: string | null | undefined,
+  nextDisplay: string | null | undefined,
+): boolean {
+  const prev = personIds(prevIds);
+  const next = personIds(nextIds);
+  if (prev.length || next.length) {
+    if (!prev.length || !next.length) return true;
+    return !prev.some((id) => next.includes(id));
+  }
+  return (prevDisplay || '') !== (nextDisplay || '');
+}
+
+/** Last Tracker fact already stored on the issue. Shown even when it predates the first sync. */
+export function trackerLastChange(issue: TrackerIssue): IssueChangeNote | null {
+  const events: Array<{ at: number; text: string }> = [];
+  const statusAt = Date.parse(issue.statusStartTime || '');
+  if (issue.statusStartTime && Number.isFinite(statusAt)) {
+    events.push({ at: statusAt, text: `Статус ${issue.statusDisplay || issue.statusKey || '—'}` });
+  }
+  const commentAt = Date.parse(issue.lastCommentUpdatedAt || '');
+  if (issue.lastCommentUpdatedAt && Number.isFinite(commentAt)) {
+    events.push({ at: commentAt, text: 'Комментарий' });
+  }
+  const updatedAt = Date.parse(issue.updatedAt || '');
+  if (issue.updatedAt && Number.isFinite(updatedAt)) {
+    events.push({ at: updatedAt, text: 'Обновление' });
+  }
+  if (!events.length) return null;
+  events.sort((a, b) => b.at - a.at);
+  const top = events[0];
+  const specific = events.find((event) => event.text !== 'Обновление' && Math.abs(event.at - top.at) < 2000);
+  const pick = specific || top;
+  return { text: pick.text, at: new Date(pick.at).toISOString() };
 }

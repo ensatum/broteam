@@ -1007,7 +1007,7 @@ export function ClockBadge({
 
 /** clipboard note marker — #5e80e7 at 50% opacity (table cells) */
 export function NoteMarkerBadge({
-  title = 'Есть заметка',
+  title = 'Есть примечание',
   size = 'sm',
   className = '',
 }: {
@@ -1042,7 +1042,7 @@ export function NoteClipboardButton({
   return (
     <button
       type="button"
-      title={title || (hasNote ? 'Изменить заметку' : 'Добавить заметку')}
+      title={title || (hasNote ? 'Изменить примечание' : 'Добавить примечание')}
       className={`cursor-pointer inline-flex h-4 w-4 items-center justify-center rounded bg-transparent shrink-0 ${
         hasNote
           ? 'text-red-800 hover:text-red-900'
@@ -1169,7 +1169,7 @@ export function CellBadgeStack(props: {
   }
   if (model.hasNote) {
     topLeft.push(
-      <CellIconButton key="note" title="Есть заметка к задаче" className="text-red-800" onClick={() => pick('note')}>
+      <CellIconButton key="note" title="Есть примечание к задаче" className="text-red-800" onClick={() => pick('note')}>
         <ClipboardIcon className="h-3.5 w-3.5" />
       </CellIconButton>,
     );
@@ -1236,7 +1236,7 @@ export function CellBadgeStack(props: {
   }
   if (model.hasNote) {
     micro.push(
-      <span key="note" title="Есть заметка к задаче" className="text-red-800">
+      <span key="note" title="Есть примечание к задаче" className="text-red-800">
         <ClipboardIcon className="h-2 w-2" />
       </span>,
     );

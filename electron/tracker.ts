@@ -500,6 +500,27 @@ export class TrackerClient {
     return mapTrackerIssue(issue, Date.now(), statusTypes);
   }
 
+  async getIssueStory(issueId: string): Promise<{ description: string; commentText: string; commentUrl: string }> {
+    const issue = await this.request<{ description?: string; self?: string }>(`/v2/issues/${issueId}`);
+    const comments: Array<{ id?: string | number; longId?: string; text?: string }> = [];
+    for (let page = 1; page <= 6; page += 1) {
+      const batch = await this.request<Array<{ id?: string | number; longId?: string; text?: string }>>(
+        `/v2/issues/${issueId}/comments`,
+        { query: { perPage: 50, page } },
+      );
+      comments.push(...(batch || []));
+      if (!batch || batch.length < 50) break;
+    }
+    const last = comments[comments.length - 1];
+    const commentId = last?.longId || (last?.id != null ? String(last.id) : '');
+    const base = `https://tracker.yandex.ru/${issueId}`;
+    return {
+      description: issue.description || '',
+      commentText: last?.text || '',
+      commentUrl: commentId ? `${base}#${commentId}` : base,
+    };
+  }
+
   async getTransitions(issueId: string): Promise<
     Array<{ id: string; display: string; toKey?: string; toDisplay?: string }>
   > {

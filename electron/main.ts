@@ -330,6 +330,9 @@ function registerIpc(): void {
   ipcMain.handle('tracker:getTransitions', async (_e, issueKey: string) => {
     return getClient().getTransitions(issueKey);
   });
+  ipcMain.handle('tracker:issueStory', async (_e, issueKey: string) => {
+    return getClient().getIssueStory(issueKey);
+  });
   ipcMain.handle('tracker:refreshIssue', async (_e, issueKey: string) => {
     const issue = await getClient().getIssue(issueKey);
     const activeId = getActiveBoardLocalId();

@@ -40,7 +40,6 @@ import {
   ClockIcon,
   CalendarIcon,
   EyeOffIcon,
-  GearIcon,
   ToggleLeftIcon,
   ToggleRightIcon,
   ShieldIcon,
@@ -634,8 +633,25 @@ export default function BoardPage(props: Props) {
     };
   }, []);
   const [reorderMode, setReorderMode] = useState(false);
+  const editSnap = useRef<{
+    filtersOpen: boolean;
+    issuesOpen: boolean;
+    rightTool: RightTool;
+    tableShown: boolean;
+    consoleOpen: boolean;
+  } | null>(null);
   useEffect(() => {
-    if (props.editExit) setReorderMode(false);
+    if (!props.editExit) return;
+    setReorderMode(false);
+    const snap = editSnap.current;
+    editSnap.current = null;
+    if (!snap) return;
+    setFiltersOpen(snap.filtersOpen);
+    setIssuesOpen(snap.issuesOpen);
+    setRightTool(snap.rightTool);
+    setTableShown(snap.tableShown);
+    saveTableShown(snap.tableShown);
+    setConsoleOpen(snap.consoleOpen);
   }, [props.editExit]);
   const [rowPrefs, setRowPrefs] = useState<BoardRowPrefs>(loadBoardRowPrefs);
   const rowPrefsTouched = useRef(false);
@@ -1564,7 +1580,7 @@ export default function BoardPage(props: Props) {
       setTablePref(next);
       saveTableMode(next);
     }
-  }, [centerBox.w, centerBox.h, tableFraction, tableShown, props.activeBoardId]);
+  }, [centerBox.w, centerBox.h, tableFraction, tableShown, issuesOpen, props.activeBoardId]);
   const sprintCounts = sourceMatrix?.sprintCounts || [];
   const reviewerCounts = sourceMatrix?.reviewerCounts || [];
   const qaCounts = sourceMatrix?.qaCounts || [];
@@ -2113,6 +2129,15 @@ export default function BoardPage(props: Props) {
 
   useEffect(() => {
     setReorderMode(false);
+    const snap = editSnap.current;
+    editSnap.current = null;
+    if (!snap) return;
+    setFiltersOpen(snap.filtersOpen);
+    setIssuesOpen(snap.issuesOpen);
+    setRightTool(snap.rightTool);
+    setTableShown(snap.tableShown);
+    saveTableShown(snap.tableShown);
+    setConsoleOpen(snap.consoleOpen);
   }, [props.activeBoardId]);
 
   useEffect(() => {
@@ -2218,6 +2243,25 @@ export default function BoardPage(props: Props) {
 
   function leaveReorder() {
     setReorderMode(false);
+    const snap = editSnap.current;
+    editSnap.current = null;
+    if (!snap) return;
+    setFiltersOpen(snap.filtersOpen);
+    setIssuesOpen(snap.issuesOpen);
+    setRightTool(snap.rightTool);
+    setTableShown(snap.tableShown);
+    saveTableShown(snap.tableShown);
+    setConsoleOpen(snap.consoleOpen);
+  }
+
+  function toggleEdit() {
+    if (reorderMode) {
+      leaveReorder();
+      return;
+    }
+    if (!tableShown) return;
+    editSnap.current = { filtersOpen, issuesOpen, rightTool, tableShown, consoleOpen };
+    setReorderMode(true);
   }
 
   function tableCorner() {
@@ -2441,11 +2485,9 @@ export default function BoardPage(props: Props) {
           }
           summary={summaryOpen}
           onOpenChange={(open) => {
-            leaveReorder();
             setRightTool(open ? 'drafts' : 'off');
           }}
           onToggleSummary={() => {
-            leaveReorder();
             setRightTool(summaryOpen ? 'off' : 'summary');
           }}
           summaryPanel={summaryPanel}
@@ -2453,10 +2495,7 @@ export default function BoardPage(props: Props) {
           onError={props.onError}
           onSnapshotContentChange={props.onSnapshotContentChange}
           consoleOpen={consoleOpen}
-          onToggleConsole={() => {
-            leaveReorder();
-            setConsoleOpen((open) => !open);
-          }}
+          onToggleConsole={() => setConsoleOpen((open) => !open)}
         />
       </div>
       <ConsoleDock open={consoleOpen} height={consoleHeight} onHeight={setConsoleHeight} />
@@ -2523,7 +2562,7 @@ export default function BoardPage(props: Props) {
     rowWidth > 0
       ? Math.max(0, rowWidth - (filtersOpen ? DRAFTS_MIN_PX + LEFT_RAIL_PX : LEFT_RAIL_PX) - RIGHT_RAIL_PX)
       : panelWanted;
-  const panelShown = (draftsOpen || summaryOpen) && !reorderMode;
+  const panelShown = draftsOpen || summaryOpen;
   const panelWidth = panelShown
     ? Math.min(panelRoom, Math.max(Math.min(DRAFTS_MIN_PX, panelRoom), panelWanted))
     : panelWanted;
@@ -2577,6 +2616,7 @@ export default function BoardPage(props: Props) {
     '--bro-digit-center': `${Math.max(11, Math.min(16, digitPx * 0.57))}px`,
     '--bro-digit-grand': `${Math.max(12, Math.min(20, digitPx * 0.72))}px`,
     '--bro-icon': String(iconScale),
+    '--bro-bell': `${rowPx >= 40 ? 20 : rowPx >= 30 ? 16 : 12}px`,
   } as CSSProperties;
 
   function predictCenterWidth(filters: boolean, drafts: boolean, fraction: number) {
@@ -2736,6 +2776,8 @@ export default function BoardPage(props: Props) {
     <TasksDock
       selection={selection}
       issues={listedIssues}
+      people={props.participants}
+      boards={props.boards}
       showDone={showDoneIssues}
       onToggleShowDone={() => {
         fadeThen(() => {
@@ -2891,14 +2933,13 @@ export default function BoardPage(props: Props) {
         <div className="relative z-30 flex h-full shrink-0">
           <div
             className={`flex w-11 shrink-0 flex-col items-center gap-1.5 border-r border-slate-200 bg-slate-50 p-1.5 ${
-              filtersOpen && !reorderMode ? '' : 'shadow-[2px_0_4px_-2px_rgba(15,23,42,0.18)]'
+              filtersOpen ? '' : 'shadow-[2px_0_4px_-2px_rgba(15,23,42,0.18)]'
             }`}
           >
             <RailButton
               title={tableShown ? 'Скрыть таблицу' : 'Показать таблицу'}
               pressed={tableShown}
               onClick={() => {
-                leaveReorder();
                 setTableShown((on) => {
                   const next = !on;
                   saveTableShown(next);
@@ -2911,10 +2952,7 @@ export default function BoardPage(props: Props) {
             <RailButton
               title="Фильтры"
               pressed={filtersOpen}
-              onClick={() => {
-                leaveReorder();
-                setFiltersOpen((open) => !open);
-              }}
+              onClick={() => setFiltersOpen((open) => !open)}
             >
               <FilterIcon className="h-4 w-4" />
               {activeFilterCount > 0 && (
@@ -2926,16 +2964,13 @@ export default function BoardPage(props: Props) {
             <RailButton
               title="Задачи"
               pressed={issuesOpen}
-              onClick={() => {
-                leaveReorder();
-                setIssuesOpen((open) => !open);
-              }}
+              onClick={() => setIssuesOpen((open) => !open)}
               className="mt-auto"
             >
               <InboxIcon className="h-4 w-4" />
             </RailButton>
           </div>
-        {filtersOpen && !reorderMode && (
+        {filtersOpen && (
           <aside
             className="relative flex h-full shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white shadow-[2px_0_4px_-2px_rgba(15,23,42,0.18)]"
             style={{ width: DRAFTS_MIN_PX }}
@@ -3127,14 +3162,19 @@ export default function BoardPage(props: Props) {
         >
           <div className="grid h-8 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-slate-200 bg-slate-50 px-2">
             <div className="flex min-w-0 items-center gap-2">
+            <InstantTip text={tablePref === 'mini' ? 'Компактная таблица' : 'Таблица с иконками'}>
             <button
               type="button"
-              title={tablePref === 'mini' ? 'Таблица с иконками' : 'Компактная таблица'}
-              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:shadow-sm"
-              onClick={() => chooseTableMode(tablePref === 'mini' ? 'full' : 'mini')}
+              disabled={!tableShown}
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:shadow-sm disabled:cursor-default disabled:text-slate-300 disabled:hover:border-transparent disabled:hover:bg-transparent disabled:hover:shadow-none"
+              onClick={() => {
+                if (!tableShown) return;
+                chooseTableMode(tablePref === 'mini' ? 'full' : 'mini');
+              }}
             >
-              {tablePref === 'mini' ? <FeatherMaximizeIcon /> : <FeatherMinimizeIcon />}
+              {tablePref === 'mini' ? <FeatherMinimizeIcon /> : <FeatherMaximizeIcon />}
             </button>
+            </InstantTip>
             <div className="flex min-w-0 items-center gap-1.5 overflow-hidden text-[11px]">
               <span className="truncate font-semibold text-slate-900">{sprintTitle}</span>
               {sprintHeader.extra != null && sprintHeader.extra > 0 && (
@@ -3150,19 +3190,21 @@ export default function BoardPage(props: Props) {
               )}
             </div>
             </div>
+            {tableShown && (
             <button
               type="button"
-              title="Режим редактирования"
+              title="Редактировать таблицу"
               className={`inline-flex h-6 items-center gap-1 rounded-md border px-2 text-[11px] font-medium ${
                 reorderMode
                   ? 'border-slate-800 bg-slate-800 text-white'
                   : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
               }`}
-              onClick={() => setReorderMode((on) => !on)}
+              onClick={toggleEdit}
             >
-              <GearIcon className="h-3.5 w-3.5" />
-              Режим редактирования
+              <TableIcon className="h-3.5 w-3.5" />
+              Редактировать таблицу
             </button>
+            )}
             <div className="flex min-w-0 items-center justify-end gap-1">
               {boardScope === 'changes' && boardChanges.length > 0 && (
                 <InstantTip text="Пропустить изменения" className="inline-flex h-5 items-center">
@@ -3755,16 +3797,14 @@ export default function BoardPage(props: Props) {
 
         <DraftsSide
           open={draftsOpen || summaryOpen}
-          hidePanel={reorderMode}
+          hidePanel={false}
           summary={summaryOpen}
           width={panelWidth}
           flexWidth={panelFlex}
           onOpenChange={(open) => {
-            leaveReorder();
             setRightTool(open ? 'drafts' : 'off');
           }}
           onToggleSummary={() => {
-            leaveReorder();
             setRightTool(summaryOpen ? 'off' : 'summary');
           }}
           onResizeStart={startPanelResize}
@@ -3772,10 +3812,7 @@ export default function BoardPage(props: Props) {
           onSnapshotContentChange={props.onSnapshotContentChange}
           summaryPanel={summaryPanel}
           consoleOpen={consoleOpen}
-          onToggleConsole={() => {
-            leaveReorder();
-            setConsoleOpen((open) => !open);
-          }}
+          onToggleConsole={() => setConsoleOpen((open) => !open)}
         />
       </div>
       <ConsoleDock open={consoleOpen} height={consoleHeight} onHeight={setConsoleHeight} />
@@ -3880,6 +3917,8 @@ function uniqueIssueCount(
 function TasksDock(props: {
   selection: CellSelection | null;
   issues: TrackerIssue[];
+  people?: Developer[];
+  boards?: SavedBoard[];
   noteCount: number;
   bookmarkCount: number;
   noteFilter: boolean;
@@ -4014,7 +4053,7 @@ function TasksDock(props: {
         {!showingTodos && (
           <>
             <FilterIconButton
-              title={props.noteFilter ? 'Показать все задачи' : 'Только задачи с заметками'}
+              title={props.noteFilter ? 'Показать все задачи' : 'Только задачи с примечаниями'}
               active={props.noteFilter}
               pinned={props.notePinned}
               className={filterButtonClass(props.noteFilter, props.notePinned)}
@@ -4179,6 +4218,8 @@ function TasksDock(props: {
                   : null
               }
               columns={props.columns}
+              people={props.people}
+              boards={props.boards}
               issueNotes={props.sourceMatrix.issueNotes}
               issueNoteUpdatedAt={props.sourceMatrix.issueNoteUpdatedAt || {}}
               issueBookmarks={props.sourceMatrix.issueBookmarks || {}}
@@ -4375,7 +4416,7 @@ function DraftsSide(props: {
       >
         <RailButton
           place="left"
-          title="Черновики"
+          title="Заметки"
           pressed={draftsPressed}
           onClick={() => props.onOpenChange(props.summary ? true : !props.open)}
         >
