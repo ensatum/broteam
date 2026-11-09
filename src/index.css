@@ -266,19 +266,19 @@ body.bro-drag-col * {
 }
 
 .bro-change-beside .bro-change-tip {
-  transform: translateY(calc(0.875rem - var(--bro-digit, 1.75rem)));
+  transform: translateY(calc(20px - var(--bro-digit, 1.75rem)));
 }
 
 .bro-change-beside .bro-change-bell {
-  width: 0.875rem;
-  height: 0.875rem;
+  width: 20px;
+  height: 20px;
   margin: 0;
 }
 
 .bro-change-beside .bro-change-bell svg {
   display: block;
-  width: 0.625rem;
-  height: 0.625rem;
+  width: 12px;
+  height: 12px;
 }
 
 .bro-change-digit {
@@ -303,15 +303,15 @@ body.bro-drag-col * {
 }
 
 .bro-cell-mini .bro-change-bell {
-  width: 1rem;
-  height: 1rem;
+  width: 20px;
+  height: 20px;
   margin: 0;
   pointer-events: auto;
 }
 
 .bro-cell-mini .bro-change-bell svg {
-  width: 0.7rem;
-  height: 0.7rem;
+  width: 12px;
+  height: 12px;
 }
 
 .bro-cell-spacer {

@@ -7,7 +7,9 @@ export function columnRole(col: {
   statusKey?: string;
   statusDisplay?: string;
   columnName?: string;
+  duty?: string;
 }): ColumnRole {
+  if (col.duty === 'review' || col.duty === 'testing') return col.duty;
   const label = `${col.alias} ${col.statusDisplay || ''} ${col.statusKey || ''} ${col.columnName || ''}`;
   if (/\b(review|ревью)\b/i.test(label) || /inReview/i.test(col.statusKey || '')) {
     return 'review';

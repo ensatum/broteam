@@ -408,8 +408,19 @@ function persistCache(
   if (request.participant) saveSummaryCache(request.boardLocalId, request.participant.id, stored);
 }
 
+function roleOf(field: { id?: string; display?: string } | string | undefined): 'assignee' | 'qa' | 'reviewer' | 'status' | 'sprint' | '' {
+  const id = fieldId(field).toLowerCase();
+  const display = (typeof field === 'object' && field?.display ? field.display : '').toLowerCase();
+  const blob = `${id} ${display}`;
+  if (id === 'status' || display === 'статус') return 'status';
+  if (id === 'assignee' || display === 'исполнитель') return 'assignee';
+  if (id === 'sprint' || display === 'спринт') return 'sprint';
+  if (id === 'qa' || id === 'qaengineer' || /tester|тестиров|qaengineer/.test(blob)) return 'qa';
+  if (id === 'kodrevu' || id === 'reviewer' || id === 'codereview' || /ревью|reviewer|codereview|review/.test(blob)) return 'reviewer';
+  return '';
+}
+
 function slimEvent(event: TrackerChangelogEvent): TrackerChangelogEvent {
-  const keep = new Set(['status', 'assignee', 'qaEngineer', 'kodRevu', 'sprint']);
   return {
     updatedAt: event.updatedAt,
     updatedBy: event.updatedBy
@@ -425,8 +436,15 @@ function slimEvent(event: TrackerChangelogEvent): TrackerChangelogEvent {
       ? { added: event.comments.added.map(() => ({})) }
       : undefined,
     fields: (event.fields || [])
-      .filter((field) => keep.has(fieldId(field.field)))
-      .map((field) => ({ field: fieldId(field.field), to: slimValue(field.to) })),
+      .filter((field) => roleOf(field.field))
+      .map((field) => ({
+        field: {
+          id: fieldId(field.field),
+          display: typeof field.field === 'object' ? field.field.display : undefined,
+        },
+        from: slimValue(field.from),
+        to: slimValue(field.to),
+      })),
   };
 }
 
@@ -493,6 +511,14 @@ function interpretIssue(
   let finalStatusAt: string | null = null;
   let lastActivityAt = issue.updatedAt || issue.createdAt || null;
   const personLabel = (raw: string) => customPersonName(raw, developers);
+  const holds = (person: Developer, value: unknown) => {
+    if (matchesPerson(person, asPerson(value))) return true;
+    const display = valueDisplay(value);
+    if (!display) return false;
+    if (matchesPerson(person, { display })) return true;
+    const resolved = personLabel(display);
+    return Boolean(resolved) && resolved === person.displayName.trim();
+  };
 
   const noteRole = (role: 'assignee' | 'qa' | 'reviewer', name: string) => {
     const trimmed = name.trim();
@@ -525,8 +551,8 @@ function interpretIssue(
       statusSpans.push({ key: statusKey, display: statusDisplay, from: spanStart, to: nextAt });
     };
     for (const field of event.fields || []) {
-      const id = fieldId(field.field);
-      if (id === 'status') {
+      const role = roleOf(field.field);
+      if (role === 'status') {
         closeSpan(at);
         statusKey = valueKey(field.to) || statusKey;
         statusDisplay = valueDisplay(field.to) || statusDisplay;
@@ -535,12 +561,15 @@ function interpretIssue(
         const type = statusTypes.get(statusKey);
         if (type === 'done') finalStatusAt = event.updatedAt || finalStatusAt;
         if (!takenAt && isProgressStatus(statusKey, statusDisplay, type)) takenAt = event.updatedAt || null;
-      } else if (id === 'assignee') {
+      } else if (role === 'assignee') {
         assignee = personLabel(valueDisplay(field.to));
         noteRole('assignee', assignee);
-        const assigned = audience.filter((item) => matchesPerson(item, asPerson(field.to)));
-        if (at >= fromMs && at <= toMs) for (const item of assigned) touched.add(item.id);
-        if (focus && assigned.some((item) => item.id === focus.id)) {
+        const assigned = audience.filter((item) => holds(item, field.to) || holds(item, field.from));
+        if (at >= fromMs && at <= toMs) {
+          if (assigned.length) touchedInPeriod = true;
+          for (const item of assigned) touched.add(item.id);
+        }
+        if (focus && assigned.some((item) => item.id === focus.id && holds(item, field.to))) {
           wasAssignee = true;
           if (!receivedAt) {
             receivedAt = event.updatedAt || null;
@@ -548,18 +577,18 @@ function interpretIssue(
             receivedSprint = sprint;
           }
         }
-      } else if (id === 'qaEngineer') {
-        qa = personLabel(valueDisplay(field.to));
-        noteRole('qa', qa);
-        const tested = audience.filter((item) => matchesPerson(item, asPerson(field.to)));
-        if (at >= fromMs && at <= toMs) for (const item of tested) touched.add(item.id);
-      } else if (id === 'kodRevu') {
-        reviewer = personLabel(valueDisplay(field.to));
-        noteRole('reviewer', reviewer);
-        const reviewed = audience.filter((item) => matchesPerson(item, asPerson(field.to)));
-        if (at >= fromMs && at <= toMs) for (const item of reviewed) touched.add(item.id);
-        if (focus && reviewed.some((item) => item.id === focus.id)) wasReviewer = true;
-      } else if (id === 'sprint') {
+      } else if (role === 'qa' || role === 'reviewer') {
+        const label = personLabel(valueDisplay(field.to));
+        if (role === 'qa') qa = label;
+        else reviewer = label;
+        noteRole(role, label);
+        const involved = audience.filter((item) => holds(item, field.to) || holds(item, field.from));
+        if (at >= fromMs && at <= toMs) {
+          if (involved.length) touchedInPeriod = true;
+          for (const item of involved) touched.add(item.id);
+        }
+        if (role === 'reviewer' && focus && involved.some((item) => item.id === focus.id)) wasReviewer = true;
+      } else if (role === 'sprint') {
         sprint = valueDisplay(field.to);
         noteSprint(sprint);
       }
@@ -585,6 +614,26 @@ function interpretIssue(
       receivedAt = event.updatedAt || null;
       receivedStatus = statusDisplay;
       receivedSprint = sprint;
+    }
+  }
+  const movedInPeriod =
+    touchedInPeriod ||
+    ordered.some((event) => {
+      const at = stamp(event.updatedAt);
+      return at >= fromMs && at <= toMs;
+    }) ||
+    (stamp(issue.updatedAt || undefined) >= fromMs && stamp(issue.updatedAt || undefined) <= toMs);
+  if (movedInPeriod) {
+    for (const person of audience) {
+      if (holds(person, issue.reviewerDisplay)) {
+        touched.add(person.id);
+        touchedInPeriod = true;
+        if (focus && person.id === focus.id) wasReviewer = true;
+      }
+      if (holds(person, issue.qaDisplay)) {
+        touched.add(person.id);
+        touchedInPeriod = true;
+      }
     }
   }
   if (!touchedInPeriod) return null;
@@ -663,13 +712,13 @@ function describeSummaryAction(
   const type = (event.type || '').toLowerCase();
   if (added > 0 || type.includes('comment')) bits.push(added > 1 ? `Комментарии (${added})` : 'Комментарий');
   for (const field of event.fields || []) {
-    const id = fieldId(field.field);
+    const role = roleOf(field.field);
     const to = valueDisplay(field.to);
-    if (id === 'status') bits.push(`Статус ${to || '—'}`);
-    else if (id === 'assignee') bits.push(`Исполнитель ${personLabel(to) || '—'}`);
-    else if (id === 'qaEngineer') bits.push(`Тестировщик ${personLabel(to) || '—'}`);
-    else if (id === 'kodRevu') bits.push(`Ревьюер ${personLabel(to) || '—'}`);
-    else if (id === 'sprint') bits.push(`Спринт ${to || '—'}`);
+    if (role === 'status') bits.push(`Статус ${to || '—'}`);
+    else if (role === 'assignee') bits.push(`Исполнитель ${personLabel(to) || '—'}`);
+    else if (role === 'qa') bits.push(`Тестировщик ${personLabel(to) || '—'}`);
+    else if (role === 'reviewer') bits.push(`Ревьюер ${personLabel(to) || '—'}`);
+    else if (role === 'sprint') bits.push(`Спринт ${to || '—'}`);
   }
   if (bits.length) return bits.join(', ');
   return event.updatedAt ? 'Изменение' : '';

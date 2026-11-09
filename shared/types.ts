@@ -42,6 +42,9 @@ export type Developer = {
   hidden: boolean;
 };
 
+/** Optional column duty. Empty means the table infers it from the column name. */
+export type ColumnDuty = '' | 'review' | 'testing';
+
 export type BoardColumnConfig = {
   id: number;
   columnId: string;
@@ -54,6 +57,8 @@ export type BoardColumnConfig = {
   sortOrder: number;
   /** Local agile_boards.id. 0 = legacy rows before boards were split. */
   boardLocalId: number;
+  /** Тесты or Ревью. Empty leaves the missing-role icon on the name heuristic. */
+  duty: ColumnDuty;
 };
 
 export type SavedBoard = {

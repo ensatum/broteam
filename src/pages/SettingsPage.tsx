@@ -452,6 +452,7 @@ export default function SettingsPage(props: Props) {
             statusDisplay: status.display,
             alias: shortAlias(status.display || col.name),
             color: COLUMN_COLORS[colorIdx % COLUMN_COLORS.length],
+            duty: '',
             enabled: true,
             sortOrder: mapped.length,
             boardLocalId: localId,
@@ -487,8 +488,15 @@ export default function SettingsPage(props: Props) {
       const withDraftEdits = (columns: BoardColumnConfig[]) =>
         columns.map((column) => {
           const edited = draftByKey.get(`${column.boardLocalId}:${column.statusKey}`);
-          if (!edited || (edited.alias === column.alias && edited.color === column.color)) return column;
-          return { ...column, alias: edited.alias, color: edited.color };
+          if (
+            !edited ||
+            (edited.alias === column.alias &&
+              edited.color === column.color &&
+              (edited.duty || '') === (column.duty || ''))
+          ) {
+            return column;
+          }
+          return { ...column, alias: edited.alias, color: edited.color, duty: edited.duty };
         });
       if (sameColumnStructure(savedForBoard, ordered)) {
         setColDraft((prev) => [
@@ -1022,6 +1030,21 @@ export default function SettingsPage(props: Props) {
                             setColDraft(next);
                           }}
                         />
+                        <select
+                          className="h-8 w-24 shrink-0 rounded border border-slate-300 bg-white px-1 text-xs text-slate-700"
+                          value={c.duty || ''}
+                          title="Тег колонки"
+                          onChange={(e) => {
+                            const duty = e.target.value === 'review' || e.target.value === 'testing' ? e.target.value : '';
+                            const next = [...colDraft];
+                            next[index] = { ...c, duty };
+                            setColDraft(next);
+                          }}
+                        >
+                          <option value="">Без тега</option>
+                          <option value="testing">Тесты</option>
+                          <option value="review">Ревью</option>
+                        </select>
                         <div className="min-w-0 flex-1 truncate text-slate-600" title={`${c.columnName} / ${c.statusDisplay}`}>
                           {c.columnName} → {c.statusDisplay}{' '}
                           <span className="text-xs">({c.statusKey})</span>

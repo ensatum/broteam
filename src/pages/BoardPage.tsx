@@ -3788,15 +3788,17 @@ function scopeBadgeClass(active: boolean, idle: string, on: string): string {
   return `inline-flex h-5 items-center gap-0.5 rounded px-1.5 text-[10px] font-semibold leading-none tabular-nums ${active ? on : idle}`;
 }
 
+const BELL_STEPS = [
+  { backgroundColor: '#f7e9a0', color: 'rgb(220 137 11 / 0.8)' },
+  { backgroundColor: '#f3d97a', color: 'rgb(207 128 1 / 0.8)' },
+  { backgroundColor: '#efc258', color: 'rgb(207 98 1 / 0.85)' },
+  { backgroundColor: '#e9bd87', color: 'rgb(200 69 41 / 0.9)' },
+  { backgroundColor: '#f3b5aa', color: '#a82733' },
+] as const;
+
 function changeBellStyle(count: number): CSSProperties {
-  const t = Math.max(0, Math.min(1, ((count || 1) - 1) * 0.2));
-  const mix = (from: number, to: number) => Math.round(from + (to - from) * t);
-  const rgb = (a: [number, number, number], b: [number, number, number]) =>
-    `rgb(${mix(a[0], b[0])}, ${mix(a[1], b[1])}, ${mix(a[2], b[2])})`;
-  return {
-    color: rgb([255, 146, 87], [96, 39, 11]),
-    backgroundColor: rgb([249, 249, 199], [255, 146, 87]),
-  };
+  const index = Math.min(BELL_STEPS.length, Math.max(1, count || 1)) - 1;
+  return BELL_STEPS[index];
 }
 
 function ChangeBell(props: { show: boolean; count: number; heat?: number; onClick?: () => void }) {
@@ -4234,10 +4236,7 @@ const modeIcon = {
 function FeatherMaximizeIcon() {
   return (
     <svg {...modeIcon}>
-      <polyline points="15 3 21 3 21 9" />
-      <polyline points="9 21 3 21 3 15" />
-      <line x1="21" y1="3" x2="14" y2="10" />
-      <line x1="3" y1="21" x2="10" y2="14" />
+      <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
     </svg>
   );
 }
@@ -4245,10 +4244,7 @@ function FeatherMaximizeIcon() {
 function FeatherMinimizeIcon() {
   return (
     <svg {...modeIcon}>
-      <polyline points="4 14 10 14 10 20" />
-      <polyline points="20 10 14 10 14 4" />
-      <line x1="14" y1="10" x2="21" y2="3" />
-      <line x1="3" y1="21" x2="10" y2="14" />
+      <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
     </svg>
   );
 }

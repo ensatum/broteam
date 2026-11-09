@@ -235,6 +235,11 @@ function migratePeopleAndBoards(database: Database.Database): void {
     `);
   }
 
+  const dutyCols = database.prepare(`PRAGMA table_info(board_columns)`).all() as Array<{ name: string }>;
+  if (!dutyCols.some((column) => column.name === 'duty')) {
+    database.exec(`ALTER TABLE board_columns ADD COLUMN duty TEXT NOT NULL DEFAULT ''`);
+  }
+
   const boardCols = database.prepare(`PRAGMA table_info(agile_boards)`).all() as Array<{ name: string }>;
   if (!boardCols.some((column) => column.name === 'alias')) {
     database.exec(`ALTER TABLE agile_boards ADD COLUMN alias TEXT NOT NULL DEFAULT ''`);
@@ -717,13 +722,14 @@ export function listColumns(): BoardColumnConfig[] {
       `SELECT id, column_id as columnId, column_name as columnName,
               status_key as statusKey, status_display as statusDisplay,
               alias, color, enabled, sort_order as sortOrder,
-              board_local_id as boardLocalId
+              board_local_id as boardLocalId, duty
        FROM board_columns ORDER BY sort_order ASC, id ASC`,
     )
     .all()
     .map((row) => {
-      const raw = row as Omit<BoardColumnConfig, 'enabled'> & { enabled: number };
-      return { ...raw, enabled: Boolean(raw.enabled), boardLocalId: raw.boardLocalId || 0 };
+      const raw = row as Omit<BoardColumnConfig, 'enabled' | 'duty'> & { enabled: number; duty: string | null };
+      const duty = raw.duty === 'review' || raw.duty === 'testing' ? raw.duty : '';
+      return { ...raw, duty, enabled: Boolean(raw.enabled), boardLocalId: raw.boardLocalId || 0 };
     });
 }
 
@@ -735,10 +741,11 @@ export function replaceColumns(
     database.prepare('DELETE FROM board_columns').run();
     const insert = database.prepare(
       `INSERT INTO board_columns(
-         column_id, column_name, status_key, status_display, alias, color, enabled, sort_order, board_local_id
-       ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         column_id, column_name, status_key, status_display, alias, color, enabled, sort_order, board_local_id, duty
+       ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const [index, c] of columns.entries()) {
+      const duty = c.duty === 'review' || c.duty === 'testing' ? c.duty : '';
       insert.run(
         c.columnId,
         c.columnName,
@@ -749,6 +756,7 @@ export function replaceColumns(
         c.enabled ? 1 : 0,
         c.sortOrder ?? index,
         c.boardLocalId || 0,
+        duty,
       );
     }
   });

@@ -949,6 +949,18 @@ export function heatStyle(count: number): CSSProperties {
   } as CSSProperties;
 }
 
+/** Filled missing-role mark: danger from the first task, twice as visible, darker toward #991111. */
+export function dangerHeatStyle(count: number): CSSProperties {
+  const steps = Math.max(0, (count || 1) - 1);
+  const t = Math.max(0, Math.min(1, steps * 0.2));
+  const mix = (from: number, to: number) => Math.round(from + (to - from) * t);
+  const ordinary = 0.35 + 0.65 * t;
+  return {
+    color: `rgb(${mix(185, 153)}, ${mix(28, 17)}, ${mix(28, 17)})`,
+    ['--bro-heat' as string]: String(Math.min(1, ordinary * 2)),
+  } as CSSProperties;
+}
+
 /** Missing reviewer (shield) or tester (user-check). Faded until hover, then fully opaque. */
 export function MissingRoleMark({
   kind,
@@ -1168,7 +1180,7 @@ export function CellBadgeStack(props: {
         key="R"
         title="Есть задачи без ревьюера"
         className={`bro-heat-mark hover:brightness-75 ${model.reviewerFilled ? '[&_svg]:fill-current' : ''}`}
-        style={heatStyle(model.reviewerCount || 1)}
+        style={model.reviewerFilled ? dangerHeatStyle(model.reviewerCount || 1) : heatStyle(model.reviewerCount || 1)}
         onClick={() => pick('reviewer')}
       >
         <ShieldIcon className="bro-role-icon h-3.5 w-3.5" />
@@ -1181,7 +1193,7 @@ export function CellBadgeStack(props: {
         key="T"
         title="Есть задачи без тестировщика"
         className={`bro-heat-mark hover:brightness-75 ${model.testerFilled ? '[&_svg]:fill-current' : ''}`}
-        style={heatStyle(model.testerCount || 1)}
+        style={model.testerFilled ? dangerHeatStyle(model.testerCount || 1) : heatStyle(model.testerCount || 1)}
         onClick={() => pick('tester')}
       >
         <UserCheckIcon className="bro-role-icon h-3.5 w-3.5" />
@@ -1231,14 +1243,24 @@ export function CellBadgeStack(props: {
   }
   if (model.missingReviewer) {
     micro.push(
-      <span key="R" title="Есть задачи без ревьюера" className={roleToneClass(model.reviewerTone)}>
+      <span
+        key="R"
+        title="Есть задачи без ревьюера"
+        className={model.reviewerFilled ? 'bro-heat-mark [&_svg]:fill-current' : roleToneClass(model.reviewerTone)}
+        style={model.reviewerFilled ? dangerHeatStyle(model.reviewerCount || 1) : undefined}
+      >
         <ShieldIcon className="h-2 w-2" />
       </span>,
     );
   }
   if (model.missingTester) {
     micro.push(
-      <span key="T" title="Есть задачи без тестировщика" className={roleToneClass(model.testerTone)}>
+      <span
+        key="T"
+        title="Есть задачи без тестировщика"
+        className={model.testerFilled ? 'bro-heat-mark [&_svg]:fill-current' : roleToneClass(model.testerTone)}
+        style={model.testerFilled ? dangerHeatStyle(model.testerCount || 1) : undefined}
+      >
         <UserCheckIcon className="h-2 w-2" />
       </span>,
     );
