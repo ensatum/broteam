@@ -9,7 +9,7 @@ import type {
   SummaryShuffle,
   SummarySlice,
 } from '../shared/summary';
-import { TrackerClient, buildIssuesQuery, type TrackerChangelogEvent } from './tracker';
+import { TrackerClient, buildIssuesQuery, isReactionComment, type TrackerChangelogEvent, type TrackerComment } from './tracker';
 import { trackerActivity } from './trackerActivity';
 import {
   getConnection,
@@ -96,6 +96,88 @@ export async function buildSummaryReport(
     requests: trackerActivity().total,
     rows,
   };
+}
+
+export async function refreshSummaryIssue(
+  request: SummaryBuildRequest,
+  issueKey: string,
+  boardLocalId: number,
+): Promise<SummaryRow | null> {
+  const connection = getConnection();
+  if (!connection.token) throw new Error('Не задан токен Tracker.');
+  const client = new TrackerClient(connection);
+  const developers = listDevelopers();
+  const statusTypes = await client.listStatusTypeMap().catch(() => new Map<string, string>());
+  const issue = await client.getIssue(issueKey);
+  const events = (await client.getChangelog(issueKey)).map(slimEvent);
+  const comments = await client.listIssueComments(issueKey);
+  const stored = getSummarySource(boardLocalId);
+  const bounds = periodWindow(request.period);
+  const payload: SummaryCachePayload = stored
+    ? (JSON.parse(stored.payload) as SummaryCachePayload)
+    : { issues: [], events: {}, statusTypes: [...statusTypes.entries()] };
+  const snap = snapshotIssue({
+    key: issue.key,
+    summary: issue.summary,
+    url: issue.url,
+    statusKey: issue.statusKey,
+    statusDisplay: issue.statusDisplay,
+    statusStartTime: issue.statusStartTime,
+    assigneeDisplay: issue.assigneeDisplay,
+    reviewerDisplay: issue.reviewerDisplay,
+    qaDisplay: issue.qaDisplay,
+    authorDisplay: issue.authorDisplay,
+    createdAt: issue.createdAt,
+    updatedAt: issue.updatedAt,
+    sprintName: issue.sprintName,
+  });
+  const index = payload.issues.findIndex((item) => item.key === issueKey);
+  if (index >= 0) payload.issues[index] = snap;
+  else payload.issues.push(snap);
+  payload.events[issueKey] = events;
+  if (!payload.statusTypes?.length) payload.statusTypes = [...statusTypes.entries()];
+  saveSummarySource(boardLocalId, {
+    formedAt: stored?.formedAt || new Date().toISOString(),
+    fromIso: stored?.fromIso || bounds.fromIso,
+    toIso: stored?.toIso || bounds.toIso,
+    requests: stored?.requests || trackerActivity().total,
+    payload: JSON.stringify(payload),
+  });
+  const origin = (request.boards || []).find((board) => board.boardLocalId === boardLocalId);
+  const row = interpretIssue(
+    snap,
+    events,
+    { ...request, participant: null },
+    new Map(payload.statusTypes),
+    stored?.fromIso || bounds.fromIso,
+    stored?.toIso || bounds.toIso,
+    developers,
+    origin,
+  );
+  if (!row) return null;
+  return applyCommentMarks(row, comments, developers);
+}
+
+function applyCommentMarks(row: SummaryRow, comments: TrackerComment[], developers: Developer[]): SummaryRow {
+  const lastById = { ...(row.lastById || {}) };
+  let lastActionAt = row.lastActionAt;
+  let lastActionText = row.lastActionText;
+  for (const comment of comments) {
+    if (isReactionComment(comment.text, comment.type)) continue;
+    const at = Date.parse(comment.createdAt || '');
+    if (!Number.isFinite(at) || !comment.createdAt) continue;
+    const who = developers.filter((person) => matchesPerson(person, comment.createdBy || null));
+    for (const person of who) {
+      const key = String(person.id);
+      const prev = lastById[key];
+      if (!prev || at >= stamp(prev.at)) lastById[key] = { at: comment.createdAt, text: 'Комментарий' };
+    }
+    if (!lastActionAt || at >= stamp(lastActionAt)) {
+      lastActionAt = comment.createdAt;
+      lastActionText = 'Комментарий';
+    }
+  }
+  return { ...row, lastById, lastActionAt, lastActionText };
 }
 
 export function sliceStoredSummary(request: SummaryBuildRequest): SummarySlice | null {
@@ -287,7 +369,11 @@ function sliceBoards(boards: SummaryBoardRef[], request: SummaryBuildRequest): S
       rememberIssue(placed, issue, board, boards);
       const kept = placed.get(issue.key);
       if (!kept) continue;
-      const events = payload.events[issue.key] || merged.get(issue.key)?.events || [];
+      const prev = merged.get(issue.key);
+      const eventsHere = payload.events[issue.key];
+      const fromSource = kept.board.boardLocalId === board.boardLocalId;
+      const events =
+        fromSource && eventsHere ? eventsHere : !prev?.events?.length && eventsHere ? eventsHere : prev?.events || eventsHere || [];
       merged.set(issue.key, { issue: kept.issue, board: kept.board, events });
     }
   }
@@ -433,7 +519,19 @@ function slimEvent(event: TrackerChangelogEvent): TrackerChangelogEvent {
       : null,
     type: event.type,
     comments: event.comments?.added?.length
-      ? { added: event.comments.added.map(() => ({})) }
+      ? {
+          added: event.comments.added.map((item) => ({
+            id: item.id,
+            createdBy: item.createdBy
+              ? {
+                  id: item.createdBy.id,
+                  display: item.createdBy.display,
+                  login: item.createdBy.login,
+                  passportUid: item.createdBy.passportUid,
+                }
+              : undefined,
+          })),
+        }
       : undefined,
     fields: (event.fields || [])
       .filter((field) => roleOf(field.field))
@@ -663,20 +761,34 @@ function interpretIssue(
     const reaction = eventType.includes('reaction') || eventType.includes('emoji');
     const commented =
       !reaction && (eventType.includes('comment') || Boolean(event.comments?.added?.length));
+    const commentPeople = commented
+      ? audience.filter(
+          (item) =>
+            matchesPerson(item, event.updatedBy || null) ||
+            (event.comments?.added || []).some((comment) => matchesPerson(item, comment.createdBy || null)),
+        )
+      : [];
     const addedComments = Math.max(event.comments?.added?.length || 0, commented ? 1 : 0);
     if (addedComments) {
       commentTotal += addedComments;
-      for (const item of matchedNow) {
+      for (const item of commentPeople) {
         const key = String(item.id);
         commentsById[key] = (commentsById[key] || 0) + addedComments;
       }
     }
-    if (byPerson && commented && Number.isFinite(at)) comments.push(at);
+    if (commentPeople.length && commented && Number.isFinite(at)) comments.push(at);
     const actionText = describeSummaryAction(event, personLabel);
-    if (actionText && event.updatedAt && at >= stamp(lastActionAt || undefined)) {
-      lastActionAt = event.updatedAt;
-      lastActionText = actionText;
-      for (const item of matchedNow) lastById[String(item.id)] = { at: event.updatedAt, text: actionText };
+    if (actionText && event.updatedAt && Number.isFinite(at)) {
+      if (!lastActionAt || at >= stamp(lastActionAt)) {
+        lastActionAt = event.updatedAt;
+        lastActionText = actionText;
+      }
+      const actors = commented ? commentPeople : matchedNow;
+      for (const item of actors) {
+        const key = String(item.id);
+        const prev = lastById[key];
+        if (!prev || at >= stamp(prev.at)) lastById[key] = { at: event.updatedAt, text: actionText };
+      }
     }
     if (byPerson && !receivedAt && Number.isFinite(at)) {
       receivedAt = event.updatedAt || null;

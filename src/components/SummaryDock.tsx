@@ -25,10 +25,12 @@ import {
   EyeIcon,
   HashIcon,
   NoteClipboardButton,
+  RefreshIcon,
   UsersIcon,
   XIcon,
 } from './Icons';
 import { CopyIssueButton } from './IssuePanel';
+import { LoadBar } from './LoadBar';
 import { RunSpinner } from './ApiRunControls';
 import { InstantTip } from './InstantTip';
 import { SortMenu, type ListSortDir } from './ListSort';
@@ -264,7 +266,24 @@ export default function SummaryDock(props: {
     };
   }
 
+  const [refreshingKey, setRefreshingKey] = useState<string | null>(null);
   const personName = (selected?.displayName || selected?.login || '').trim();
+
+  async function refreshRow(row: SummaryRow) {
+    const boardLocalId = row.boardLocalId ?? props.boardLocalId;
+    const request = summaryRequest();
+    if (boardLocalId == null || !request) return;
+    setRefreshingKey(row.key);
+    setError(null);
+    try {
+      const next = await window.api.refreshSummaryIssue(request, row.key, boardLocalId);
+      if (next) setRows((prev) => prev.map((item) => (item.key === row.key ? next : item)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRefreshingKey((current) => (current === row.key ? null : current));
+    }
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white">
@@ -433,6 +452,8 @@ export default function SummaryDock(props: {
               note={issueNotes[row.key] || ''}
               onToggle={toggle}
               onHover={props.onIssueHover}
+              refreshing={refreshingKey === row.key}
+              onRefresh={() => void refreshRow(row)}
               onNoteSave={(body) => {
                 setIssueNotes((prev) => ({ ...prev, [row.key]: body }));
                 if (props.boardLocalId == null || props.personId == null) return;
@@ -850,6 +871,8 @@ function SummaryCard(props: {
   note: string;
   onToggle: () => void;
   onHover: (issueKey: string | null, boardLocalId: number | null) => void;
+  refreshing: boolean;
+  onRefresh: () => void;
   onNoteSave: (body: string) => void;
 }) {
   const { row } = props;
@@ -859,13 +882,40 @@ function SummaryCard(props: {
   const taken = row.takenAt || row.receivedAt;
   const sprints = sprintNames(row);
   const [editingNote, setEditingNote] = useState(false);
+  const [story, setStory] = useState<{
+    description: string;
+    commentText: string;
+    commentUrl: string;
+    commentAuthor: string;
+    commentAt: string;
+  } | null>(null);
+  const [storyBusy, setStoryBusy] = useState(false);
+  const [storyPart, setStoryPart] = useState<'description' | 'comment' | null>(null);
+  const [storyFailed, setStoryFailed] = useState(false);
   useEffect(() => {
     if (!props.open) setEditingNote(false);
   }, [props.open]);
+  async function loadStory(part: 'description' | 'comment') {
+    if (storyPart === part) {
+      setStoryPart(null);
+      return;
+    }
+    setStoryPart(part);
+    if (story || storyBusy) return;
+    setStoryBusy(true);
+    setStoryFailed(false);
+    try {
+      setStory(await window.api.getIssueStory(row.key));
+    } catch {
+      setStoryFailed(true);
+    } finally {
+      setStoryBusy(false);
+    }
+  }
   const showNote = props.open && (editingNote || Boolean(props.note.trim()));
   return (
     <div
-      className={`relative shrink-0 cursor-pointer overflow-hidden rounded border py-1 pl-2 pr-2 hover:bg-slate-50 ${FRAME_CLASS[props.frame]}`}
+      className={`relative shrink-0 cursor-pointer overflow-hidden rounded border hover:bg-slate-50 ${FRAME_CLASS[props.frame]}`}
       onClick={props.onToggle}
       onMouseEnter={() => props.onHover(row.key, row.boardLocalId ?? null)}
       onMouseLeave={() => props.onHover(null, null)}
@@ -873,7 +923,7 @@ function SummaryCard(props: {
       {props.authored && (
         <span title="Автор" className="absolute inset-y-0 left-0 w-1.5 bg-emerald-500" aria-hidden />
       )}
-      <div className="flex items-center gap-1.5">
+      <div className={`flex items-center gap-1.5 px-2 py-1 ${props.open ? 'border-b border-slate-200 bg-slate-50' : ''}`}>
         <InstantTip text={row.currentStatus || '—'} className="inline-flex shrink-0 items-center">
           <span className="h-2 w-2 rounded-full" style={{ backgroundColor: props.color }} />
         </InstantTip>
@@ -904,6 +954,18 @@ function SummaryCard(props: {
         </span>
         <CopyIssueButton issueKey={row.key} url={row.url} summary={row.summary} />
         <span className="min-w-0 flex-1" />
+        <button
+          type="button"
+          title="Обновить задачу"
+          disabled={props.refreshing}
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-white hover:text-slate-700 disabled:text-slate-300"
+          onClick={(event) => {
+            event.stopPropagation();
+            props.onRefresh();
+          }}
+        >
+          <RefreshIcon className={`h-3.5 w-3.5 ${props.refreshing ? 'animate-spin' : ''}`} />
+        </button>
         <NoteClipboardButton
           hasNote={Boolean(props.note.trim())}
           onClick={(event) => {
@@ -914,7 +976,7 @@ function SummaryCard(props: {
         />
       </div>
       {!props.open && (
-        <div className="mt-0.5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1 pl-3.5 text-[10px] text-slate-500">
+        <div className="mt-0.5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1 px-2 pb-1 pl-5 text-[10px] text-slate-500">
           <CollapsedRole role="Исполнитель" current={assigneeRole.current} past={assigneeRole.past} selected={props.personName} />
           <span className="text-slate-300" aria-hidden>·</span>
           <CollapsedRole role="Ревьюер" current={reviewerRole.current} past={reviewerRole.past} selected={props.personName} />
@@ -927,7 +989,12 @@ function SummaryCard(props: {
         </div>
       )}
       {props.open && (
-        <div className="mt-1 text-[11px] text-slate-700" onClick={(event) => event.stopPropagation()}>
+        <div className="mt-1 px-2 pb-1 text-[11px] text-slate-700" onClick={(event) => event.stopPropagation()}>
+          {props.refreshing && (
+            <div className="mb-2 pl-3.5">
+              <LoadBar label="Обновление задачи…" />
+            </div>
+          )}
           <div className="flex items-start justify-between gap-3 pl-3.5">
             <div className="min-w-0 space-y-0.5">
               <RoleLine label="Исполнитель" current={assigneeRole.current} past={assigneeRole.past} selected={props.personName} />
@@ -954,23 +1021,7 @@ function SummaryCard(props: {
             </div>
           </div>
           {row.columns.length > 0 && (
-            <div className="mt-2.5 mb-2.5 px-6">
-              <table className="w-full text-[11px] leading-snug">
-                <tbody>
-                  {row.columns.map((column, index) => {
-                    const stripe = index % 2 === 1 ? 'bg-slate-100' : '';
-                    return (
-                      <tr key={column.statusKey || column.label} className={timeClass(row, column.kind)}>
-                        <td className={`${stripe} py-0.5 pl-2.5 text-left`}>{column.label}</td>
-                        <td className={`${stripe} py-0.5 pr-2.5 text-right whitespace-nowrap`}>
-                          {formatStay(column, props.personId, props.personRole)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <SummaryHours row={row} personId={props.personId} personRole={props.personRole} />
           )}
           {sprints.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-1 pl-3.5">
@@ -982,6 +1033,65 @@ function SummaryCard(props: {
             </div>
           )}
           <TaskActivity row={row} personId={props.personId} />
+          <div className="mt-2 flex gap-1 pl-3.5">
+            <button
+              type="button"
+              className={`rounded border px-1.5 py-0.5 text-[10px] ${storyPart === 'description' ? 'border-slate-400 bg-white' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-white'}`}
+              onClick={() => void loadStory('description')}
+            >
+              Описание
+            </button>
+            <button
+              type="button"
+              className={`rounded border px-1.5 py-0.5 text-[10px] ${storyPart === 'comment' ? 'border-slate-400 bg-white' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-white'}`}
+              onClick={() => void loadStory('comment')}
+            >
+              Последний комментарий
+            </button>
+          </div>
+          {storyBusy && storyPart && (
+            <div className="mt-2 pl-3.5">
+              <LoadBar label={storyPart === 'description' ? 'Загрузка описания…' : 'Загрузка последнего комментария…'} />
+            </div>
+          )}
+          {storyFailed && storyPart && <div className="mt-1 pl-3.5 text-slate-400">Не загрузилось</div>}
+          {story && storyPart === 'description' && (
+            <div className="mt-2 pl-3.5">
+              {story.description ? (
+                <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(story.description) }} />
+              ) : (
+                <div className="text-slate-400">Нет описания</div>
+              )}
+            </div>
+          )}
+          {story && storyPart === 'comment' && (
+            <div className="mt-2 ml-3.5 rounded border border-amber-200/80 bg-[#fffbeb] px-2 py-1.5">
+              {story.commentText ? (
+                <>
+                  <a
+                    href={story.commentUrl}
+                    className="text-[10px] font-medium text-sky-700 hover:underline"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      void window.api.openExternal(story.commentUrl);
+                    }}
+                  >
+                    Последний комментарий
+                  </a>
+                  {(story.commentAuthor || story.commentAt) && (
+                    <div className="text-[10px] text-slate-500">
+                      {[story.commentAuthor, story.commentAt ? new Date(story.commentAt).toLocaleString('ru-RU') : '']
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
+                  )}
+                  <div className="markdown-body mt-0.5" dangerouslySetInnerHTML={{ __html: renderMarkdown(story.commentText) }} />
+                </>
+              ) : (
+                <div className="text-slate-400">Нет комментария</div>
+              )}
+            </div>
+          )}
         </div>
       )}
       {showNote && (
@@ -1430,24 +1540,55 @@ function dayOf(iso: string | null | undefined): string {
   return '—';
 }
 
-function formatHours(ms: number): string {
-  const hours = Math.max(0, Math.round(ms / 3_600_000));
-  const days = Math.floor(hours / 24);
-  return `${days} дней ${hours - days * 24} часов`;
+function hourCount(ms: number): string {
+  const hours = Math.max(0, ms / 3_600_000);
+  const rounded = Math.round(hours * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1).replace('.', ',');
 }
 
-function formatStay(
+function stayHours(
   column: SummaryRow['columns'][number],
   personId: number | null,
   role: Developer['role'] | null,
-): string {
-  const total = formatHours(column.ms);
-  if (personId == null) return total;
+): { own: string; total: string; split: boolean } {
+  const total = hourCount(column.ms);
+  if (personId == null) return { own: total, total, split: false };
   const bucket = role === 'qa' ? column.byQa : column.byAssignee;
-  if (!bucket) return total;
-  const own = bucket[String(personId)] || 0;
-  if (own === column.ms) return total;
-  return `${formatHours(own)} (${total})`;
+  if (!bucket) return { own: total, total, split: false };
+  return { own: hourCount(bucket[String(personId)] || 0), total, split: true };
+}
+
+function SummaryHours(props: { row: SummaryRow; personId: number | null; personRole: Developer['role'] | null }) {
+  const parts = props.row.columns.map((column) => stayHours(column, props.personId, props.personRole));
+  const split = parts.some((item) => item.split);
+  return (
+    <div className="my-2.5 px-6">
+      <table className="w-full text-[11px] leading-snug">
+        <thead>
+          <tr className="text-[10px] font-medium text-slate-400">
+            <th className="py-0.5 pl-2.5 text-left font-medium">Статус</th>
+            <th className="py-0.5 pr-2.5 text-right font-medium">Часов</th>
+            {split && <th className="py-0.5 pr-2.5 text-right font-medium">Часов (общее)</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {props.row.columns.map((column, index) => {
+            const stripe = index % 2 === 1 ? 'bg-slate-100' : '';
+            const time = parts[index];
+            return (
+              <tr key={column.statusKey || column.label} className={timeClass(props.row, column.kind)}>
+                <td className={`${stripe} py-0.5 pl-2.5 text-left`}>{column.label}</td>
+                <td className={`${stripe} py-0.5 pr-2.5 text-right font-medium tabular-nums`}>{time.own}</td>
+                {split && (
+                  <td className={`${stripe} py-0.5 pr-2.5 text-right tabular-nums text-slate-400`}>{time.total}</td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function personOnRow(row: SummaryRow, person: Developer): boolean {

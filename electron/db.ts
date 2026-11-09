@@ -375,6 +375,15 @@ export function writeRightTool(tool: unknown): RightTool {
   return next;
 }
 
+export function readCloseToTray(): boolean {
+  return getSetting('closeToTray') === '1';
+}
+
+export function writeCloseToTray(value: boolean): boolean {
+  setSetting('closeToTray', value ? '1' : '0');
+  return value;
+}
+
 export function readApiDayCount(): { date: string; total: number } {
   const raw = getSetting('apiDayCount');
   if (!raw) return { date: '', total: 0 };

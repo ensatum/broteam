@@ -608,6 +608,7 @@ export default function SettingsPage(props: Props) {
           </label>
           <AppUpdateButton />
         </div>
+        <CloseToTraySetting />
       </SettingsSection>
       )}
 
@@ -1468,6 +1469,28 @@ function BackupChecks(props: {
         );
       })}
     </div>
+  );
+}
+
+function CloseToTraySetting() {
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    void window.api.getCloseToTray().then(setEnabled).catch(() => {});
+  }, []);
+  return (
+    <label className="mt-3 flex max-w-xl items-start gap-2 text-sm text-slate-700">
+      <input
+        type="checkbox"
+        className="mt-0.5"
+        checked={enabled}
+        onChange={(event) => {
+          const next = event.target.checked;
+          setEnabled(next);
+          void window.api.setCloseToTray(next);
+        }}
+      />
+      <span>Сворачивать в трей при закрытии окна. Полностью выйти можно из меню иконки в трее.</span>
+    </label>
   );
 }
 

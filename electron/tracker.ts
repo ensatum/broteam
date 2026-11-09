@@ -25,6 +25,7 @@ type RequestOptions = {
   retries?: number;
   /** Abort the attempt so a stuck Tracker call cannot hang the UI. */
   timeoutMs?: number;
+  meta?: { totalPages?: number };
 };
 
 const BOARD_LOOKUP_TIMEOUT_MS = 12_000;
@@ -137,6 +138,10 @@ export class TrackerClient {
         });
         mark(response.status);
         if (response.ok) {
+          if (options.meta) {
+            const pages = Number(response.headers.get('x-total-pages'));
+            if (Number.isFinite(pages) && pages > 0) options.meta.totalPages = pages;
+          }
           if (response.status === 204) return undefined as T;
           return (await response.json()) as T;
         }
@@ -508,22 +513,8 @@ export class TrackerClient {
     commentAt: string;
   }> {
     const issue = await this.request<{ description?: string }>(`/v2/issues/${issueId}`);
-    const comments: Array<{
-      id?: string | number;
-      longId?: string;
-      text?: string;
-      createdAt?: string;
-      type?: string;
-      createdBy?: { display?: string };
-    }> = [];
-    for (let page = 1; page <= 6; page += 1) {
-      const batch = await this.request<typeof comments>(`/v2/issues/${issueId}/comments`, {
-        query: { perPage: 50, page },
-      });
-      comments.push(...(batch || []));
-      if (!batch || batch.length < 50) break;
-    }
-    const last = [...comments].reverse().find((item) => !isReactionComment(item.text, item.type));
+    const comments = await this.listIssueComments(issueId);
+    const last = newestComment(comments);
     const commentId = last?.longId || (last?.id != null ? String(last.id) : '');
     const base = `https://tracker.yandex.ru/${issueId}`;
     return {
@@ -533,6 +524,10 @@ export class TrackerClient {
       commentAuthor: last?.createdBy?.display || '',
       commentAt: last?.createdAt || '',
     };
+  }
+
+  async listIssueComments(issueId: string): Promise<TrackerComment[]> {
+    return this.paged<TrackerComment>(`/v2/issues/${encodeURIComponent(issueId)}/comments`, 20);
   }
 
   async getTransitions(issueId: string): Promise<
@@ -565,18 +560,67 @@ export class TrackerClient {
   }
 
   async getChangelog(issueKey: string): Promise<TrackerChangelogEvent[]> {
-    const events: TrackerChangelogEvent[] = [];
-    for (let page = 1; page <= 6; page += 1) {
-      const batch = await this.request<TrackerChangelogEvent[]>(
-        `/v2/issues/${encodeURIComponent(issueKey)}/changelog`,
-        { query: { perPage: 50, page }, retries: 5 },
-      );
-      events.push(...(batch || []));
-      if (!batch || batch.length < 50) break;
-      await pauseableWait(200);
-    }
-    return events;
+    const events = await this.paged<TrackerChangelogEvent>(
+      `/v2/issues/${encodeURIComponent(issueKey)}/changelog`,
+      30,
+    );
+    const seen = new Set<string>();
+    return events.filter((event) => {
+      const key = `${event.id || ''}|${event.updatedAt || ''}|${event.type || ''}|${event.comments?.added?.length || 0}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
+
+  private async paged<T>(path: string, cap: number): Promise<T[]> {
+    const meta: { totalPages?: number } = {};
+    const first = await this.request<T[]>(path, { query: { perPage: 50, page: 1 }, retries: 5, meta });
+    const items = [...(first || [])];
+    const total = meta.totalPages && meta.totalPages > 0 ? meta.totalPages : first && first.length === 50 ? cap : 1;
+    const pages: number[] = [];
+    if (total <= cap) {
+      for (let page = 2; page <= total; page += 1) pages.push(page);
+    } else {
+      for (let page = 2; page <= 6; page += 1) pages.push(page);
+      for (let page = Math.max(7, total - (cap - 6)); page <= total; page += 1) pages.push(page);
+    }
+    for (const page of pages) {
+      const batch = await this.request<T[]>(path, { query: { perPage: 50, page }, retries: 5 });
+      items.push(...(batch || []));
+      if (!batch || batch.length < 50) break;
+      await pauseableWait(120);
+    }
+    return items;
+  }
+}
+
+export type TrackerComment = {
+  id?: string | number;
+  longId?: string;
+  text?: string;
+  createdAt?: string;
+  type?: string;
+  createdBy?: {
+    id?: string | number;
+    display?: string;
+    login?: string;
+    passportUid?: string | number;
+  };
+};
+
+function newestComment(comments: TrackerComment[]): TrackerComment | null {
+  let last: TrackerComment | null = null;
+  let lastAt = Number.NEGATIVE_INFINITY;
+  for (const item of comments) {
+    if (isReactionComment(item.text, item.type)) continue;
+    const at = Date.parse(item.createdAt || '');
+    if (!last || (Number.isFinite(at) && at >= lastAt)) {
+      last = item;
+      lastAt = Number.isFinite(at) ? at : lastAt;
+    }
+  }
+  return last;
 }
 
 export type TrackerChangelogEvent = {
@@ -595,7 +639,13 @@ export type TrackerChangelogEvent = {
     from?: unknown;
     to?: unknown;
   }>;
-  comments?: { added?: Array<{ id?: string; display?: string }> };
+  comments?: {
+    added?: Array<{
+      id?: string;
+      display?: string;
+      createdBy?: TrackerComment['createdBy'];
+    }>;
+  };
 };
 
 type RawTrackerIssue = {

@@ -269,9 +269,10 @@ function emphasizeColumn(row: SummaryRow, kind: SummaryRow['columns'][number]['k
 }
 
 function formatStay(column: SummaryRow['columns'][number]): string {
-  const hours = Math.max(0, Math.round(column.ms / 3_600_000));
-  const days = Math.floor(hours / 24);
-  return `${days} дней ${hours - days * 24} часов`;
+  const hours = Math.max(0, column.ms / 3_600_000);
+  const rounded = Math.round(hours * 10) / 10;
+  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1).replace('.', ',');
+  return `${text} ч`;
 }
 
 function listed(list: string[] | undefined, fallback: string): string {

@@ -27,6 +27,7 @@ import {
   CheckSquareIcon,
 } from './Icons';
 import IssuePeopleLines from './IssuePeopleLines';
+import { LoadBar } from './LoadBar';
 import { InstantTip } from './InstantTip';
 import { sortIssues, type ListSort } from './ListSort';
 
@@ -705,7 +706,7 @@ function IssueStory(props: { issueKey: string }) {
   }, [props.issueKey]);
   return (
     <div className="min-w-0 flex-1 text-[11px] leading-snug text-slate-700">
-      {!story && !failed && <div className="text-slate-400">Загрузка описания…</div>}
+      {!story && !failed && <LoadBar label="Загрузка описания и последнего комментария…" />}
       {failed && <div className="text-slate-400">Описание не загрузилось</div>}
       {story && (
         <>
@@ -715,7 +716,7 @@ function IssueStory(props: { issueKey: string }) {
             <div className="text-slate-400">Нет описания</div>
           )}
           {story.commentText ? (
-            <div className="mt-2 border-t border-slate-100 pt-1">
+            <div className="mt-2 rounded border border-amber-200/80 bg-[#fffbeb] px-2 py-1.5">
               <a
                 href={story.commentUrl}
                 className="text-[10px] font-medium text-sky-700 hover:underline"

@@ -1,5 +1,6 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell, Tray } from 'electron';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 import {
   deleteSnapshot,
@@ -59,10 +60,12 @@ import {
   setSummaryIssueNote,
   listSummaryCachePeople,
   getSummarySource,
+  readCloseToTray,
+  writeCloseToTray,
 } from './db';
 import { exportBackupToFile, importBackupFromFile, importBackupFromPath, inspectBackupFile, type BackupSections } from './backup';
 import { checkGithub, updateAppFromRepository } from './appUpdate';
-import { liveVersion } from '../shared/version';
+import { isNewerVersion, liveVersion } from '../shared/version';
 import { buildLiveMatrix, patchIssueInMatrix, remapMatrixPersonNames } from './boardService';
 import { TrackerClient } from './tracker';
 import type {
@@ -88,7 +91,8 @@ import {
 } from './trackerActivity';
 import { readStorageStats } from './storageStats';
 import { consoleHistory } from './consoleFeed';
-import { buildSummaryReport, sliceStoredSummary } from './summaryReport';
+import { buildSummaryReport, refreshSummaryIssue, sliceStoredSummary } from './summaryReport';
+import { trayPng } from './trayIcon';
 import {
   abortTracker,
   armTracker,
@@ -101,6 +105,9 @@ import { exportSummary } from './summaryExport';
 
 let mainWindow: BrowserWindow | null = null;
 let latestMatrix: BoardMatrix | null = null;
+let tray: Tray | null = null;
+let allowQuit = false;
+let instanceServer: net.Server | null = null;
 
 function resolveAppIcon(): string | undefined {
   const candidates = [
@@ -208,6 +215,159 @@ function createWindow(): void {
     void shell.openExternal(url);
     return { action: 'deny' };
   });
+
+  mainWindow.on('close', (event) => {
+    if (allowQuit || !readCloseToTray()) return;
+    event.preventDefault();
+    mainWindow?.hide();
+  });
+}
+
+function showMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function paintTray(): void {
+  try {
+    paintTrayIcon();
+  } catch (error) {
+    sessionLog('error', 'tray', error);
+  }
+}
+
+function paintTrayIcon(): void {
+  const alert = listIssueChanges().some((item) => !item.seen);
+  const file = path.join(app.getPath('userData'), alert ? 'tray-alert.png' : 'tray.png');
+  fs.writeFileSync(file, trayPng(alert));
+  if (!tray) {
+    tray = new Tray(file);
+    tray.setToolTip('BroTeam');
+    tray.on('click', () => showMainWindow());
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: 'Показать', click: () => showMainWindow() },
+        {
+          label: 'Закрыть',
+          click: () => {
+            allowQuit = true;
+            app.quit();
+          },
+        },
+      ]),
+    );
+  } else {
+    tray.setImage(file);
+  }
+}
+
+function isBroTeamCommand(cmd: string): boolean {
+  const text = cmd.replace(/\0/g, ' ');
+  if (/cursor|code helper|chrome-sandbox/i.test(text)) return false;
+  if (/BroTeam[-.\s]|\/bro-team(\s|$)|bro-team\.AppImage/i.test(text)) return true;
+  return /dist-electron\/main\.js/.test(text) && /bro-team/i.test(text);
+}
+
+function closeForeignInstances(): void {
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync('/proc');
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (!/^\d+$/.test(name)) continue;
+    const pid = Number(name);
+    if (pid === process.pid) continue;
+    let cmd = '';
+    try {
+      cmd = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8');
+    } catch {
+      continue;
+    }
+    if (!isBroTeamCommand(cmd)) continue;
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
+function instanceFile(): string {
+  return path.join(app.getPath('userData'), 'instance.json');
+}
+
+function askRunningInstance(port: number, version: string): Promise<string> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host: '127.0.0.1', port }, () => {
+      socket.write(`${JSON.stringify({ version })}\n`);
+    });
+    let data = '';
+    socket.setTimeout(800);
+    socket.on('data', (buf) => {
+      data += buf.toString();
+    });
+    const finish = (value: string) => resolve(value.trim());
+    socket.on('timeout', () => {
+      socket.destroy();
+      finish('');
+    });
+    socket.on('error', () => finish(''));
+    socket.on('close', () => finish(data));
+  });
+}
+
+async function claimInstance(version: string): Promise<boolean> {
+  let peer: { port?: number } | null = null;
+  try {
+    peer = JSON.parse(fs.readFileSync(instanceFile(), 'utf8')) as { port?: number };
+  } catch {
+    peer = null;
+  }
+  if (peer?.port) {
+    const answer = await askRunningInstance(peer.port, version);
+    if (answer === 'stay') return false;
+    if (answer === 'yield') await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  closeForeignInstances();
+  await new Promise<void>((resolve, reject) => {
+    const server = net.createServer((socket) => {
+      let buf = '';
+      socket.on('data', (chunk) => {
+        buf += chunk.toString();
+        if (!buf.includes('\n')) return;
+        let incoming = '';
+        try {
+          incoming = String((JSON.parse(buf) as { version?: string }).version || '');
+        } catch {
+          incoming = '';
+        }
+        if (isNewerVersion(incoming, version)) {
+          socket.end('yield\n');
+          allowQuit = true;
+          setTimeout(() => app.quit(), 80);
+          return;
+        }
+        socket.end('stay\n');
+        showMainWindow();
+      });
+    });
+    server.on('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+      fs.writeFileSync(instanceFile(), JSON.stringify({ port, version, pid: process.pid }));
+      instanceServer = server;
+      resolve();
+    });
+  });
+  return true;
 }
 
 function getClient(): TrackerClient {
@@ -372,6 +532,7 @@ function registerIpc(): void {
       const matrix = await buildLiveMatrix();
       if (getActiveBoardLocalId() === target) latestMatrix = matrix;
       sessionLog('info', 'board:refresh done', describeMatrix(matrix));
+      paintTray();
       return matrix;
     } catch (error) {
       sessionLog('error', 'board:refresh failed', error);
@@ -609,6 +770,7 @@ function registerIpc(): void {
   ipcMain.handle('changes:list', () => listIssueChanges());
   ipcMain.handle('changes:dismiss', (_e, boardLocalId: number, issueKeys: string[]) => {
     dismissIssueChanges(boardLocalId, issueKeys);
+    paintTray();
     return listIssueChanges();
   });
   ipcMain.handle('summary:notes', (_e, boardLocalId: number, participantId: number) =>
@@ -633,6 +795,15 @@ function registerIpc(): void {
     shared: getSummarySource(boardLocalId) != null,
   }));
   ipcMain.handle('summary:open', (_e, request: SummaryBuildRequest) => sliceStoredSummary(request));
+  ipcMain.handle('app:getCloseToTray', () => readCloseToTray());
+  ipcMain.handle('app:setCloseToTray', (_e, value: boolean) => writeCloseToTray(Boolean(value)));
+  ipcMain.handle(
+    'summary:refreshIssue',
+    async (_e, request: SummaryBuildRequest, issueKey: string, boardLocalId: number) => {
+      armTracker();
+      return refreshSummaryIssue(request, issueKey, boardLocalId);
+    },
+  );
   ipcMain.handle('summary:build', async (event, request: SummaryBuildRequest) => {
     armTracker();
     resetTrackerActivity();
@@ -748,29 +919,46 @@ function resolveUserData(appData: string): string {
   return target;
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Default Electron File/Edit/View/Help menu is unused here — hide it.
   Menu.setApplicationMenu(null);
   app.setName('BroTeam');
   app.setPath('userData', resolveUserData(app.getPath('appData')));
   initDb(app.getPath('userData'), app.getVersion());
+  const version = liveVersion(app.getVersion()).full;
+  const claimed = await claimInstance(version).catch(() => true);
+  if (!claimed) {
+    app.quit();
+    return;
+  }
   initApiUsage();
   initSessionLog(app.getPath('userData'));
   latestMatrix = getLastMatrix<BoardMatrix>();
   sessionLog('info', 'startup matrix', describeMatrix(latestMatrix));
   registerIpc();
   createWindow();
+  paintTray();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    else showMainWindow();
   });
 });
 
 app.on('before-quit', () => {
+  allowQuit = true;
   if (latestMatrix) saveLastMatrix(latestMatrix);
+  instanceServer?.close();
+  try {
+    const raw = JSON.parse(fs.readFileSync(instanceFile(), 'utf8')) as { pid?: number };
+    if (raw.pid === process.pid) fs.rmSync(instanceFile(), { force: true });
+  } catch {
+    /* no instance file */
+  }
 });
 
 app.on('window-all-closed', () => {
   if (latestMatrix) saveLastMatrix(latestMatrix);
+  if (readCloseToTray() && !allowQuit) return;
   if (process.platform !== 'darwin') app.quit();
 });

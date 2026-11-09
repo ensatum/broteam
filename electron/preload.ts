@@ -43,6 +43,8 @@ export type ElectronApi = {
     prefs: Record<string, { hidden: number[]; shown: number[] }>,
   ) => Promise<Record<string, { hidden: number[]; shown: number[] }>>;
   getRightTool: () => Promise<'summary' | 'drafts' | 'off' | null>;
+  getCloseToTray: () => Promise<boolean>;
+  setCloseToTray: (value: boolean) => Promise<boolean>;
   saveRightTool: (tool: 'summary' | 'drafts' | 'off') => Promise<'summary' | 'drafts' | 'off'>;
   replaceDevelopers: (
     developers: Array<Omit<Developer, 'id'> & { id?: number }>,
@@ -181,6 +183,11 @@ export type ElectronApi = {
   listSummaryCache: (boardLocalId: number) => Promise<{ people: number[]; shared: boolean }>;
   openSummary: (request: SummaryBuildRequest) => Promise<SummarySlice | null>;
   buildSummary: (request: SummaryBuildRequest) => Promise<SummaryReport>;
+  refreshSummaryIssue: (
+    request: SummaryBuildRequest,
+    issueKey: string,
+    boardLocalId: number,
+  ) => Promise<SummaryRow | null>;
   onSummaryProgress: (
     listener: (progress: { row: SummaryRow | null; index: number; total: number; requests: number }) => void,
   ) => () => void;
@@ -211,6 +218,8 @@ const api: ElectronApi = {
   getBoardRowPrefs: () => ipcRenderer.invoke('boardRows:get'),
   saveBoardRowPrefs: (prefs) => ipcRenderer.invoke('boardRows:save', prefs),
   getRightTool: () => ipcRenderer.invoke('rightTool:get'),
+  getCloseToTray: () => ipcRenderer.invoke('app:getCloseToTray'),
+  setCloseToTray: (value) => ipcRenderer.invoke('app:setCloseToTray', value),
   saveRightTool: (tool) => ipcRenderer.invoke('rightTool:save', tool),
   replaceDevelopers: (developers) => ipcRenderer.invoke('developers:replace', developers),
   listSavedBoards: () => ipcRenderer.invoke('boards:list'),
@@ -311,6 +320,8 @@ const api: ElectronApi = {
   listSummaryCache: (boardLocalId) => ipcRenderer.invoke('summary:cached', boardLocalId),
   openSummary: (request) => ipcRenderer.invoke('summary:open', request),
   buildSummary: (request) => ipcRenderer.invoke('summary:build', request),
+  refreshSummaryIssue: (request, issueKey, boardLocalId) =>
+    ipcRenderer.invoke('summary:refreshIssue', request, issueKey, boardLocalId),
   onSummaryProgress: (listener) => {
     const wrapped = (
       _event: unknown,
