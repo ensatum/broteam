@@ -319,6 +319,77 @@ async function waitForPeerExit(port: number): Promise<void> {
   }
 }
 
+function processArgv(pid: number): string[] {
+  try {
+    return fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function processParent(pid: number): number {
+  try {
+    const status = fs.readFileSync(`/proc/${pid}/status`, 'utf8');
+    const match = /^PPid:\s+(\d+)/m.exec(status);
+    return match ? Number(match[1]) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function ownProcessTree(): Set<number> {
+  const keep = new Set<number>([process.pid]);
+  let current = process.pid;
+  while (current > 1) {
+    const parent = processParent(current);
+    if (!parent || keep.has(parent)) break;
+    keep.add(parent);
+    current = parent;
+  }
+  return keep;
+}
+
+function isOtherAppMain(argv: string[]): boolean {
+  if (!argv.length || argv.some((arg) => arg.startsWith('--type='))) return false;
+  return /(^|\/)broteam$/i.test(argv[0]);
+}
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function closeOlderMains(): Promise<void> {
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync('/proc');
+  } catch {
+    return;
+  }
+  const keep = ownProcessTree();
+  const victims = names
+    .filter((name) => /^\d+$/.test(name))
+    .map(Number)
+    .filter((pid) => !keep.has(pid) && isOtherAppMain(processArgv(pid)));
+  if (!victims.length) return;
+  sessionLog('info', 'instance close older', { pids: victims });
+  for (const pid of victims) {
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      /* already gone */
+    }
+  }
+  const deadline = Date.now() + 2500;
+  while (Date.now() < deadline && victims.some(pidAlive)) {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+}
+
 async function claimInstance(version: string): Promise<boolean> {
   let peer: { port?: number; version?: string } | null = null;
   try {
@@ -332,6 +403,7 @@ async function claimInstance(version: string): Promise<boolean> {
     if (answer === 'stay') return false;
     if (answer === 'yield') await waitForPeerExit(peer.port);
   }
+  await closeOlderMains();
   await new Promise<void>((resolve, reject) => {
     const server = net.createServer((socket) => {
       let buf = '';
