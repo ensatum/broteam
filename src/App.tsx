@@ -457,6 +457,7 @@ export default function App() {
             <span className="font-semibold text-lg tracking-tight text-slate-900">Настройки</span>
           )}
         </div>
+        {onBoardPage && <div id="board-edit-anchor" className="flex shrink-0 items-center" />}
         {onBoardPage && (
           <div className="flex shrink-0 items-center gap-1.5">
             {matrix?.fetchedAt && (

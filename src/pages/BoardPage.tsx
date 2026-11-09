@@ -653,6 +653,10 @@ export default function BoardPage(props: Props) {
     };
   }, []);
   const [reorderMode, setReorderMode] = useState(false);
+  const [editSlot, setEditSlot] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    setEditSlot(document.getElementById('board-edit-anchor'));
+  }, []);
   const editSnap = useRef<{
     filtersOpen: boolean;
     issuesOpen: boolean;
@@ -2476,6 +2480,27 @@ export default function BoardPage(props: Props) {
     if (rightTool !== 'off') setRightTool('off');
   }
 
+  const editButton =
+    editSlot && (tableShown || reorderMode)
+      ? createPortal(
+          <button
+            type="button"
+            aria-pressed={reorderMode}
+            title="Редактировать таблицу"
+            className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-medium ${
+              reorderMode
+                ? 'border-slate-800 bg-slate-800 text-white'
+                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+            }`}
+            onClick={toggleEdit}
+          >
+            <TableIcon className="h-3.5 w-3.5" />
+            Редактировать таблицу
+          </button>,
+          editSlot,
+        )
+      : null;
+
   function tableCorner() {
     return (
       <div className="flex h-full w-full items-center justify-center">
@@ -3095,6 +3120,7 @@ export default function BoardPage(props: Props) {
 
   return (
     <>
+      {editButton}
       {modeMenuOpen &&
         createPortal(
           <div
@@ -3438,23 +3464,7 @@ export default function BoardPage(props: Props) {
               )}
             </div>
             </div>
-            <div className="flex justify-center">
-            {tableShown && (
-            <button
-              type="button"
-              title="Редактировать таблицу"
-              className={`inline-flex h-6 items-center gap-1 rounded-md border px-2 text-[11px] font-medium ${
-                reorderMode
-                  ? 'border-slate-800 bg-slate-800 text-white'
-                  : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
-              }`}
-              onClick={toggleEdit}
-            >
-              <TableIcon className="h-3.5 w-3.5" />
-              Редактировать таблицу
-            </button>
-            )}
-            </div>
+            <div />
             <div className="flex min-w-0 items-center justify-end gap-1">
               {boardScope === 'changes' && boardChanges.length > 0 && (
                 <InstantTip text="Пропустить изменения" className="inline-flex h-5 items-center">
@@ -3530,6 +3540,19 @@ export default function BoardPage(props: Props) {
               </InstantTip>
             </div>
           </div>
+          {reorderMode && tableMode !== 'hidden' && (
+            <div className="flex h-8 shrink-0 items-center gap-2 border-b border-slate-800 bg-slate-800 px-2 text-[11px] text-white">
+              <TableIcon className="h-3.5 w-3.5" />
+              <span className="font-medium">Редактирование таблицы</span>
+              <button
+                type="button"
+                className="ml-auto inline-flex h-6 items-center rounded bg-white px-2 font-medium text-slate-900 hover:bg-slate-100"
+                onClick={leaveReorder}
+              >
+                Готово
+              </button>
+            </div>
+          )}
           {tableMode === 'hidden' ? (
             refreshOnThisBoard ? <div className="relative min-h-0 flex-1">{refreshVeil}</div> : null
           ) : (
