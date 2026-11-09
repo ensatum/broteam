@@ -679,7 +679,13 @@ export default function IssuePanel(props: Props) {
 }
 
 function IssueStory(props: { issueKey: string }) {
-  const [story, setStory] = useState<{ description: string; commentText: string; commentUrl: string } | null>(null);
+  const [story, setStory] = useState<{
+    description: string;
+    commentText: string;
+    commentUrl: string;
+    commentAuthor: string;
+    commentAt: string;
+  } | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -721,6 +727,13 @@ function IssueStory(props: { issueKey: string }) {
               >
                 Последний комментарий
               </a>
+              {(story.commentAuthor || story.commentAt) && (
+                <div className="text-[10px] text-slate-500">
+                  {[story.commentAuthor, story.commentAt ? new Date(story.commentAt).toLocaleString('ru-RU') : '']
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
+              )}
               <div
                 className="markdown-body mt-0.5"
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(story.commentText) }}

@@ -500,24 +500,38 @@ export class TrackerClient {
     return mapTrackerIssue(issue, Date.now(), statusTypes);
   }
 
-  async getIssueStory(issueId: string): Promise<{ description: string; commentText: string; commentUrl: string }> {
-    const issue = await this.request<{ description?: string; self?: string }>(`/v2/issues/${issueId}`);
-    const comments: Array<{ id?: string | number; longId?: string; text?: string }> = [];
+  async getIssueStory(issueId: string): Promise<{
+    description: string;
+    commentText: string;
+    commentUrl: string;
+    commentAuthor: string;
+    commentAt: string;
+  }> {
+    const issue = await this.request<{ description?: string }>(`/v2/issues/${issueId}`);
+    const comments: Array<{
+      id?: string | number;
+      longId?: string;
+      text?: string;
+      createdAt?: string;
+      type?: string;
+      createdBy?: { display?: string };
+    }> = [];
     for (let page = 1; page <= 6; page += 1) {
-      const batch = await this.request<Array<{ id?: string | number; longId?: string; text?: string }>>(
-        `/v2/issues/${issueId}/comments`,
-        { query: { perPage: 50, page } },
-      );
+      const batch = await this.request<typeof comments>(`/v2/issues/${issueId}/comments`, {
+        query: { perPage: 50, page },
+      });
       comments.push(...(batch || []));
       if (!batch || batch.length < 50) break;
     }
-    const last = comments[comments.length - 1];
+    const last = [...comments].reverse().find((item) => !isReactionComment(item.text, item.type));
     const commentId = last?.longId || (last?.id != null ? String(last.id) : '');
     const base = `https://tracker.yandex.ru/${issueId}`;
     return {
       description: issue.description || '',
       commentText: last?.text || '',
       commentUrl: commentId ? `${base}#${commentId}` : base,
+      commentAuthor: last?.createdBy?.display || '',
+      commentAt: last?.createdAt || '',
     };
   }
 
@@ -619,6 +633,15 @@ type RawTrackerIssue = {
   sprint?: Array<{ id?: string | number; display?: string }> | null;
   boards?: Array<{ id?: number | string; name?: string | null }> | null;
 };
+
+export function isReactionComment(text: string | null | undefined, type?: string | null): boolean {
+  const kind = (type || '').toLowerCase();
+  if (kind.includes('reaction') || kind.includes('emoji')) return true;
+  const raw = (text || '').trim();
+  if (!raw) return false;
+  const core = raw.replace(/\p{Extended_Pictographic}|\p{Emoji_Component}|\uFE0F|\u200D|\s/gu, '');
+  return core.length === 0;
+}
 
 function mapTrackerIssue(
   issue: RawTrackerIssue,

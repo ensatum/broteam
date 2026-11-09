@@ -15,6 +15,7 @@ export default function IssuePeopleLines({ issue }: { issue: TrackerIssue }) {
       <div className={qa ? 'text-green-600' : 'text-red-600'}>
         QA: {qa || '—'}
       </div>
+      <div className="text-slate-400">Автор: {issue.authorDisplay?.trim() || '—'}</div>
     </div>
   );
 }

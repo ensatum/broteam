@@ -38,6 +38,10 @@ export type SummaryColumnTime = {
   label: string;
   ms: number;
   workMs?: number;
+  /** Person id → milliseconds spent in this status as assignee. */
+  byAssignee?: Record<string, number>;
+  /** Person id → milliseconds spent in this status as tester. */
+  byQa?: Record<string, number>;
   kind: 'testing' | 'work' | 'review' | 'other';
 };
 

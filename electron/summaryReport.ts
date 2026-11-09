@@ -500,7 +500,25 @@ function interpretIssue(
   const last: Record<'assignee' | 'qa' | 'reviewer', string> = { assignee: '', qa: '', reviewer: '' };
   let wasAssignee = false;
   let wasReviewer = false;
-  const statusSpans: Array<{ key: string; display: string; from: number; to: number }> = [];
+  const statusSpans: Array<{
+    key: string;
+    display: string;
+    from: number;
+    to: number;
+    assigneeIds: number[];
+    qaIds: number[];
+  }> = [];
+  let assigneeIds: number[] = [];
+  let qaIds: number[] = [];
+  let sawAssignee = false;
+  let sawQa = false;
+  const idsHolding = (value: unknown) => audience.filter((person) => holds(person, value)).map((person) => person.id);
+  const fillHolders = (kind: 'assignee' | 'qa', ids: number[]) => {
+    for (const span of statusSpans) {
+      if (kind === 'assignee' && !span.assigneeIds.length) span.assigneeIds = [...ids];
+      if (kind === 'qa' && !span.qaIds.length) span.qaIds = [...ids];
+    }
+  };
   let spanStart = issue.createdAt ? Date.parse(issue.createdAt) : Number.NaN;
   const comments: number[] = [];
   let commentTotal = 0;
@@ -548,7 +566,20 @@ function interpretIssue(
     }
     const closeSpan = (nextAt: number) => {
       if (!statusKey || !Number.isFinite(spanStart) || !Number.isFinite(nextAt) || nextAt < spanStart) return;
-      statusSpans.push({ key: statusKey, display: statusDisplay, from: spanStart, to: nextAt });
+      statusSpans.push({
+        key: statusKey,
+        display: statusDisplay,
+        from: spanStart,
+        to: nextAt,
+        assigneeIds: [...assigneeIds],
+        qaIds: [...qaIds],
+      });
+    };
+    const retarget = (at: number) => {
+      if (statusKey && Number.isFinite(spanStart) && at > spanStart) {
+        closeSpan(at);
+        spanStart = at;
+      }
     };
     for (const field of event.fields || []) {
       const role = roleOf(field.field);
@@ -562,6 +593,8 @@ function interpretIssue(
               display: valueDisplay(field.from) || bornKey,
               from: bornAt,
               to: at,
+              assigneeIds: [...assigneeIds],
+              qaIds: [...qaIds],
             });
           }
         }
@@ -574,6 +607,16 @@ function interpretIssue(
         if (type === 'done') finalStatusAt = event.updatedAt || finalStatusAt;
         if (!takenAt && isProgressStatus(statusKey, statusDisplay, type)) takenAt = event.updatedAt || null;
       } else if (role === 'assignee') {
+        const fromIds = idsHolding(field.from);
+        const toIds = idsHolding(field.to);
+        if (!sawAssignee) {
+          assigneeIds = fromIds;
+          fillHolders('assignee', fromIds);
+          sawAssignee = true;
+        }
+        retarget(at);
+        assigneeIds = toIds;
+        sawAssignee = true;
         assignee = personLabel(valueDisplay(field.to));
         noteRole('assignee', assignee);
         const assigned = audience.filter((item) => holds(item, field.to) || holds(item, field.from));
@@ -591,8 +634,19 @@ function interpretIssue(
         }
       } else if (role === 'qa' || role === 'reviewer') {
         const label = personLabel(valueDisplay(field.to));
-        if (role === 'qa') qa = label;
-        else reviewer = label;
+        if (role === 'qa') {
+          const fromIds = idsHolding(field.from);
+          const toIds = idsHolding(field.to);
+          if (!sawQa) {
+            qaIds = fromIds;
+            fillHolders('qa', fromIds);
+            sawQa = true;
+          }
+          retarget(at);
+          qaIds = toIds;
+          sawQa = true;
+          qa = label;
+        } else reviewer = label;
         noteRole(role, label);
         const involved = audience.filter((item) => holds(item, field.to) || holds(item, field.from));
         if (at >= fromMs && at <= toMs) {
@@ -605,8 +659,10 @@ function interpretIssue(
         noteSprint(sprint);
       }
     }
+    const eventType = (event.type || '').toLowerCase();
+    const reaction = eventType.includes('reaction') || eventType.includes('emoji');
     const commented =
-      (event.type || '').toLowerCase().includes('comment') || Boolean(event.comments?.added?.length);
+      !reaction && (eventType.includes('comment') || Boolean(event.comments?.added?.length));
     const addedComments = Math.max(event.comments?.added?.length || 0, commented ? 1 : 0);
     if (addedComments) {
       commentTotal += addedComments;
@@ -637,6 +693,11 @@ function interpretIssue(
     (stamp(issue.updatedAt || undefined) >= fromMs && stamp(issue.updatedAt || undefined) <= toMs);
   if (movedInPeriod) {
     for (const person of audience) {
+      if (holds(person, issue.assigneeDisplay)) {
+        touched.add(person.id);
+        touchedInPeriod = true;
+        if (focus && person.id === focus.id) wasAssignee = true;
+      }
       if (holds(person, issue.reviewerDisplay)) {
         touched.add(person.id);
         touchedInPeriod = true;
@@ -665,8 +726,23 @@ function interpretIssue(
   const doneNow = statusTypes.get(statusKey) === 'done' || statusTypes.get(issue.statusKey) === 'done';
   const doneMs = finalStatusAt ? Date.parse(finalStatusAt) : Number.NaN;
   const end = doneNow && Number.isFinite(doneMs) ? doneMs : Date.now();
+  if (!sawAssignee) {
+    assigneeIds = idsHolding(issue.assigneeDisplay);
+    fillHolders('assignee', assigneeIds);
+  }
+  if (!sawQa) {
+    qaIds = idsHolding(issue.qaDisplay);
+    fillHolders('qa', qaIds);
+  }
   if (statusKey && Number.isFinite(spanStart)) {
-    statusSpans.push({ key: statusKey, display: statusDisplay || issue.statusDisplay, from: spanStart, to: end });
+    statusSpans.push({
+      key: statusKey,
+      display: statusDisplay || issue.statusDisplay,
+      from: spanStart,
+      to: end,
+      assigneeIds: [...assigneeIds],
+      qaIds: [...qaIds],
+    });
   }
   const columns = sumColumns(statusSpans, request.columns);
   const name = focus?.displayName.trim() || '';
@@ -727,7 +803,8 @@ function describeSummaryAction(
   const bits: string[] = [];
   const added = event.comments?.added?.length || 0;
   const type = (event.type || '').toLowerCase();
-  if (added > 0 || type.includes('comment')) bits.push(added > 1 ? `Комментарии (${added})` : 'Комментарий');
+  const reaction = type.includes('reaction') || type.includes('emoji');
+  if (!reaction && (added > 0 || type.includes('comment'))) bits.push(added > 1 ? `Комментарии (${added})` : 'Комментарий');
   for (const field of event.fields || []) {
     const role = roleOf(field.field);
     const to = valueDisplay(field.to);
@@ -757,8 +834,22 @@ function pushShuffle(
   }
 }
 
+function addBucket(bucket: Record<string, number>, ids: number[], ms: number) {
+  for (const id of ids) {
+    const key = String(id);
+    bucket[key] = (bucket[key] || 0) + ms;
+  }
+}
+
 function sumColumns(
-  spans: Array<{ key: string; display: string; from: number; to: number }>,
+  spans: Array<{
+    key: string;
+    display: string;
+    from: number;
+    to: number;
+    assigneeIds?: number[];
+    qaIds?: number[];
+  }>,
   columns: SummaryBuildRequest['columns'],
 ): SummaryColumnTime[] {
   const byKey = new Map<string, SummaryColumnTime>();
@@ -769,10 +860,12 @@ function sumColumns(
     const prev = byKey.get(span.key || label);
     const ms = Math.max(0, span.to - span.from);
     const workMs = workingMs(span.from, span.to);
-    if (prev) {
-      prev.ms += ms;
-      prev.workMs = (prev.workMs || 0) + workMs;
-    } else byKey.set(span.key || label, { statusKey: span.key, label, ms, workMs, kind });
+    const row = prev || { statusKey: span.key, label, ms: 0, workMs: 0, kind, byAssignee: {}, byQa: {} };
+    row.ms += ms;
+    row.workMs = (row.workMs || 0) + workMs;
+    addBucket(row.byAssignee || (row.byAssignee = {}), span.assigneeIds || [], ms);
+    addBucket(row.byQa || (row.byQa = {}), span.qaIds || [], ms);
+    if (!prev) byKey.set(span.key || label, row);
   }
   return [...byKey.values()].filter((item) => item.ms >= 60_000);
 }

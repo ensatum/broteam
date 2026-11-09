@@ -68,9 +68,13 @@ export type ElectronApi = {
   getTransitions: (
     issueKey: string,
   ) => Promise<Array<{ id: string; display: string; toKey?: string; toDisplay?: string }>>;
-  getIssueStory: (
-    issueKey: string,
-  ) => Promise<{ description: string; commentText: string; commentUrl: string }>;
+  getIssueStory: (issueKey: string) => Promise<{
+    description: string;
+    commentText: string;
+    commentUrl: string;
+    commentAuthor: string;
+    commentAt: string;
+  }>;
   refreshIssue: (issueKey: string) => Promise<BoardMatrix>;
   executeTransition: (issueKey: string, transitionId: string) => Promise<boolean>;
   refreshBoard: (boardLocalId?: number) => Promise<BoardMatrix>;

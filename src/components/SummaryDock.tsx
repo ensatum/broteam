@@ -151,7 +151,7 @@ export default function SummaryDock(props: {
       person == null
         ? namedRows
         : namedRows
-            .filter((row) => (row.touchedIds || []).includes(person.id))
+            .filter((row) => personOnRow(row, person))
             .map((row) => focusSummaryRow(row, person));
     const needle = query.trim();
     if (needle) {
@@ -270,13 +270,6 @@ export default function SummaryDock(props: {
     <div className="flex h-full min-h-0 flex-col bg-white">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-slate-200 px-2 text-sm font-semibold text-slate-900">
         Сводка
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Поиск по ключу"
-          className="h-6 w-40 min-w-0 rounded border border-slate-300 bg-white px-2 text-xs font-normal text-slate-800"
-        />
         <div className="ml-auto flex min-w-0 items-center gap-1">
           <div className="inline-flex shrink-0 items-center gap-0.5">
             <button
@@ -359,7 +352,7 @@ export default function SummaryDock(props: {
                       {role === 'developer' ? 'Разработчики' : 'Тестировщики'}
                     </div>
                     {group.map((person) => {
-                      const count = namedRows.filter((row) => (row.touchedIds || []).includes(person.id)).length;
+                      const count = namedRows.filter((row) => personOnRow(row, person)).length;
                       return (
                         <button
                           key={person.id}
@@ -383,11 +376,19 @@ export default function SummaryDock(props: {
             </div>
           )}
         </div>
+        <span className="mx-1 h-4 w-px shrink-0 bg-slate-300" aria-hidden />
         <PeriodField
           period={props.period}
           onChange={props.onPeriod}
           onFetch={(period) => void build(period)}
           disabled={running || props.boardLocalId == null}
+        />
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Поиск по ключу"
+          className="ml-auto h-6 w-1/2 shrink-0 rounded border border-slate-300 bg-white px-2 text-xs font-normal text-slate-800"
         />
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2 text-xs [&>*]:shrink-0">
@@ -427,6 +428,7 @@ export default function SummaryDock(props: {
               frame={summaryFrame(row, selected)}
               authored={Boolean(selected && sameName(row.author, personName))}
               personId={selected?.id ?? null}
+              personRole={selected?.role ?? null}
               personName={personName}
               note={issueNotes[row.key] || ''}
               onToggle={toggle}
@@ -751,7 +753,7 @@ function PeriodPopover(props: {
           className="mt-auto h-7 rounded border border-emerald-600 bg-emerald-600 px-1 text-[11px] font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
           onClick={applyRange}
         >
-          Получить
+          Сформировать
         </button>
       </div>
     </div>,
@@ -843,6 +845,7 @@ function SummaryCard(props: {
   frame: SummaryFrame;
   authored: boolean;
   personId: number | null;
+  personRole: Developer['role'] | null;
   personName: string;
   note: string;
   onToggle: () => void;
@@ -959,7 +962,9 @@ function SummaryCard(props: {
                     return (
                       <tr key={column.statusKey || column.label} className={timeClass(row, column.kind)}>
                         <td className={`${stripe} py-0.5 pl-2.5 text-left`}>{column.label}</td>
-                        <td className={`${stripe} py-0.5 pr-2.5 text-right whitespace-nowrap`}>{formatStay(column)}</td>
+                        <td className={`${stripe} py-0.5 pr-2.5 text-right whitespace-nowrap`}>
+                          {formatStay(column, props.personId, props.personRole)}
+                        </td>
                       </tr>
                     );
                   })}
@@ -1425,8 +1430,37 @@ function dayOf(iso: string | null | undefined): string {
   return '—';
 }
 
-function formatStay(column: SummaryRow['columns'][number]): string {
-  const hours = Math.max(0, Math.round(column.ms / 3_600_000));
+function formatHours(ms: number): string {
+  const hours = Math.max(0, Math.round(ms / 3_600_000));
   const days = Math.floor(hours / 24);
   return `${days} дней ${hours - days * 24} часов`;
+}
+
+function formatStay(
+  column: SummaryRow['columns'][number],
+  personId: number | null,
+  role: Developer['role'] | null,
+): string {
+  const total = formatHours(column.ms);
+  if (personId == null) return total;
+  const bucket = role === 'qa' ? column.byQa : column.byAssignee;
+  if (!bucket) return total;
+  const own = bucket[String(personId)] || 0;
+  if (own === column.ms) return total;
+  return `${formatHours(own)} (${total})`;
+}
+
+function personOnRow(row: SummaryRow, person: Developer): boolean {
+  if ((row.touchedIds || []).includes(person.id)) return true;
+  const keys = [person.displayName, person.login].map((item) => item.trim()).filter(Boolean);
+  const names = [
+    row.assignee,
+    row.reviewer,
+    row.qa,
+    row.author,
+    ...(row.assignees || []),
+    ...(row.reviewers || []),
+    ...(row.qas || []),
+  ];
+  return names.some((name) => keys.includes((name || '').trim()));
 }

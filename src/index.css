@@ -269,16 +269,25 @@ body.bro-drag-col * {
   transform: translateY(calc(var(--bro-bell, 16px) - var(--bro-digit, 1.75rem)));
 }
 
-.bro-change-beside .bro-change-bell {
+.bro-change-beside .bro-change-bell,
+.bro-cell-mini .bro-change-bell {
+  position: relative;
   width: var(--bro-bell, 16px);
   height: var(--bro-bell, 16px);
+  flex: 0 0 var(--bro-bell, 16px);
   margin: 0;
 }
 
-.bro-change-beside .bro-change-bell svg {
+.bro-change-beside .bro-change-bell svg,
+.bro-cell-mini .bro-change-bell svg {
+  position: absolute;
+  left: 50%;
+  top: 50%;
   display: block;
-  width: calc(var(--bro-bell, 16px) * 0.6);
-  height: calc(var(--bro-bell, 16px) * 0.6);
+  width: calc(var(--bro-bell, 16px) * 0.62);
+  height: calc(var(--bro-bell, 16px) * 0.62);
+  margin: 0;
+  transform: translate(-50%, -50%);
 }
 
 .bro-change-digit {
@@ -303,15 +312,7 @@ body.bro-drag-col * {
 }
 
 .bro-cell-mini .bro-change-bell {
-  width: var(--bro-bell, 16px);
-  height: var(--bro-bell, 16px);
-  margin: 0;
   pointer-events: auto;
-}
-
-.bro-cell-mini .bro-change-bell svg {
-  width: calc(var(--bro-bell, 16px) * 0.6);
-  height: calc(var(--bro-bell, 16px) * 0.6);
 }
 
 .bro-cell-spacer {

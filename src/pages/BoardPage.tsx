@@ -245,6 +245,7 @@ const LEFT_RAIL_PX = 44;
 const RIGHT_RAIL_PX = 44;
 /** Expanded drafts stay readable; the panel does not shrink below this. */
 const DRAFTS_MIN_PX = 280;
+const SUMMARY_MIN_PX = 600;
 
 function tableWidth(dataCols: number, colPx: number) {
   return NAME_COL_PX + dataCols * colPx;
@@ -287,6 +288,7 @@ function resolveTableMode(input: {
 
 type FilterGroupsOpen = {
   sprints: boolean;
+  assignees: boolean;
   reviewers: boolean;
   qa: boolean;
   authors: boolean;
@@ -302,13 +304,14 @@ type BoardLayout = {
 };
 
 function loadFilterGroups(): FilterGroupsOpen {
-  const fallback: FilterGroupsOpen = { sprints: true, reviewers: true, qa: true, authors: true };
+  const fallback: FilterGroupsOpen = { sprints: true, assignees: true, reviewers: true, qa: true, authors: true };
   try {
     const raw = localStorage.getItem(FILTER_GROUPS_KEY);
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as Partial<FilterGroupsOpen>;
     return {
       sprints: parsed.sprints !== false,
+      assignees: parsed.assignees !== false,
       reviewers: parsed.reviewers !== false,
       qa: parsed.qa !== false,
       authors: parsed.authors !== false,
@@ -324,14 +327,17 @@ type LeftFilterMemory = {
   reviewer: string | null;
   qa: string | null;
   author: string | null;
+  assignee: string | null;
   pinnedSprints: number[];
   pinnedReviewers: string[];
   pinnedQas: string[];
   pinnedAuthors: string[];
+  pinnedAssignees: string[];
   excludedSprints: number[];
   excludedReviewers: string[];
   excludedQas: string[];
   excludedAuthors: string[];
+  excludedAssignees: string[];
 };
 
 function emptyLeftFilters(): LeftFilterMemory {
@@ -341,14 +347,17 @@ function emptyLeftFilters(): LeftFilterMemory {
     reviewer: null,
     qa: null,
     author: null,
+    assignee: null,
     pinnedSprints: [],
     pinnedReviewers: [],
     pinnedQas: [],
     pinnedAuthors: [],
+    pinnedAssignees: [],
     excludedSprints: [],
     excludedReviewers: [],
     excludedQas: [],
     excludedAuthors: [],
+    excludedAssignees: [],
   };
 }
 
@@ -367,6 +376,7 @@ function normalizeLeftFilters(raw: Partial<LeftFilterMemory> | null | undefined)
   return {
     groups: {
       sprints: groups?.sprints !== false,
+      assignees: groups?.assignees !== false,
       reviewers: groups?.reviewers !== false,
       qa: groups?.qa !== false,
       authors: groups?.authors !== false,
@@ -375,14 +385,17 @@ function normalizeLeftFilters(raw: Partial<LeftFilterMemory> | null | undefined)
     reviewer: typeof raw?.reviewer === 'string' && raw.reviewer ? raw.reviewer : null,
     qa: typeof raw?.qa === 'string' && raw.qa ? raw.qa : null,
     author: typeof raw?.author === 'string' && raw.author ? raw.author : null,
+    assignee: typeof raw?.assignee === 'string' && raw.assignee ? raw.assignee : null,
     pinnedSprints: asNumberList(raw?.pinnedSprints),
     pinnedReviewers: asStringList(raw?.pinnedReviewers),
     pinnedQas: asStringList(raw?.pinnedQas),
     pinnedAuthors: asStringList(raw?.pinnedAuthors),
+    pinnedAssignees: asStringList(raw?.pinnedAssignees),
     excludedSprints: asNumberList(raw?.excludedSprints),
     excludedReviewers: asStringList(raw?.excludedReviewers),
     excludedQas: asStringList(raw?.excludedQas),
     excludedAuthors: asStringList(raw?.excludedAuthors),
+    excludedAssignees: asStringList(raw?.excludedAssignees),
   };
 }
 
@@ -576,6 +589,7 @@ export default function BoardPage(props: Props) {
   const [appliedReviewer, setAppliedReviewer] = useState<string | null>(initialLeft.reviewer);
   const [appliedQa, setAppliedQa] = useState<string | null>(initialLeft.qa);
   const [appliedAuthor, setAppliedAuthor] = useState<string | null>(initialLeft.author);
+  const [appliedAssignee, setAppliedAssignee] = useState<string | null>(initialLeft.assignee);
   const [appliedPinnedSprints, setAppliedPinnedSprints] = useState<Set<number>>(
     () => new Set(initialLeft.pinnedSprints),
   );
@@ -585,6 +599,9 @@ export default function BoardPage(props: Props) {
   const [appliedPinnedQas, setAppliedPinnedQas] = useState<Set<string>>(() => new Set(initialLeft.pinnedQas));
   const [appliedPinnedAuthors, setAppliedPinnedAuthors] = useState<Set<string>>(
     () => new Set(initialLeft.pinnedAuthors),
+  );
+  const [appliedPinnedAssignees, setAppliedPinnedAssignees] = useState<Set<string>>(
+    () => new Set(initialLeft.pinnedAssignees),
   );
   const [appliedExcludedSprints, setAppliedExcludedSprints] = useState<Set<number>>(
     () => new Set(initialLeft.excludedSprints),
@@ -597,6 +614,9 @@ export default function BoardPage(props: Props) {
   );
   const [appliedExcludedAuthors, setAppliedExcludedAuthors] = useState<Set<string>>(
     () => new Set(initialLeft.excludedAuthors),
+  );
+  const [appliedExcludedAssignees, setAppliedExcludedAssignees] = useState<Set<string>>(
+    () => new Set(initialLeft.excludedAssignees),
   );
   const [appliedIcon, setAppliedIcon] = useState<CellBadgeKind | null>(null);
   const [appliedPinnedIcons, setAppliedPinnedIcons] = useState<Set<CellBadgeKind>>(() => new Set());
@@ -708,12 +728,14 @@ export default function BoardPage(props: Props) {
   const [reviewerFilter, setReviewerFilter] = useState<string | null>(initialLeft.reviewer);
   const [qaFilter, setQaFilter] = useState<string | null>(initialLeft.qa);
   const [authorFilter, setAuthorFilter] = useState<string | null>(initialLeft.author);
+  const [assigneeFilter, setAssigneeFilter] = useState<string | null>(initialLeft.assignee);
   const [pinnedSprints, setPinnedSprints] = useState<Set<number>>(() => new Set(initialLeft.pinnedSprints));
   const [pinnedReviewers, setPinnedReviewers] = useState<Set<string>>(
     () => new Set(initialLeft.pinnedReviewers),
   );
   const [pinnedQas, setPinnedQas] = useState<Set<string>>(() => new Set(initialLeft.pinnedQas));
   const [pinnedAuthors, setPinnedAuthors] = useState<Set<string>>(() => new Set(initialLeft.pinnedAuthors));
+  const [pinnedAssignees, setPinnedAssignees] = useState<Set<string>>(() => new Set(initialLeft.pinnedAssignees));
   const [excludedSprints, setExcludedSprints] = useState<Set<number>>(
     () => new Set(initialLeft.excludedSprints),
   );
@@ -723,6 +745,9 @@ export default function BoardPage(props: Props) {
   const [excludedQas, setExcludedQas] = useState<Set<string>>(() => new Set(initialLeft.excludedQas));
   const [excludedAuthors, setExcludedAuthors] = useState<Set<string>>(
     () => new Set(initialLeft.excludedAuthors),
+  );
+  const [excludedAssignees, setExcludedAssignees] = useState<Set<string>>(
+    () => new Set(initialLeft.excludedAssignees),
   );
   const [highlightIssueKey, setHighlightIssueKey] = useState<string | null>(null);
   useEffect(() => {
@@ -786,6 +811,7 @@ export default function BoardPage(props: Props) {
     filtersWidth: DRAFTS_MIN_PX,
     draftsOpen: false,
     tableShown: true,
+    panelFloor: DRAFTS_MIN_PX,
   });
 
   const matrixMatches =
@@ -875,17 +901,39 @@ export default function BoardPage(props: Props) {
     if (authorFilter) names.add(authorFilter);
     return names;
   }, [pinnedAuthors, authorFilter]);
+  const activeAssignees = useMemo(() => {
+    const names = new Set(pinnedAssignees);
+    if (assigneeFilter) names.add(assigneeFilter);
+    return names;
+  }, [pinnedAssignees, assigneeFilter]);
   const dataAuthors = useMemo(() => {
     const names = new Set(appliedPinnedAuthors);
     if (appliedAuthor) names.add(appliedAuthor);
     return names;
   }, [appliedPinnedAuthors, appliedAuthor]);
+  const dataAssignees = useMemo(() => {
+    const names = new Set(appliedPinnedAssignees);
+    if (appliedAssignee) names.add(appliedAssignee);
+    return names;
+  }, [appliedPinnedAssignees, appliedAssignee]);
   const authorNames = useMemo(() => {
     const names = new Set<string>();
     for (const row of sourceMatrix?.developers || []) {
       for (const issues of Object.values(row.issuesByColumn || {})) {
         for (const issue of issues || []) {
           const name = (issue.authorDisplay || '').trim();
+          if (name) names.add(name);
+        }
+      }
+    }
+    return [...names].sort((a, b) => a.localeCompare(b, 'ru'));
+  }, [sourceMatrix]);
+  const assigneeNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const row of sourceMatrix?.developers || []) {
+      for (const issues of Object.values(row.issuesByColumn || {})) {
+        for (const issue of issues || []) {
+          const name = (issue.assigneeDisplay || '').trim();
           if (name) names.add(name);
         }
       }
@@ -911,11 +959,13 @@ export default function BoardPage(props: Props) {
         dataReviewers,
         dataQas,
         dataAuthors,
+        dataAssignees,
         {
           sprints: appliedExcludedSprints,
           reviewers: appliedExcludedReviewers,
           qas: appliedExcludedQas,
           authors: appliedExcludedAuthors,
+          assignees: appliedExcludedAssignees,
         },
         doneStatusKeys,
       ),
@@ -929,10 +979,12 @@ export default function BoardPage(props: Props) {
     dataReviewers,
     dataQas,
     dataAuthors,
+    dataAssignees,
     appliedExcludedSprints,
     appliedExcludedReviewers,
     appliedExcludedQas,
     appliedExcludedAuthors,
+    appliedExcludedAssignees,
     boardScope,
     doneStatusKeys,
     unseenChangeKeys,
@@ -1017,35 +1069,43 @@ export default function BoardPage(props: Props) {
     const pinnedReviewerNames = new Set(memory.pinnedReviewers);
     const pinnedQaNames = new Set(memory.pinnedQas);
     const pinnedAuthorNames = new Set(memory.pinnedAuthors);
+    const pinnedAssigneeNames = new Set(memory.pinnedAssignees);
     const excludedSprintIds = new Set(memory.excludedSprints);
     const excludedReviewerNames = new Set(memory.excludedReviewers);
     const excludedQaNames = new Set(memory.excludedQas);
     const excludedAuthorNames = new Set(memory.excludedAuthors);
+    const excludedAssigneeNames = new Set(memory.excludedAssignees);
     setFilterGroupOpen(memory.groups);
     setSprintFilter(memory.sprint);
     setReviewerFilter(memory.reviewer);
     setQaFilter(memory.qa);
     setAuthorFilter(memory.author);
+    setAssigneeFilter(memory.assignee);
     setPinnedSprints(pinnedSprintIds);
     setPinnedReviewers(pinnedReviewerNames);
     setPinnedQas(pinnedQaNames);
     setPinnedAuthors(pinnedAuthorNames);
+    setPinnedAssignees(pinnedAssigneeNames);
     setExcludedSprints(excludedSprintIds);
     setExcludedReviewers(excludedReviewerNames);
     setExcludedQas(excludedQaNames);
     setExcludedAuthors(excludedAuthorNames);
+    setExcludedAssignees(excludedAssigneeNames);
     setAppliedSprint(memory.sprint);
     setAppliedReviewer(memory.reviewer);
     setAppliedQa(memory.qa);
     setAppliedAuthor(memory.author);
+    setAppliedAssignee(memory.assignee);
     setAppliedPinnedSprints(new Set(pinnedSprintIds));
     setAppliedPinnedReviewers(new Set(pinnedReviewerNames));
     setAppliedPinnedQas(new Set(pinnedQaNames));
     setAppliedPinnedAuthors(new Set(pinnedAuthorNames));
+    setAppliedPinnedAssignees(new Set(pinnedAssigneeNames));
     setAppliedExcludedSprints(new Set(excludedSprintIds));
     setAppliedExcludedReviewers(new Set(excludedReviewerNames));
     setAppliedExcludedQas(new Set(excludedQaNames));
     setAppliedExcludedAuthors(new Set(excludedAuthorNames));
+    setAppliedExcludedAssignees(new Set(excludedAssigneeNames));
   }
 
   leftSnapshotRef.current = {
@@ -1056,14 +1116,17 @@ export default function BoardPage(props: Props) {
       reviewer: reviewerFilter,
       qa: qaFilter,
       author: authorFilter,
+      assignee: assigneeFilter,
       pinnedSprints: [...pinnedSprints],
       pinnedReviewers: [...pinnedReviewers],
       pinnedQas: [...pinnedQas],
       pinnedAuthors: [...pinnedAuthors],
+      pinnedAssignees: [...pinnedAssignees],
       excludedSprints: [...excludedSprints],
       excludedReviewers: [...excludedReviewers],
       excludedQas: [...excludedQas],
       excludedAuthors: [...excludedAuthors],
+      excludedAssignees: [...excludedAssignees],
     },
   };
 
@@ -1073,6 +1136,7 @@ export default function BoardPage(props: Props) {
     setReviewerFilter(null);
     setQaFilter(null);
     setAuthorFilter(null);
+    setAssigneeFilter(null);
   }, [props.snapshotDate]);
 
   useEffect(() => {
@@ -1099,14 +1163,17 @@ export default function BoardPage(props: Props) {
     reviewerFilter,
     qaFilter,
     authorFilter,
+    assigneeFilter,
     pinnedSprints,
     pinnedReviewers,
     pinnedQas,
     pinnedAuthors,
+    pinnedAssignees,
     excludedSprints,
     excludedReviewers,
     excludedQas,
     excludedAuthors,
+    excludedAssignees,
   ]);
 
   useEffect(
@@ -1123,14 +1190,17 @@ export default function BoardPage(props: Props) {
     reviewer?: string | null;
     qa?: string | null;
     author?: string | null;
+    assignee?: string | null;
     pinnedSprints?: Set<number>;
     pinnedReviewers?: Set<string>;
     pinnedQas?: Set<string>;
     pinnedAuthors?: Set<string>;
+    pinnedAssignees?: Set<string>;
     excludedSprints?: Set<number>;
     excludedReviewers?: Set<string>;
     excludedQas?: Set<string>;
     excludedAuthors?: Set<string>;
+    excludedAssignees?: Set<string>;
     icon?: CellBadgeKind | null;
     pinnedIcons?: Set<CellBadgeKind>;
     showDone?: boolean;
@@ -1139,14 +1209,17 @@ export default function BoardPage(props: Props) {
     if ('reviewer' in patch) setAppliedReviewer(patch.reviewer ?? null);
     if ('qa' in patch) setAppliedQa(patch.qa ?? null);
     if ('author' in patch) setAppliedAuthor(patch.author ?? null);
+    if ('assignee' in patch) setAppliedAssignee(patch.assignee ?? null);
     if (patch.pinnedSprints) setAppliedPinnedSprints(patch.pinnedSprints);
     if (patch.pinnedReviewers) setAppliedPinnedReviewers(patch.pinnedReviewers);
     if (patch.pinnedQas) setAppliedPinnedQas(patch.pinnedQas);
     if (patch.pinnedAuthors) setAppliedPinnedAuthors(patch.pinnedAuthors);
+    if (patch.pinnedAssignees) setAppliedPinnedAssignees(patch.pinnedAssignees);
     if (patch.excludedSprints) setAppliedExcludedSprints(patch.excludedSprints);
     if (patch.excludedReviewers) setAppliedExcludedReviewers(patch.excludedReviewers);
     if (patch.excludedQas) setAppliedExcludedQas(patch.excludedQas);
     if (patch.excludedAuthors) setAppliedExcludedAuthors(patch.excludedAuthors);
+    if (patch.excludedAssignees) setAppliedExcludedAssignees(patch.excludedAssignees);
     if ('icon' in patch) setAppliedIcon(patch.icon ?? null);
     if (patch.pinnedIcons) setAppliedPinnedIcons(patch.pinnedIcons);
     if ('showDone' in patch) setAppliedShowDone(Boolean(patch.showDone));
@@ -1162,14 +1235,17 @@ export default function BoardPage(props: Props) {
         setAppliedReviewer(reviewerFilter);
         setAppliedQa(qaFilter);
         setAppliedAuthor(authorFilter);
+        setAppliedAssignee(assigneeFilter);
         setAppliedPinnedSprints(pinnedSprints);
         setAppliedPinnedReviewers(pinnedReviewers);
         setAppliedPinnedQas(pinnedQas);
         setAppliedPinnedAuthors(pinnedAuthors);
+        setAppliedPinnedAssignees(pinnedAssignees);
         setAppliedExcludedSprints(excludedSprints);
         setAppliedExcludedReviewers(excludedReviewers);
         setAppliedExcludedQas(excludedQas);
         setAppliedExcludedAuthors(excludedAuthors);
+        setAppliedExcludedAssignees(excludedAssignees);
         setAppliedIcon(activeIcon);
         setAppliedPinnedIcons(pinnedIcons);
         setAppliedShowDone(showDoneIssues);
@@ -1185,14 +1261,17 @@ export default function BoardPage(props: Props) {
     reviewerFilter,
     qaFilter,
     authorFilter,
+    assigneeFilter,
     pinnedSprints,
     pinnedReviewers,
     pinnedQas,
     pinnedAuthors,
+    pinnedAssignees,
     excludedSprints,
     excludedReviewers,
     excludedQas,
     excludedAuthors,
+    excludedAssignees,
     activeIcon,
     pinnedIcons,
     showDoneIssues,
@@ -1205,14 +1284,17 @@ export default function BoardPage(props: Props) {
       appliedReviewer !== reviewerFilter ||
       appliedQa !== qaFilter ||
       appliedAuthor !== authorFilter ||
+      appliedAssignee !== assigneeFilter ||
       appliedPinnedSprints !== pinnedSprints ||
       appliedPinnedReviewers !== pinnedReviewers ||
       appliedPinnedQas !== pinnedQas ||
       appliedPinnedAuthors !== pinnedAuthors ||
+      appliedPinnedAssignees !== pinnedAssignees ||
       appliedExcludedSprints !== excludedSprints ||
       appliedExcludedReviewers !== excludedReviewers ||
       appliedExcludedQas !== excludedQas ||
       appliedExcludedAuthors !== excludedAuthors ||
+      appliedExcludedAssignees !== excludedAssignees ||
       appliedIcon !== activeIcon ||
       appliedPinnedIcons !== pinnedIcons ||
       appliedShowDone !== showDoneIssues
@@ -1227,14 +1309,17 @@ export default function BoardPage(props: Props) {
     appliedReviewer,
     appliedQa,
     appliedAuthor,
+    appliedAssignee,
     appliedPinnedSprints,
     appliedPinnedReviewers,
     appliedPinnedQas,
     appliedPinnedAuthors,
+    appliedPinnedAssignees,
     appliedExcludedSprints,
     appliedExcludedReviewers,
     appliedExcludedQas,
     appliedExcludedAuthors,
+    appliedExcludedAssignees,
     appliedIcon,
     appliedPinnedIcons,
     appliedShowDone,
@@ -1242,14 +1327,17 @@ export default function BoardPage(props: Props) {
     reviewerFilter,
     qaFilter,
     authorFilter,
+    assigneeFilter,
     pinnedSprints,
     pinnedReviewers,
     pinnedQas,
     pinnedAuthors,
+    pinnedAssignees,
     excludedSprints,
     excludedReviewers,
     excludedQas,
     excludedAuthors,
+    excludedAssignees,
     activeIcon,
     pinnedIcons,
     showDoneIssues,
@@ -1348,7 +1436,7 @@ export default function BoardPage(props: Props) {
   }, [matrix, doneStatusKeys]);
 
   useEffect(() => {
-    const key = `${sprintFilter ?? ''}|${reviewerFilter ?? ''}|${qaFilter ?? ''}|${authorFilter ?? ''}|${props.snapshotDate ?? ''}`;
+    const key = `${sprintFilter ?? ''}|${reviewerFilter ?? ''}|${qaFilter ?? ''}|${authorFilter ?? ''}|${assigneeFilter ?? ''}|${props.snapshotDate ?? ''}`;
     if (allTasksKey.current === null || allTasksKey.current === key) {
       allTasksKey.current = key;
       keepCellOnFilterReset.current = false;
@@ -1369,7 +1457,7 @@ export default function BoardPage(props: Props) {
       statusKey: null,
       issues: current.developers.flatMap((row) => Object.values(row.issuesByColumn).flat()),
     });
-  }, [sprintFilter, reviewerFilter, qaFilter, authorFilter, props.snapshotDate]);
+  }, [sprintFilter, reviewerFilter, qaFilter, authorFilter, assigneeFilter, props.snapshotDate]);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -1394,7 +1482,8 @@ export default function BoardPage(props: Props) {
           const leftW = metrics.filtersOpen ? DRAFTS_MIN_PX + LEFT_RAIL_PX : LEFT_RAIL_PX;
           const room = Math.max(0, rect.width - leftW - RIGHT_RAIL_PX);
           let contentW = rect.right - e.clientX - RIGHT_RAIL_PX;
-          contentW = Math.min(room, Math.max(Math.min(DRAFTS_MIN_PX, room), contentW));
+          const floor = metrics.panelFloor || DRAFTS_MIN_PX;
+          contentW = Math.max(floor, Math.min(room, contentW));
           const fraction = contentW / rect.width;
           const draftsW = RIGHT_RAIL_PX + contentW;
           const filtersW = leftW;
@@ -1670,38 +1759,45 @@ export default function BoardPage(props: Props) {
     setReviewerFilter(null);
     setQaFilter(null);
     setAuthorFilter(null);
+    setAssigneeFilter(null);
     setPinnedSprints(emptyNums);
     setPinnedReviewers(emptyNames);
     setPinnedQas(emptyNames);
     setPinnedAuthors(emptyNames);
+    setPinnedAssignees(emptyNames);
     setExcludedSprints(emptyNums);
     setExcludedReviewers(emptyNames);
     setExcludedQas(emptyNames);
     setExcludedAuthors(emptyNames);
+    setExcludedAssignees(emptyNames);
     syncApplied({
       sprint: null,
       reviewer: null,
       qa: null,
       author: null,
+      assignee: null,
       pinnedSprints: emptyNums,
       pinnedReviewers: emptyNames,
       pinnedQas: emptyNames,
       pinnedAuthors: emptyNames,
+      pinnedAssignees: emptyNames,
       excludedSprints: emptyNums,
       excludedReviewers: emptyNames,
       excludedQas: emptyNames,
       excludedAuthors: emptyNames,
+      excludedAssignees: emptyNames,
     });
   }
 
-  function isLeftExcluded(group: 'sprint' | 'reviewer' | 'qa' | 'author', key: number | string) {
+  function isLeftExcluded(group: 'sprint' | 'reviewer' | 'qa' | 'author' | 'assignee', key: number | string) {
     if (group === 'sprint') return excludedSprints.has(key as number);
     if (group === 'reviewer') return excludedReviewers.has(key as string);
     if (group === 'qa') return excludedQas.has(key as string);
-    return excludedAuthors.has(key as string);
+    if (group === 'author') return excludedAuthors.has(key as string);
+    return excludedAssignees.has(key as string);
   }
 
-  function writeExcluded(group: 'sprint' | 'reviewer' | 'qa' | 'author', key: number | string, mode: 'add' | 'drop') {
+  function writeExcluded(group: 'sprint' | 'reviewer' | 'qa' | 'author' | 'assignee', key: number | string, mode: 'add' | 'drop') {
     if (group === 'sprint') {
       const next = new Set(excludedSprints);
       if (mode === 'add') next.add(key as number);
@@ -1709,18 +1805,26 @@ export default function BoardPage(props: Props) {
       setExcludedSprints(next);
       return next;
     }
-    const current = group === 'reviewer' ? excludedReviewers : group === 'qa' ? excludedQas : excludedAuthors;
+    const current =
+      group === 'reviewer'
+        ? excludedReviewers
+        : group === 'qa'
+          ? excludedQas
+          : group === 'author'
+            ? excludedAuthors
+            : excludedAssignees;
     const next = new Set(current);
     if (mode === 'add') next.add(key as string);
     else next.delete(key as string);
     if (group === 'reviewer') setExcludedReviewers(next);
     else if (group === 'qa') setExcludedQas(next);
-    else setExcludedAuthors(next);
+    else if (group === 'author') setExcludedAuthors(next);
+    else setExcludedAssignees(next);
     return next;
   }
 
   function selectLeft(
-    group: 'sprint' | 'reviewer' | 'qa' | 'author',
+    group: 'sprint' | 'reviewer' | 'qa' | 'author' | 'assignee',
     key: number | string,
   ) {
     const pinned =
@@ -1730,7 +1834,9 @@ export default function BoardPage(props: Props) {
           ? pinnedReviewers
           : group === 'qa'
             ? pinnedQas
-            : pinnedAuthors;
+            : group === 'author'
+              ? pinnedAuthors
+              : pinnedAssignees;
     const selected =
       group === 'sprint'
         ? sprintFilter
@@ -1738,7 +1844,9 @@ export default function BoardPage(props: Props) {
           ? reviewerFilter
           : group === 'qa'
             ? qaFilter
-            : authorFilter;
+            : group === 'author'
+              ? authorFilter
+              : assigneeFilter;
     const active = pinned.has(key as never) || selected === key;
     if (isLeftExcluded(group, key)) {
       const next = writeExcluded(group, key, 'drop');
@@ -1749,7 +1857,9 @@ export default function BoardPage(props: Props) {
             ? { excludedReviewers: next as Set<string> }
             : group === 'qa'
               ? { excludedQas: next as Set<string> }
-              : { excludedAuthors: next as Set<string> },
+              : group === 'author'
+                ? { excludedAuthors: next as Set<string> }
+                : { excludedAssignees: next as Set<string> },
       );
       return;
     }
@@ -1761,7 +1871,14 @@ export default function BoardPage(props: Props) {
     if (group !== 'reviewer') setReviewerFilter(null);
     if (group !== 'qa') setQaFilter(null);
     if (group !== 'author') setAuthorFilter(null);
-    const patch = { sprint: null as number | null, reviewer: null as string | null, qa: null as string | null, author: null as string | null };
+    if (group !== 'assignee') setAssigneeFilter(null);
+    const patch = {
+      sprint: null as number | null,
+      reviewer: null as string | null,
+      qa: null as string | null,
+      author: null as string | null,
+      assignee: null as string | null,
+    };
     if (group === 'sprint') {
       patch.sprint = key as number;
       setSprintFilter(patch.sprint);
@@ -1771,14 +1888,17 @@ export default function BoardPage(props: Props) {
     } else if (group === 'qa') {
       patch.qa = key as string;
       setQaFilter(patch.qa);
-    } else {
+    } else if (group === 'author') {
       patch.author = key as string;
       setAuthorFilter(patch.author);
+    } else {
+      patch.assignee = key as string;
+      setAssigneeFilter(patch.assignee);
     }
     syncApplied(patch);
   }
 
-  function pinLeft(group: 'sprint' | 'reviewer' | 'qa' | 'author', key: number | string) {
+  function pinLeft(group: 'sprint' | 'reviewer' | 'qa' | 'author' | 'assignee', key: number | string) {
     if (isLeftExcluded(group, key)) {
       const excluded = writeExcluded(group, key, 'drop');
       if (group === 'sprint') {
@@ -1788,18 +1908,28 @@ export default function BoardPage(props: Props) {
         syncApplied({ excludedSprints: excluded as Set<number>, pinnedSprints: next });
         return;
       }
-      const current = group === 'reviewer' ? pinnedReviewers : group === 'qa' ? pinnedQas : pinnedAuthors;
+      const current =
+        group === 'reviewer'
+          ? pinnedReviewers
+          : group === 'qa'
+            ? pinnedQas
+            : group === 'author'
+              ? pinnedAuthors
+              : pinnedAssignees;
       const next = new Set(current);
       next.add(key as string);
       if (group === 'reviewer') setPinnedReviewers(next);
       else if (group === 'qa') setPinnedQas(next);
-      else setPinnedAuthors(next);
+      else if (group === 'author') setPinnedAuthors(next);
+      else setPinnedAssignees(next);
       syncApplied({
         ...(group === 'reviewer'
           ? { excludedReviewers: excluded as Set<string>, pinnedReviewers: next }
           : group === 'qa'
             ? { excludedQas: excluded as Set<string>, pinnedQas: next }
-            : { excludedAuthors: excluded as Set<string>, pinnedAuthors: next }),
+            : group === 'author'
+              ? { excludedAuthors: excluded as Set<string>, pinnedAuthors: next }
+              : { excludedAssignees: excluded as Set<string>, pinnedAssignees: next }),
       });
       return;
     }
@@ -1814,32 +1944,56 @@ export default function BoardPage(props: Props) {
       return;
     }
     const name = key as string;
-    const current = group === 'reviewer' ? pinnedReviewers : group === 'qa' ? pinnedQas : pinnedAuthors;
-    const selected = group === 'reviewer' ? reviewerFilter : group === 'qa' ? qaFilter : authorFilter;
+    const current =
+      group === 'reviewer'
+        ? pinnedReviewers
+        : group === 'qa'
+          ? pinnedQas
+          : group === 'author'
+            ? pinnedAuthors
+            : pinnedAssignees;
+    const selected =
+      group === 'reviewer'
+        ? reviewerFilter
+        : group === 'qa'
+          ? qaFilter
+          : group === 'author'
+            ? authorFilter
+            : assigneeFilter;
     const next = new Set(current);
     if (next.has(name)) next.delete(name);
     else next.add(name);
     if (group === 'reviewer') setPinnedReviewers(next);
     else if (group === 'qa') setPinnedQas(next);
-    else setPinnedAuthors(next);
+    else if (group === 'author') setPinnedAuthors(next);
+    else setPinnedAssignees(next);
     if (selected === name) {
       if (group === 'reviewer') setReviewerFilter(null);
       else if (group === 'qa') setQaFilter(null);
-      else setAuthorFilter(null);
+      else if (group === 'author') setAuthorFilter(null);
+      else setAssigneeFilter(null);
     }
     syncApplied({
-      ...(group === 'reviewer' ? { pinnedReviewers: next } : group === 'qa' ? { pinnedQas: next } : { pinnedAuthors: next }),
+      ...(group === 'reviewer'
+        ? { pinnedReviewers: next }
+        : group === 'qa'
+          ? { pinnedQas: next }
+          : group === 'author'
+            ? { pinnedAuthors: next }
+            : { pinnedAssignees: next }),
       ...(selected === name
         ? group === 'reviewer'
           ? { reviewer: null }
           : group === 'qa'
             ? { qa: null }
-            : { author: null }
+            : group === 'author'
+              ? { author: null }
+              : { assignee: null }
         : {}),
     });
   }
 
-  function excludeLeft(group: 'sprint' | 'reviewer' | 'qa' | 'author', key: number | string) {
+  function excludeLeft(group: 'sprint' | 'reviewer' | 'qa' | 'author' | 'assignee', key: number | string) {
     if (isLeftExcluded(group, key)) {
       const excluded = writeExcluded(group, key, 'drop');
       if (group === 'sprint') {
@@ -1855,30 +2009,50 @@ export default function BoardPage(props: Props) {
         return;
       }
       const name = key as string;
-      const current = group === 'reviewer' ? pinnedReviewers : group === 'qa' ? pinnedQas : pinnedAuthors;
-      const selected = group === 'reviewer' ? reviewerFilter : group === 'qa' ? qaFilter : authorFilter;
+      const current =
+        group === 'reviewer'
+          ? pinnedReviewers
+          : group === 'qa'
+            ? pinnedQas
+            : group === 'author'
+              ? pinnedAuthors
+              : pinnedAssignees;
+      const selected =
+      group === 'reviewer'
+        ? reviewerFilter
+        : group === 'qa'
+          ? qaFilter
+          : group === 'author'
+            ? authorFilter
+            : assigneeFilter;
       const pins = new Set(current);
       pins.delete(name);
       if (group === 'reviewer') setPinnedReviewers(pins);
       else if (group === 'qa') setPinnedQas(pins);
-      else setPinnedAuthors(pins);
+      else if (group === 'author') setPinnedAuthors(pins);
+      else setPinnedAssignees(pins);
       if (selected === name) {
         if (group === 'reviewer') setReviewerFilter(null);
         else if (group === 'qa') setQaFilter(null);
-        else setAuthorFilter(null);
+        else if (group === 'author') setAuthorFilter(null);
+        else setAssigneeFilter(null);
       }
       syncApplied({
         ...(group === 'reviewer'
           ? { excludedReviewers: excluded as Set<string>, pinnedReviewers: pins }
           : group === 'qa'
             ? { excludedQas: excluded as Set<string>, pinnedQas: pins }
-            : { excludedAuthors: excluded as Set<string>, pinnedAuthors: pins }),
+            : group === 'author'
+              ? { excludedAuthors: excluded as Set<string>, pinnedAuthors: pins }
+              : { excludedAssignees: excluded as Set<string>, pinnedAssignees: pins }),
         ...(selected === name
           ? group === 'reviewer'
             ? { reviewer: null }
             : group === 'qa'
               ? { qa: null }
-              : { author: null }
+              : group === 'author'
+                ? { author: null }
+                : { assignee: null }
           : {}),
       });
       return;
@@ -1898,35 +2072,55 @@ export default function BoardPage(props: Props) {
       return;
     }
     const name = key as string;
-    const current = group === 'reviewer' ? pinnedReviewers : group === 'qa' ? pinnedQas : pinnedAuthors;
-    const selected = group === 'reviewer' ? reviewerFilter : group === 'qa' ? qaFilter : authorFilter;
+    const current =
+      group === 'reviewer'
+        ? pinnedReviewers
+        : group === 'qa'
+          ? pinnedQas
+          : group === 'author'
+            ? pinnedAuthors
+            : pinnedAssignees;
+    const selected =
+      group === 'reviewer'
+        ? reviewerFilter
+        : group === 'qa'
+          ? qaFilter
+          : group === 'author'
+            ? authorFilter
+            : assigneeFilter;
     const pins = new Set(current);
     pins.delete(name);
     if (group === 'reviewer') setPinnedReviewers(pins);
     else if (group === 'qa') setPinnedQas(pins);
-    else setPinnedAuthors(pins);
+    else if (group === 'author') setPinnedAuthors(pins);
+    else setPinnedAssignees(pins);
     if (selected === name) {
       if (group === 'reviewer') setReviewerFilter(null);
       else if (group === 'qa') setQaFilter(null);
-      else setAuthorFilter(null);
+      else if (group === 'author') setAuthorFilter(null);
+      else setAssigneeFilter(null);
     }
     syncApplied({
       ...(group === 'reviewer'
         ? { excludedReviewers: excluded as Set<string>, pinnedReviewers: pins }
         : group === 'qa'
           ? { excludedQas: excluded as Set<string>, pinnedQas: pins }
-          : { excludedAuthors: excluded as Set<string>, pinnedAuthors: pins }),
+          : group === 'author'
+            ? { excludedAuthors: excluded as Set<string>, pinnedAuthors: pins }
+            : { excludedAssignees: excluded as Set<string>, pinnedAssignees: pins }),
       ...(selected === name
         ? group === 'reviewer'
           ? { reviewer: null }
           : group === 'qa'
             ? { qa: null }
-            : { author: null }
+            : group === 'author'
+              ? { author: null }
+              : { assignee: null }
         : {}),
     });
   }
 
-  function clearLeft(group: 'sprint' | 'reviewer' | 'qa' | 'author', key: number | string) {
+  function clearLeft(group: 'sprint' | 'reviewer' | 'qa' | 'author' | 'assignee', key: number | string) {
     if (group === 'sprint') {
       const next = new Set(pinnedSprints);
       next.delete(key as number);
@@ -1949,6 +2143,14 @@ export default function BoardPage(props: Props) {
       setPinnedQas(next);
       if (qaFilter === key) setQaFilter(null);
       syncApplied({ pinnedQas: next, ...(qaFilter === key ? { qa: null } : {}) });
+      return;
+    }
+    if (group === 'assignee') {
+      const next = new Set(pinnedAssignees);
+      next.delete(key as string);
+      setPinnedAssignees(next);
+      if (assigneeFilter === key) setAssigneeFilter(null);
+      syncApplied({ pinnedAssignees: next, ...(assigneeFilter === key ? { assignee: null } : {}) });
       return;
     }
     const next = new Set(pinnedAuthors);
@@ -1993,14 +2195,17 @@ export default function BoardPage(props: Props) {
     setReviewerFilter(null);
     setQaFilter(null);
     setAuthorFilter(null);
+    setAssigneeFilter(null);
     setPinnedSprints(new Set());
     setPinnedReviewers(new Set());
     setPinnedQas(new Set());
     setPinnedAuthors(new Set());
+    setPinnedAssignees(new Set());
     setExcludedSprints(new Set());
     setExcludedReviewers(new Set());
     setExcludedQas(new Set());
     setExcludedAuthors(new Set());
+    setExcludedAssignees(new Set());
     const emptyNums = new Set<number>();
     const emptyNames = new Set<string>();
     const emptyIcons = new Set<CellBadgeKind>();
@@ -2011,14 +2216,17 @@ export default function BoardPage(props: Props) {
       reviewer: null,
       qa: null,
       author: null,
+      assignee: null,
       pinnedSprints: emptyNums,
       pinnedReviewers: emptyNames,
       pinnedQas: emptyNames,
       pinnedAuthors: emptyNames,
+      pinnedAssignees: emptyNames,
       excludedSprints: emptyNums,
       excludedReviewers: emptyNames,
       excludedQas: emptyNames,
       excludedAuthors: emptyNames,
+      excludedAssignees: emptyNames,
     });
   }
 
@@ -2262,6 +2470,10 @@ export default function BoardPage(props: Props) {
     if (!tableShown) return;
     editSnap.current = { filtersOpen, issuesOpen, rightTool, tableShown, consoleOpen };
     setReorderMode(true);
+    setFiltersOpen(false);
+    setIssuesOpen(false);
+    setConsoleOpen(false);
+    if (rightTool !== 'off') setRightTool('off');
   }
 
   function tableCorner() {
@@ -2479,7 +2691,7 @@ export default function BoardPage(props: Props) {
             rowWidth > 0
               ? Math.min(
                   Math.max(0, rowWidth - LEFT_RAIL_PX - RIGHT_RAIL_PX),
-                  Math.max(DRAFTS_MIN_PX, Math.round(rowWidth * draftsFraction)),
+                  Math.max(summaryOpen ? SUMMARY_MIN_PX : DRAFTS_MIN_PX, Math.round(rowWidth * draftsFraction)),
                 )
               : 420
           }
@@ -2556,15 +2768,16 @@ export default function BoardPage(props: Props) {
   }
   const bodyRows = matrix.developers.length + 1;
   const compactW = tableWidth(dataCols, COMPACT_COL_PX);
+  const panelFloor = summaryOpen ? SUMMARY_MIN_PX : DRAFTS_MIN_PX;
   const panelWanted =
-    rowWidth > 0 ? Math.round(Math.max(DRAFTS_MIN_PX, rowWidth * draftsFraction)) : 420;
+    rowWidth > 0 ? Math.round(Math.max(panelFloor, rowWidth * draftsFraction)) : Math.max(420, panelFloor);
   const panelRoom =
     rowWidth > 0
       ? Math.max(0, rowWidth - (filtersOpen ? DRAFTS_MIN_PX + LEFT_RAIL_PX : LEFT_RAIL_PX) - RIGHT_RAIL_PX)
       : panelWanted;
   const panelShown = draftsOpen || summaryOpen;
   const panelWidth = panelShown
-    ? Math.min(panelRoom, Math.max(Math.min(DRAFTS_MIN_PX, panelRoom), panelWanted))
+    ? Math.max(panelFloor, Math.min(panelRoom, panelWanted))
     : panelWanted;
   const panelFlex = panelShown
     ? Math.min(panelWidth, tableShown ? Math.max(0, panelRoom - compactW) : panelWidth)
@@ -2573,7 +2786,7 @@ export default function BoardPage(props: Props) {
   const compactH = tableHeight(bodyRows, COMPACT_HEADER_PX, COMPACT_ROW_PX);
   const fullW = tableWidth(dataCols, FULL_COL_PX);
   const fullNeedH = tableHeight(bodyRows, FULL_HEADER_PX, MAX_ROW_PX);
-  layoutRef.current = { filtersOpen, issuesOpen, compactW, compactH, filtersWidth, draftsOpen, tableShown };
+  layoutRef.current = { filtersOpen, issuesOpen, compactW, compactH, filtersWidth, draftsOpen, tableShown, panelFloor };
   const slotHeight =
     centerBox.h <= 0
       ? 0
@@ -2616,7 +2829,7 @@ export default function BoardPage(props: Props) {
     '--bro-digit-center': `${Math.max(11, Math.min(16, digitPx * 0.57))}px`,
     '--bro-digit-grand': `${Math.max(12, Math.min(20, digitPx * 0.72))}px`,
     '--bro-icon': String(iconScale),
-    '--bro-bell': `${rowPx >= 40 ? 20 : rowPx >= 30 ? 16 : 12}px`,
+    '--bro-bell': `${rowPx >= 36 ? 20 : 16}px`,
   } as CSSProperties;
 
   function predictCenterWidth(filters: boolean, drafts: boolean, fraction: number) {
@@ -2685,10 +2898,12 @@ export default function BoardPage(props: Props) {
     activeReviewers.size +
     activeQas.size +
     activeAuthors.size +
+    activeAssignees.size +
     excludedSprints.size +
     excludedReviewers.size +
     excludedQas.size +
-    excludedAuthors.size;
+    excludedAuthors.size +
+    excludedAssignees.size;
   const leftFiltersOn = activeFilterCount > 0;
   const detailIssues =
     !selection
@@ -2985,7 +3200,7 @@ export default function BoardPage(props: Props) {
                 disabled={Object.values(filterGroupOpen).every((open) => !open)}
                 className="inline-flex h-6 w-6 items-center justify-center rounded text-slate-600 hover:bg-slate-100 disabled:text-slate-300 disabled:hover:bg-transparent"
                 onClick={() =>
-                  setFilterGroupOpen({ sprints: false, reviewers: false, qa: false, authors: false })
+                  setFilterGroupOpen({ sprints: false, assignees: false, reviewers: false, qa: false, authors: false })
                 }
               >
                 <FilterGroupsMinimizeIcon />
@@ -2996,7 +3211,7 @@ export default function BoardPage(props: Props) {
                 disabled={Object.values(filterGroupOpen).every(Boolean)}
                 className="inline-flex h-6 w-6 items-center justify-center rounded text-slate-600 hover:bg-slate-100 disabled:text-slate-300 disabled:hover:bg-transparent"
                 onClick={() =>
-                  setFilterGroupOpen({ sprints: true, reviewers: true, qa: true, authors: true })
+                  setFilterGroupOpen({ sprints: true, assignees: true, reviewers: true, qa: true, authors: true })
                 }
               >
                 <FilterGroupsMaximizeIcon />
@@ -3046,6 +3261,39 @@ export default function BoardPage(props: Props) {
                     onClick: () => selectLeft('sprint', NO_SPRINT),
                     onClear: () => excludeLeft('sprint', NO_SPRINT),
                     onPin: () => pinLeft('sprint', NO_SPRINT),
+                  },
+                ]}
+              />
+              <PersonFilterBlock
+                title="Исполнители"
+                open={filterGroupOpen.assignees}
+                onToggle={() => setFilterGroupOpen((prev) => ({ ...prev, assignees: !prev.assignees }))}
+                items={[
+                  ...assigneeNames.map((name) => ({
+                    key: name,
+                    label: name,
+                    count: splitCount((issue) => (issue.assigneeDisplay || '').trim() === name.trim()),
+                    active: activeAssignees.has(name),
+                    pinned: pinnedAssignees.has(name),
+                    excluded: excludedAssignees.has(name),
+                    bold: props.participants.some(
+                      (person) => person.role === 'developer' && person.displayName.trim() === name.trim(),
+                    ),
+                    onClick: () => selectLeft('assignee', name),
+                    onClear: () => excludeLeft('assignee', name),
+                    onPin: () => pinLeft('assignee', name),
+                  })),
+                  {
+                    key: UNASSIGNED_FILTER,
+                    label: 'Не назначено',
+                    count: splitCount((issue) => !(issue.assigneeDisplay || '').trim()),
+                    active: activeAssignees.has(UNASSIGNED_FILTER),
+                    pinned: pinnedAssignees.has(UNASSIGNED_FILTER),
+                    excluded: excludedAssignees.has(UNASSIGNED_FILTER),
+                    danger: true,
+                    onClick: () => selectLeft('assignee', UNASSIGNED_FILTER),
+                    onClear: () => excludeLeft('assignee', UNASSIGNED_FILTER),
+                    onPin: () => pinLeft('assignee', UNASSIGNED_FILTER),
                   },
                 ]}
               />
@@ -3190,6 +3438,7 @@ export default function BoardPage(props: Props) {
               )}
             </div>
             </div>
+            <div className="flex justify-center">
             {tableShown && (
             <button
               type="button"
@@ -3205,6 +3454,7 @@ export default function BoardPage(props: Props) {
               Редактировать таблицу
             </button>
             )}
+            </div>
             <div className="flex min-w-0 items-center justify-end gap-1">
               {boardScope === 'changes' && boardChanges.length > 0 && (
                 <InstantTip text="Пропустить изменения" className="inline-flex h-5 items-center">
@@ -3420,7 +3670,17 @@ export default function BoardPage(props: Props) {
                         onClick={(event) => {
                           const target = event.target as HTMLElement;
                           if (target.closest('button, [draggable]')) return;
-                          selectPending(row.developer.id, row.developer.displayName, rowIssues, 'clear');
+                          if (reorderMode) return;
+                          choose(
+                            {
+                              kind: 'issues',
+                              developerId: row.developer.id,
+                              developerName: row.developer.displayName,
+                              statusKey: null,
+                              issues: rowIssues,
+                            },
+                            'clear',
+                          );
                         }}
                         className={`sticky left-0 z-10 relative cursor-pointer border-b border-white px-1.5 py-0 ${nameColBorder} align-middle ${nameColW} ${shade(row.developer.id, 'name')} ${rowDropMark(row.developer.id)}`}
                         style={{ backgroundColor: away ? '#e5e7eb' : nameColor }}
@@ -4875,11 +5135,13 @@ function applyFilters(
   reviewerNames: Set<string>,
   qaNames: Set<string>,
   authorNames: Set<string>,
+  assigneeNames: Set<string>,
   excluded: {
     sprints: Set<number>;
     reviewers: Set<string>;
     qas: Set<string>;
     authors: Set<string>;
+    assignees: Set<string>;
   },
   doneStatusKeys: ReadonlySet<string> | undefined,
 ): BoardMatrix {
@@ -4888,10 +5150,12 @@ function applyFilters(
     !reviewerNames.size &&
     !qaNames.size &&
     !authorNames.size &&
+    !assigneeNames.size &&
     !excluded.sprints.size &&
     !excluded.reviewers.size &&
     !excluded.qas.size &&
-    !excluded.authors.size
+    !excluded.authors.size &&
+    !excluded.assignees.size
   ) {
     return matrix;
   }
@@ -4901,12 +5165,15 @@ function applyFilters(
     const reviewerMissing = !(issue.reviewerDisplay || '').trim();
     const qaMissing = !(issue.qaDisplay || '').trim();
     const authorMissing = !(issue.authorDisplay || '').trim();
+    const assigneeMissing = !(issue.assigneeDisplay || '').trim();
     if (nameExcluded(excluded.reviewers, issue.reviewerDisplay, reviewerMissing)) return false;
     if (nameExcluded(excluded.qas, issue.qaDisplay, qaMissing)) return false;
     if (nameExcluded(excluded.authors, issue.authorDisplay, authorMissing)) return false;
+    if (nameExcluded(excluded.assignees, issue.assigneeDisplay, assigneeMissing)) return false;
     if (!nameIn(reviewerNames, issue.reviewerDisplay, reviewerMissing)) return false;
     if (!nameIn(qaNames, issue.qaDisplay, qaMissing)) return false;
     if (!nameIn(authorNames, issue.authorDisplay, authorMissing)) return false;
+    if (!nameIn(assigneeNames, issue.assigneeDisplay, assigneeMissing)) return false;
     return true;
   };
 

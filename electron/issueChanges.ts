@@ -20,6 +20,7 @@ export function syncIssueChanges(
   boardLocalId: number,
   previous: BoardMatrix | null,
   nextIssues: TrackerIssue[],
+  skipCommentKeys?: ReadonlySet<string>,
 ): void {
   const prevIssues = flattenMatrixIssues(previous);
   if (!prevIssues.length) return;
@@ -32,6 +33,7 @@ export function syncIssueChanges(
     seenNext.add(issue.key);
     const change = describeIssueChange(prevByKey.get(issue.key), issue);
     if (!change) continue;
+    if (change.commentOnly && skipCommentKeys?.has(issue.key)) continue;
     writes.push({ issueKey: issue.key, text: change.text, at: change.at || issue.updatedAt || now });
   }
   upsertIssueChanges(boardLocalId, writes);

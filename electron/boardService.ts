@@ -15,7 +15,8 @@ import {
   saveLastMatrix,
   getLastMatrix,
 } from './db';
-import { syncIssueChanges } from './issueChanges';
+import { flattenMatrixIssues, syncIssueChanges } from './issueChanges';
+import { describeIssueChange } from '../shared/issueChanges';
 import { TrackerClient, buildIssuesQuery } from './tracker';
 import type { BoardMatrix, Developer, TrackerIssue, TrackerSprint } from '../shared/types';
 import { OTHERS_ROW_ID, UNASSIGNED_ROW_ID } from '../shared/types';
@@ -247,6 +248,29 @@ function buildMeta(
   };
 }
 
+async function reactionOnlyCommentKeys(
+  client: TrackerClient,
+  previous: BoardMatrix | null,
+  nextIssues: TrackerIssue[],
+): Promise<Set<string>> {
+  const skip = new Set<string>();
+  const prev = new Map(flattenMatrixIssues(previous).map((issue) => [issue.key, issue]));
+  const suspects = nextIssues.filter((issue) => describeIssueChange(prev.get(issue.key), issue)?.commentOnly);
+  await Promise.all(
+    suspects.map(async (issue) => {
+      try {
+        const story = await client.getIssueStory(issue.key);
+        const prevAt = Date.parse(prev.get(issue.key)?.lastCommentUpdatedAt || '') || 0;
+        const realAt = Date.parse(story.commentAt || '') || 0;
+        if (!story.commentText || realAt <= prevAt) skip.add(issue.key);
+      } catch {
+        // A failed lookup keeps the update visible.
+      }
+    }),
+  );
+  return skip;
+}
+
 export async function buildLiveMatrix(options?: {
   /** Snapshot: ignore the open-sprint filter and take every issue of the board's sprints. */
   ignoreSprintFilter?: boolean;
@@ -449,7 +473,9 @@ export async function buildLiveMatrix(options?: {
     sprintStatsById: computeSprintStatsById(visibleIssues),
   };
   if (activeBoardId != null) {
-    syncIssueChanges(activeBoardId, getLastMatrix<BoardMatrix>(activeBoardId), visibleIssues);
+    const previous = getLastMatrix<BoardMatrix>(activeBoardId);
+    const skipComments = await reactionOnlyCommentKeys(client, previous, visibleIssues);
+    syncIssueChanges(activeBoardId, previous, visibleIssues, skipComments);
   }
   const remapped = remapMatrixPersonNames(matrix, developers);
   if (!ignoreSprint) saveLastMatrix(remapped);

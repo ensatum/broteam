@@ -1,6 +1,6 @@
 import type { TrackerIssue } from './types';
 
-export type IssueChangeNote = { text: string; at: string };
+export type IssueChangeNote = { text: string; at: string; commentOnly?: boolean };
 
 function actorName(issue: TrackerIssue): string {
   return (issue.updatedByDisplay || '').trim();
@@ -106,7 +106,8 @@ export function describeIssueChange(
   }
   bits.sort((a, b) => b.at - a.at);
   const latest = bits[0];
-  return { text: latest.text, at: stamp(latest.at, fallback) };
+  const commentOnly = bits.length === 1 && latest.text.startsWith('Новый комментарий');
+  return { text: latest.text, at: stamp(latest.at, fallback), commentOnly };
 }
 
 function personIds(values: Array<string | null | undefined>): string[] {
