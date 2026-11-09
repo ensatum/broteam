@@ -24,6 +24,7 @@ import {
   EditIcon,
   EyeIcon,
   HashIcon,
+  IconActionButton,
   NoteClipboardButton,
   RefreshIcon,
   UsersIcon,
@@ -34,6 +35,12 @@ import { LoadBar } from './LoadBar';
 import { RunSpinner } from './ApiRunControls';
 import { InstantTip } from './InstantTip';
 import { SortMenu, type ListSortDir } from './ListSort';
+import {
+  invalidateIssueStories,
+  readIssueStory,
+  useIssueStoryRevision,
+  writeIssueStory,
+} from '../issueStoryCache';
 
 type SummarySortKey = 'taken' | 'done' | 'created' | 'activity' | 'number' | 'assignee' | 'summary';
 type SummarySort = { key: SummarySortKey; dir: 'asc' | 'desc' };
@@ -147,20 +154,47 @@ export default function SummaryDock(props: {
   }, [personOpen]);
 
   const namedRows = useMemo(() => rows.map((row) => remapSummaryRow(row, props.participants)), [rows, props.participants]);
-  const visibleRows = useMemo(() => {
+  const [boardFilter, setBoardFilter] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const audienceRows = useMemo(() => {
     const person = people.find((item) => item.id === props.personId) || null;
-    let filtered =
-      person == null
-        ? namedRows
-        : namedRows
-            .filter((row) => personOnRow(row, person))
-            .map((row) => focusSummaryRow(row, person));
+    return person == null
+      ? namedRows
+      : namedRows.filter((row) => personOnRow(row, person)).map((row) => focusSummaryRow(row, person));
+  }, [namedRows, people, props.personId]);
+  const boardBadges = useMemo(() => summaryBoardBadges(audienceRows, props.boards), [audienceRows, props.boards]);
+  const statusColumns = useMemo(
+    () =>
+      boardFilter == null
+        ? []
+        : props.columns
+            .filter((column) => column.enabled && column.boardLocalId === boardFilter)
+            .sort((a, b) => a.sortOrder - b.sortOrder),
+    [props.columns, boardFilter],
+  );
+  const statusBadges = useMemo(
+    () => (boardFilter == null ? [] : summaryStatusBadges(audienceRows, boardFilter, statusColumns)),
+    [audienceRows, boardFilter, statusColumns],
+  );
+  useEffect(() => {
+    if (boardFilter != null && !boardBadges.some((badge) => badge.id === boardFilter)) {
+      setBoardFilter(null);
+      setStatusFilter(null);
+    }
+  }, [boardBadges, boardFilter]);
+  useEffect(() => {
+    if (statusFilter != null && !statusBadges.some((badge) => badge.key === statusFilter)) setStatusFilter(null);
+  }, [statusBadges, statusFilter]);
+  const visibleRows = useMemo(() => {
+    let filtered = audienceRows;
+    if (boardFilter != null) filtered = filtered.filter((row) => row.boardLocalId === boardFilter);
+    if (statusFilter) filtered = filtered.filter((row) => rowStatusKey(row, statusColumns) === statusFilter);
     const needle = query.trim();
     if (needle) {
       filtered = filtered.filter((row) => textHit(needle, summarySearchParts(row, people, props.boards)));
     }
     return sortRows(filtered, sort);
-  }, [namedRows, people, props.personId, props.boards, query, sort]);
+  }, [audienceRows, boardFilter, statusFilter, statusColumns, query, people, props.boards, sort]);
   runningRef.current = running;
 
   function summaryRequest(period: SummaryPeriod = props.period): SummaryBuildRequest | null {
@@ -277,6 +311,7 @@ export default function SummaryDock(props: {
     setError(null);
     try {
       const next = await window.api.refreshSummaryIssue(request, row.key, boardLocalId);
+      invalidateIssueStories(row.key);
       if (next) setRows((prev) => prev.map((item) => (item.key === row.key ? next : item)));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -410,6 +445,45 @@ export default function SummaryDock(props: {
           className="ml-auto h-6 w-1/2 shrink-0 rounded border border-slate-300 bg-white px-2 text-xs font-normal text-slate-800"
         />
       </div>
+      {boardBadges.length > 0 && (
+        <div className="flex shrink-0 flex-col gap-1 border-b border-slate-200 px-2 py-1">
+          <div className="flex flex-wrap items-center gap-1">
+            {boardBadges.map((badge) => (
+              <SummaryFilterBadge
+                key={badge.id}
+                label={badge.label}
+                count={badge.count}
+                color={badge.color}
+                selected={boardFilter === badge.id}
+                onSelect={() => {
+                  if (boardFilter === badge.id) return;
+                  setBoardFilter(badge.id);
+                  setStatusFilter(null);
+                }}
+                onClear={() => {
+                  setBoardFilter(null);
+                  setStatusFilter(null);
+                }}
+              />
+            ))}
+          </div>
+          {boardFilter != null && statusBadges.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1">
+              {statusBadges.map((badge) => (
+                <SummaryFilterBadge
+                  key={badge.key}
+                  label={badge.label}
+                  count={badge.count}
+                  color={badge.color}
+                  selected={statusFilter === badge.key}
+                  onSelect={() => setStatusFilter(badge.key)}
+                  onClear={() => setStatusFilter(null)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2 text-xs [&>*]:shrink-0">
         {formedAt && (
           <div className="text-[11px] text-slate-500">
@@ -450,6 +524,7 @@ export default function SummaryDock(props: {
               personRole={selected?.role ?? null}
               personName={personName}
               note={issueNotes[row.key] || ''}
+              columns={props.columns}
               onToggle={toggle}
               onHover={props.onIssueHover}
               refreshing={refreshingKey === row.key}
@@ -869,6 +944,7 @@ function SummaryCard(props: {
   personRole: Developer['role'] | null;
   personName: string;
   note: string;
+  columns: BoardColumnConfig[];
   onToggle: () => void;
   onHover: (issueKey: string | null, boardLocalId: number | null) => void;
   refreshing: boolean;
@@ -882,30 +958,59 @@ function SummaryCard(props: {
   const taken = row.takenAt || row.receivedAt;
   const sprints = sprintNames(row);
   const [editingNote, setEditingNote] = useState(false);
-  const [story, setStory] = useState<{
-    description: string;
-    commentText: string;
-    commentUrl: string;
-    commentAuthor: string;
-    commentAt: string;
-  } | null>(null);
+  const storyRev = useIssueStoryRevision();
+  const seenStoryRev = useRef(storyRev);
+  const [story, setStory] = useState(() => readIssueStory(row.key));
   const [storyBusy, setStoryBusy] = useState(false);
   const [storyPart, setStoryPart] = useState<'description' | 'comment' | null>(null);
   const [storyFailed, setStoryFailed] = useState(false);
   useEffect(() => {
     if (!props.open) setEditingNote(false);
   }, [props.open]);
+  useEffect(() => {
+    if (seenStoryRev.current === storyRev) return;
+    seenStoryRev.current = storyRev;
+    const cached = readIssueStory(row.key);
+    setStory(cached);
+    if (cached || !storyPart) return;
+    let alive = true;
+    setStoryBusy(true);
+    setStoryFailed(false);
+    void window.api
+      .getIssueStory(row.key)
+      .then((next) => {
+        writeIssueStory(row.key, next);
+        if (alive) setStory(next);
+      })
+      .catch(() => {
+        if (alive) setStoryFailed(true);
+      })
+      .finally(() => {
+        if (alive) setStoryBusy(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [storyRev, row.key, storyPart]);
   async function loadStory(part: 'description' | 'comment') {
     if (storyPart === part) {
       setStoryPart(null);
       return;
     }
     setStoryPart(part);
+    const cached = readIssueStory(row.key);
+    if (cached) {
+      setStory(cached);
+      setStoryFailed(false);
+      return;
+    }
     if (story || storyBusy) return;
     setStoryBusy(true);
     setStoryFailed(false);
     try {
-      setStory(await window.api.getIssueStory(row.key));
+      const next = await window.api.getIssueStory(row.key);
+      writeIssueStory(row.key, next);
+      setStory(next);
     } catch {
       setStoryFailed(true);
     } finally {
@@ -954,26 +1059,28 @@ function SummaryCard(props: {
         </span>
         <CopyIssueButton issueKey={row.key} url={row.url} summary={row.summary} />
         <span className="min-w-0 flex-1" />
-        <button
-          type="button"
-          title="Обновить задачу"
-          disabled={props.refreshing}
-          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-white hover:text-slate-700 disabled:text-slate-300"
-          onClick={(event) => {
-            event.stopPropagation();
-            props.onRefresh();
-          }}
-        >
-          <RefreshIcon className={`h-3.5 w-3.5 ${props.refreshing ? 'animate-spin' : ''}`} />
-        </button>
-        <NoteClipboardButton
-          hasNote={Boolean(props.note.trim())}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (!props.open) props.onToggle();
-            setEditingNote(true);
-          }}
-        />
+        <div className="flex shrink-0 items-center gap-px">
+          <NoteClipboardButton
+            hasNote={Boolean(props.note.trim())}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (!props.open) props.onToggle();
+              setEditingNote(true);
+            }}
+          />
+          <IconActionButton
+            tone="muted"
+            size="sm"
+            title="Обновить задачу"
+            disabled={props.refreshing}
+            onClick={(event) => {
+              event.stopPropagation();
+              props.onRefresh();
+            }}
+          >
+            <RefreshIcon className={`h-3.5 w-3.5 ${props.refreshing ? 'animate-spin' : ''}`} />
+          </IconActionButton>
+        </div>
       </div>
       {!props.open && (
         <div className="mt-0.5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1 px-2 pb-1 pl-5 text-[10px] text-slate-500">
@@ -995,8 +1102,8 @@ function SummaryCard(props: {
               <LoadBar label="Обновление задачи…" />
             </div>
           )}
-          <div className="flex items-start justify-between gap-3 pl-3.5">
-            <div className="min-w-0 space-y-0.5">
+          <div className="flex items-start gap-3 pl-3.5">
+            <div className="min-w-0 flex-1 space-y-0.5">
               <RoleLine label="Исполнитель" current={assigneeRole.current} past={assigneeRole.past} selected={props.personName} />
               <RoleLine label="Тестировщик" current={qaRole.current} past={qaRole.past} selected={props.personName} />
               <RoleLine label="Ревьюер" current={reviewerRole.current} past={reviewerRole.past} selected={props.personName} />
@@ -1005,7 +1112,10 @@ function SummaryCard(props: {
                 <span className={owns([row.author], props.personName) ? 'font-bold' : ''}>{row.author || '—'}</span>
               </div>
             </div>
-            <div className="shrink-0 space-y-0.5 text-right">
+            <div className="max-w-[40%] shrink-0 self-center px-1 text-center text-[11px] font-medium text-slate-800">
+              {row.currentStatus || '—'}
+            </div>
+            <div className="min-w-0 flex-1 space-y-0.5 text-right">
               <div>
                 <span className="text-slate-500">Создана: </span>
                 {dayOf(row.createdAt)}
@@ -1020,9 +1130,12 @@ function SummaryCard(props: {
               </div>
             </div>
           </div>
-          {row.columns.length > 0 && (
-            <SummaryHours row={row} personId={props.personId} personRole={props.personRole} />
-          )}
+          <SummaryHours
+            row={row}
+            personId={props.personId}
+            personRole={props.personRole}
+            columns={props.columns}
+          />
           {sprints.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-1 pl-3.5">
               {sprints.map((sprint) => (
@@ -1428,7 +1541,7 @@ function SummaryNote(props: {
   }
 
   return (
-    <div className="mt-1.5 flex items-stretch gap-1.5 border-t border-slate-100 pt-1" onClick={(event) => event.stopPropagation()}>
+    <div className="mt-1.5 flex items-stretch gap-1.5 border-t border-slate-100 px-2 pb-2 pt-1.5" onClick={(event) => event.stopPropagation()}>
       <div className="flex shrink-0 flex-col items-center gap-1">
         <button
           type="button"
@@ -1546,49 +1659,199 @@ function hourCount(ms: number): string {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1).replace('.', ',');
 }
 
-function stayHours(
-  column: SummaryRow['columns'][number],
+function ownStay(
+  column: SummaryRow['columns'][number] | undefined,
   personId: number | null,
   role: Developer['role'] | null,
-): { own: string; total: string; split: boolean } {
-  const total = hourCount(column.ms);
-  if (personId == null) return { own: total, total, split: false };
+): { own: number; total: number; split: boolean } {
+  const total = column?.ms || 0;
+  if (personId == null || !column) return { own: total, total, split: false };
   const bucket = role === 'qa' ? column.byQa : column.byAssignee;
   if (!bucket) return { own: total, total, split: false };
-  return { own: hourCount(bucket[String(personId)] || 0), total, split: true };
+  return { own: bucket[String(personId)] || 0, total, split: true };
 }
 
-function SummaryHours(props: { row: SummaryRow; personId: number | null; personRole: Developer['role'] | null }) {
-  const parts = props.row.columns.map((column) => stayHours(column, props.personId, props.personRole));
-  const split = parts.some((item) => item.split);
+function SummaryHours(props: {
+  row: SummaryRow;
+  personId: number | null;
+  personRole: Developer['role'] | null;
+  columns: BoardColumnConfig[];
+}) {
+  const recorded = new Map(props.row.columns.map((column) => [column.statusKey, column]));
+  const ordered = props.columns
+    .filter(
+      (column) =>
+        column.enabled &&
+        (props.row.boardLocalId == null || column.boardLocalId === props.row.boardLocalId),
+    )
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+  let frontier = -1;
+  ordered.forEach((column, index) => {
+    if (column.statusKey === props.row.statusKey || recorded.has(column.statusKey)) frontier = index;
+  });
+  const lines = ordered.map((column, index) => {
+    const spent = recorded.get(column.statusKey);
+    return {
+      key: column.statusKey,
+      label: spent?.label || column.statusDisplay || column.alias || column.statusKey,
+      kind: spent?.kind || 'other',
+      reached: index <= frontier,
+      stay: ownStay(spent, props.personId, props.personRole),
+    };
+  });
+  const extras = props.row.columns
+    .filter((extra) => !lines.some((line) => line.key === extra.statusKey))
+    .map((extra) => ({
+      key: extra.statusKey,
+      label: extra.label,
+      kind: extra.kind,
+      reached: true,
+      stay: ownStay(extra, props.personId, props.personRole),
+    }));
+  const firstAhead = lines.findIndex((line) => !line.reached);
+  if (extras.length) {
+    if (firstAhead < 0) lines.push(...extras);
+    else lines.splice(firstAhead, 0, ...extras);
+  }
+  const split = lines.some((line) => line.stay.split);
+  const reachedLines = lines.filter((line) => line.reached);
+  const ownTotal = reachedLines.reduce((sum, line) => sum + (line.stay.split ? line.stay.own : line.stay.total), 0);
+  const allTotal = reachedLines.reduce((sum, line) => sum + line.stay.total, 0);
+  if (!lines.length) return null;
+  const cell = (line: (typeof lines)[number], ms: number) => (line.reached ? hourCount(ms) : '—');
   return (
     <div className="my-2.5 px-6">
       <table className="w-full text-[11px] leading-snug">
         <thead>
           <tr className="text-[10px] font-medium text-slate-400">
             <th className="py-0.5 pl-2.5 text-left font-medium">Статус</th>
-            <th className="py-0.5 pr-2.5 text-right font-medium">Часов</th>
-            {split && <th className="py-0.5 pr-2.5 text-right font-medium">Часов (общее)</th>}
+            <th className="py-0.5 pr-2.5 text-right font-medium">Часы (личные)</th>
+            {split && <th className="py-0.5 pr-2.5 text-right font-medium">Часы (общие)</th>}
           </tr>
         </thead>
         <tbody>
-          {props.row.columns.map((column, index) => {
+          {lines.map((line, index) => {
             const stripe = index % 2 === 1 ? 'bg-slate-100' : '';
-            const time = parts[index];
+            const own = line.stay.split ? line.stay.own : line.stay.total;
             return (
-              <tr key={column.statusKey || column.label} className={timeClass(props.row, column.kind)}>
-                <td className={`${stripe} py-0.5 pl-2.5 text-left`}>{column.label}</td>
-                <td className={`${stripe} py-0.5 pr-2.5 text-right font-medium tabular-nums`}>{time.own}</td>
+              <tr key={line.key} className={timeClass(props.row, line.kind)}>
+                <td className={`${stripe} py-0.5 pl-2.5 text-left`}>{line.label}</td>
+                <td className={`${stripe} py-0.5 pr-2.5 text-right font-medium tabular-nums`}>{cell(line, own)}</td>
                 {split && (
-                  <td className={`${stripe} py-0.5 pr-2.5 text-right tabular-nums text-slate-400`}>{time.total}</td>
+                  <td className={`${stripe} py-0.5 pr-2.5 text-right tabular-nums text-slate-400`}>
+                    {cell(line, line.stay.total)}
+                  </td>
                 )}
               </tr>
             );
           })}
         </tbody>
+        <tfoot>
+          <tr className="border-t border-slate-200 font-semibold text-slate-700">
+            <td className="py-0.5 pl-2.5 text-left">Total</td>
+            <td className="py-0.5 pr-2.5 text-right tabular-nums">{hourCount(ownTotal)}</td>
+            {split && <td className="py-0.5 pr-2.5 text-right tabular-nums text-slate-400">{hourCount(allTotal)}</td>}
+          </tr>
+        </tfoot>
       </table>
     </div>
   );
+}
+
+const SUMMARY_BADGE_GRAY = '#64748b';
+
+function summaryBoardBadges(rows: SummaryRow[], boards: SavedBoard[]) {
+  const counts = new Map<number, number>();
+  for (const row of rows) {
+    if (row.boardLocalId == null) continue;
+    counts.set(row.boardLocalId, (counts.get(row.boardLocalId) || 0) + 1);
+  }
+  return boards
+    .filter((board) => board.enabled && (counts.get(board.id) || 0) > 0)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((board) => ({
+      id: board.id,
+      label: (board.alias || '').trim() || board.name,
+      color: (board.color || '').trim() || SUMMARY_BADGE_GRAY,
+      count: counts.get(board.id) || 0,
+    }));
+}
+
+function summaryStatusBadges(rows: SummaryRow[], boardId: number, columns: BoardColumnConfig[]) {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    if (row.boardLocalId !== boardId) continue;
+    const key = rowStatusKey(row, columns);
+    if (!key || !columns.some((column) => column.statusKey === key)) continue;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const seen = new Set<string>();
+  const badges: Array<{ key: string; label: string; color: string; count: number }> = [];
+  for (const column of columns) {
+    if (seen.has(column.statusKey)) continue;
+    const count = counts.get(column.statusKey) || 0;
+    if (!count) continue;
+    seen.add(column.statusKey);
+    badges.push({
+      key: column.statusKey,
+      label: (column.alias || '').trim() || column.statusDisplay || column.columnName || column.statusKey,
+      color: (column.color || '').trim() || SUMMARY_BADGE_GRAY,
+      count,
+    });
+  }
+  return badges;
+}
+
+function rowStatusKey(row: SummaryRow, columns: BoardColumnConfig[]): string {
+  if (row.statusKey && columns.some((column) => column.statusKey === row.statusKey)) return row.statusKey;
+  const match = columns.find(
+    (column) =>
+      column.statusDisplay === row.currentStatus ||
+      column.alias === row.currentStatus ||
+      column.columnName === row.currentStatus,
+  );
+  return match?.statusKey || '';
+}
+
+function SummaryFilterBadge(props: {
+  label: string;
+  count: number;
+  color: string;
+  selected: boolean;
+  onSelect: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <span
+      className="inline-flex h-5 max-w-full items-center gap-1 rounded border bg-white px-1 text-[10px] font-medium leading-none"
+      style={{ borderColor: props.color, color: props.color, backgroundColor: props.selected ? badgeTint(props.color) : '#fff' }}
+    >
+      <button
+        type="button"
+        title="Сбросить"
+        tabIndex={props.selected ? 0 : -1}
+        className={`inline-flex h-3 w-3 shrink-0 items-center justify-center rounded ${
+          props.selected ? 'hover:bg-black/5' : 'pointer-events-none'
+        }`}
+        onClick={props.onClear}
+      >
+        {props.selected ? <XIcon className="h-2.5 w-2.5" /> : null}
+      </button>
+      <button type="button" className="inline-flex min-w-0 items-center gap-1" onClick={props.onSelect}>
+        <span className="truncate">{props.label}</span>
+        <span className="shrink-0 tabular-nums">{props.count}</span>
+      </button>
+    </span>
+  );
+}
+
+function badgeTint(hex: string): string {
+  const raw = hex.replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return 'rgba(100,116,139,0.12)';
+  const r = parseInt(raw.slice(0, 2), 16);
+  const g = parseInt(raw.slice(2, 4), 16);
+  const b = parseInt(raw.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},0.14)`;
 }
 
 function personOnRow(row: SummaryRow, person: Developer): boolean {

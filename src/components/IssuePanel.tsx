@@ -19,7 +19,6 @@ import {
   MissingRoleMark,
   ClockBadge,
   PastSprintBadge,
-  IssueListIconStack,
   NoteClipboardButton,
   RefreshIcon,
   BellOffIcon,
@@ -30,6 +29,12 @@ import IssuePeopleLines from './IssuePeopleLines';
 import { LoadBar } from './LoadBar';
 import { InstantTip } from './InstantTip';
 import { sortIssues, type ListSort } from './ListSort';
+import {
+  invalidateIssueStories,
+  readIssueStory,
+  useIssueStoryRevision,
+  writeIssueStory,
+} from '../issueStoryCache';
 
 type Selection = {
   kind?: 'issues' | 'todos';
@@ -318,6 +323,7 @@ export default function IssuePanel(props: Props) {
     props.onError(null);
     try {
       const matrix = await window.api.refreshIssue(issueKey);
+      invalidateIssueStories(issueKey);
       props.onIssueRefreshed(matrix);
     } catch (e) {
       props.onError(e instanceof Error ? e.message : String(e));
@@ -539,19 +545,11 @@ export default function IssuePanel(props: Props) {
               </span>
               <CopyIssueButton issueKey={issue.key} url={issue.url} summary={issue.summary} />
               <span className="min-w-0 flex-1" />
-              {!expanded && (
-                <div className="flex shrink-0 items-center gap-px">
-                  {marks}
-                  {traitButtons}
-                  {refreshButton}
-                </div>
-              )}
-              {expanded && (
-                <>
-                  <span className="shrink-0 text-[10px] font-normal text-slate-400">{createdLabel(issue)}</span>
-                  {refreshButton}
-                </>
-              )}
+              <div className="flex shrink-0 items-center gap-px">
+                {marks}
+                {traitButtons}
+                {refreshButton}
+              </div>
             </div>
           );
           if (!expanded) {
@@ -606,6 +604,7 @@ export default function IssuePanel(props: Props) {
               <div className="px-2 py-1.5">
                 <div className="flex items-stretch gap-1.5">
                   <div className="w-44 shrink-0 leading-snug">
+                    <div className="text-[10px] text-slate-500">Создано: {createdLabel(issue) || '—'}</div>
                     <div className="mt-0.5 text-[10px] text-slate-500">
                       {issue.statusDisplay}
                       {issue.daysInStatus != null ? ` · ${formatDays(issue.daysInStatus)}` : ''}
@@ -626,49 +625,22 @@ export default function IssuePanel(props: Props) {
                     </div>
                   </div>
                   <IssueStory issueKey={issue.key} />
-                  <IssueListIconStack>
-                    {badges.missingTester && (
-                      <MissingRoleMark kind="tester" tone={badges.testerTone} title="Нет тестировщика" />
-                    )}
-                    {badges.missingReviewer && (
-                      <MissingRoleMark kind="reviewer" tone={badges.reviewerTone} title="Нет ревьюера" />
-                    )}
-                    {timeWarn && (
-                      <ClockBadge size="sm" title={formatIssueClockTitle(issue, timeWarn)} />
-                    )}
-                    {pastSprint && (
-                      <PastSprintBadge
-                        size="sm"
-                        title={
-                          issue.sprintName
-                            ? `Задача из прошлого спринта: ${issue.sprintName}`
-                            : 'Задача из прошлого спринта'
-                        }
-                      />
-                    )}
-                  </IssueListIconStack>
                 </div>
-                <div className="mt-1 grid grid-cols-2 gap-2">
-                  <span />
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    {shownChange ? (
-                      <ChangeBadge
-                        inline
-                        text={shownChange.text}
-                        at={shownChange.at}
-                        actor={resolvePersonDisplayName(issue.updatedByMatchKeys, issue.updatedByDisplay, people) || ''}
-                        rawActor={issue.updatedByDisplay}
-                        seen={!freshChange}
-                        onDismiss={() => {
-                          if (freshChange) props.onDismissChange?.(issue.key);
-                        }}
-                      />
-                    ) : (
-                      <span className="min-w-0 flex-1" />
-                    )}
-                    {traitButtons && <div className="ml-auto flex shrink-0 items-center gap-px">{traitButtons}</div>}
+                {shownChange && (
+                  <div className="mt-1">
+                    <ChangeBadge
+                      inline
+                      text={shownChange.text}
+                      at={shownChange.at}
+                      actor={resolvePersonDisplayName(issue.updatedByMatchKeys, issue.updatedByDisplay, people) || ''}
+                      rawActor={issue.updatedByDisplay}
+                      seen={!freshChange}
+                      onDismiss={() => {
+                        if (freshChange) props.onDismissChange?.(issue.key);
+                      }}
+                    />
                   </div>
-                </div>
+                )}
               </div>
               {notePopup}
             </div>
@@ -680,21 +652,29 @@ export default function IssuePanel(props: Props) {
 }
 
 function IssueStory(props: { issueKey: string }) {
-  const [story, setStory] = useState<{
-    description: string;
-    commentText: string;
-    commentUrl: string;
-    commentAuthor: string;
-    commentAt: string;
-  } | null>(null);
+  const storyRev = useIssueStoryRevision();
+  const [story, setStory] = useState(() => readIssueStory(props.issueKey));
   const [failed, setFailed] = useState(false);
+  const [descriptionOpen, setDescriptionOpen] = useState(true);
+  const [commentOpen, setCommentOpen] = useState(true);
   useEffect(() => {
+    setDescriptionOpen(true);
+    setCommentOpen(true);
+  }, [props.issueKey]);
+  useEffect(() => {
+    const cached = readIssueStory(props.issueKey);
+    if (cached) {
+      setStory(cached);
+      setFailed(false);
+      return;
+    }
     let alive = true;
     setStory(null);
     setFailed(false);
     void window.api
       .getIssueStory(props.issueKey)
       .then((next) => {
+        writeIssueStory(props.issueKey, next);
         if (alive) setStory(next);
       })
       .catch(() => {
@@ -703,44 +683,69 @@ function IssueStory(props: { issueKey: string }) {
     return () => {
       alive = false;
     };
-  }, [props.issueKey]);
+  }, [props.issueKey, storyRev]);
   return (
     <div className="min-w-0 flex-1 text-[11px] leading-snug text-slate-700">
       {!story && !failed && <LoadBar label="Загрузка описания и последнего комментария…" />}
       {failed && <div className="text-slate-400">Описание не загрузилось</div>}
       {story && (
         <>
-          {story.description ? (
-            <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(story.description) }} />
-          ) : (
-            <div className="text-slate-400">Нет описания</div>
-          )}
-          {story.commentText ? (
-            <div className="mt-2 rounded border border-amber-200/80 bg-[#fffbeb] px-2 py-1.5">
-              <a
-                href={story.commentUrl}
-                className="text-[10px] font-medium text-sky-700 hover:underline"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  void window.api.openExternal(story.commentUrl);
-                }}
-              >
-                Последний комментарий
-              </a>
-              {(story.commentAuthor || story.commentAt) && (
-                <div className="text-[10px] text-slate-500">
-                  {[story.commentAuthor, story.commentAt ? new Date(story.commentAt).toLocaleString('ru-RU') : '']
-                    .filter(Boolean)
-                    .join(' · ')}
-                </div>
-              )}
-              <div
-                className="markdown-body mt-0.5"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(story.commentText) }}
-              />
-            </div>
-          ) : null}
+          <button
+            type="button"
+            className="text-[10px] font-medium text-slate-500 hover:text-slate-800"
+            onClick={() => setDescriptionOpen((open) => !open)}
+          >
+            {descriptionOpen ? '▾' : '▸'} Описание
+          </button>
+          {descriptionOpen &&
+            (story.description ? (
+              <div className="markdown-body mt-0.5" dangerouslySetInnerHTML={{ __html: renderMarkdown(story.description) }} />
+            ) : (
+              <div className="mt-0.5 text-slate-400">Нет описания</div>
+            ))}
+          <div className="mt-2">
+            <button
+              type="button"
+              className="text-[10px] font-medium text-sky-700 hover:underline"
+              onClick={() => setCommentOpen((open) => !open)}
+            >
+              {commentOpen ? '▾' : '▸'} Последний комментарий
+            </button>
+            {commentOpen && (
+              <div className="mt-1 rounded border border-amber-200/80 bg-[#fffbeb] px-2 py-1.5">
+                {story.commentText ? (
+                  <>
+                    {(story.commentAuthor || story.commentAt) && (
+                      <div className="text-[10px] text-slate-500">
+                        {[story.commentAuthor, story.commentAt ? new Date(story.commentAt).toLocaleString('ru-RU') : '']
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </div>
+                    )}
+                    {story.commentUrl && (
+                      <a
+                        href={story.commentUrl}
+                        className="text-[10px] text-sky-700 hover:underline"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          void window.api.openExternal(story.commentUrl);
+                        }}
+                      >
+                        Открыть в Трекере
+                      </a>
+                    )}
+                    <div
+                      className="markdown-body mt-0.5"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(story.commentText) }}
+                    />
+                  </>
+                ) : (
+                  <div className="text-slate-400">Нет комментария</div>
+                )}
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>

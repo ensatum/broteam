@@ -45,6 +45,7 @@ import {
   ShieldIcon,
   UserCheckIcon,
   TableIcon,
+  CheckIcon,
   MoveIcon,
   UsersIcon,
 } from '../components/Icons';
@@ -2480,26 +2481,29 @@ export default function BoardPage(props: Props) {
     if (rightTool !== 'off') setRightTool('off');
   }
 
-  const editButton =
-    editSlot && (tableShown || reorderMode)
-      ? createPortal(
-          <button
-            type="button"
-            aria-pressed={reorderMode}
-            title="Редактировать таблицу"
-            className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-medium ${
-              reorderMode
-                ? 'border-slate-800 bg-slate-800 text-white'
+  const editMuted = !tableShown && !reorderMode;
+  const editButton = editSlot
+    ? createPortal(
+        <button
+          type="button"
+          aria-pressed={reorderMode}
+          disabled={editMuted}
+          title="Редактировать таблицу"
+          className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-medium ${
+            reorderMode
+              ? 'border-[#3647d2] bg-[#3647d2] text-white hover:border-[#2a38b0] hover:bg-[#2a38b0]'
+              : editMuted
+                ? 'cursor-default border-slate-200 bg-slate-50 text-slate-400'
                 : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
-            }`}
-            onClick={toggleEdit}
-          >
-            <TableIcon className="h-3.5 w-3.5" />
-            Редактировать таблицу
-          </button>,
-          editSlot,
-        )
-      : null;
+          }`}
+          onClick={toggleEdit}
+        >
+          <TableIcon className="h-3.5 w-3.5" />
+          Редактировать таблицу
+        </button>,
+        editSlot,
+      )
+    : null;
 
   function tableCorner() {
     return (
@@ -3541,15 +3545,15 @@ export default function BoardPage(props: Props) {
             </div>
           </div>
           {reorderMode && tableMode !== 'hidden' && (
-            <div className="flex h-8 shrink-0 items-center gap-2 border-b border-slate-800 bg-slate-800 px-2 text-[11px] text-white">
-              <TableIcon className="h-3.5 w-3.5" />
+            <div className="flex h-5 shrink-0 items-center gap-1.5 border-b border-amber-300 bg-amber-50 px-2 text-[11px] text-amber-950">
               <span className="font-medium">Редактирование таблицы</span>
               <button
                 type="button"
-                className="ml-auto inline-flex h-6 items-center rounded bg-white px-2 font-medium text-slate-900 hover:bg-slate-100"
+                title="Готово"
+                className="ml-auto inline-flex h-4 w-4 items-center justify-center rounded bg-emerald-600 text-white hover:bg-emerald-700"
                 onClick={leaveReorder}
               >
-                Готово
+                <CheckIcon className="h-3 w-3" />
               </button>
             </div>
           )}

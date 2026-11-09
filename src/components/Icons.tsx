@@ -697,6 +697,15 @@ export function EditIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) 
   );
 }
 
+/** Feather: check */
+export function CheckIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" {...strokeCrisp} aria-hidden>
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
 /** Feather: check-circle */
 export function CheckCircleIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
   return (

@@ -28,6 +28,7 @@ import {
   type WorkSchedule,
 } from './autoRefresh';
 import { defaultSummaryPeriod } from '@shared/summary';
+import { invalidateIssueStories } from './issueStoryCache';
 import { revealContentFade, setApiCount, startContentFade } from './contentFade';
 import { sessionLog } from './sessionLog';
 import { describeMatrix } from '@shared/matrixShape';
@@ -232,6 +233,7 @@ export default function App() {
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
+      if (!stopped) invalidateIssueStories();
       refreshLock.current = false;
       refreshButton?.removeAttribute('disabled');
       refreshButton?.querySelector('svg')?.classList.remove('animate-spin');
@@ -380,8 +382,8 @@ export default function App() {
 
   return (
     <div className="h-dvh overflow-hidden flex flex-col">
-      <header className="relative flex h-12 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+      <header className="grid h-12 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-slate-200 bg-white px-3">
+        <div className="flex min-w-0 items-center gap-2">
           <div ref={menuRef} className="relative shrink-0">
             <InstantTip text="Меню" place="bottom">
               <button
@@ -457,9 +459,9 @@ export default function App() {
             <span className="font-semibold text-lg tracking-tight text-slate-900">Настройки</span>
           )}
         </div>
-        {onBoardPage && <div id="board-edit-anchor" className="flex shrink-0 items-center" />}
-        {onBoardPage && (
-          <div className="flex shrink-0 items-center gap-1.5">
+        {onBoardPage ? <div id="board-edit-anchor" className="flex items-center justify-center" /> : <div />}
+        {onBoardPage ? (
+          <div className="flex items-center justify-end gap-1.5">
             {matrix?.fetchedAt && (
               <span className="text-[11px] tabular-nums text-slate-400">{formatStamp(matrix.fetchedAt)}</span>
             )}
@@ -493,6 +495,8 @@ export default function App() {
               </button>
             </InstantTip>
           </div>
+        ) : (
+          <div />
         )}
       </header>
 
