@@ -688,6 +688,34 @@ export function CastIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) 
   );
 }
 
+/** Feather: code */
+export function CodeIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" {...strokeCrisp} aria-hidden>
+      <polyline points="16 18 22 12 16 6" />
+      <polyline points="8 6 2 12 8 18" />
+    </svg>
+  );
+}
+
+/** Feather: chevron-right */
+export function ChevronRightIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" {...strokeCrisp} aria-hidden>
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  );
+}
+
+/** Feather: chevron-down */
+export function ChevronDownIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" {...strokeCrisp} aria-hidden>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
 /** Feather: target */
 export function TargetIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
   return (

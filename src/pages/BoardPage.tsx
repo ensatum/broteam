@@ -2691,13 +2691,13 @@ export default function BoardPage(props: Props) {
       <div className="m-4 rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
         <h2 className="text-lg font-semibold mb-2">Добавьте доску</h2>
         <p className="mb-4 text-sm">
-          Подключение есть. Добавьте доску в разделе «Доски и колонки», колонки подтянутся сами.
+          Подключение есть. Добавьте доску в разделе «Доски», колонки подтянутся сами.
         </p>
         <button
           className="rounded-md bg-slate-900 px-3 py-2 text-sm text-white"
           onClick={() => props.onGoSettings('boards')}
         >
-          Доски и колонки
+          Доски
         </button>
       </div>
     );
@@ -3783,63 +3783,73 @@ export default function BoardPage(props: Props) {
                         onDragOver={(e) => allowRowDrop(e, row.developer.id)}
                         onDrop={(e) => dropRow(e, row.developer.id)}
                         onMouseEnter={() => setTableHover({ row: row.developer.id, col: 'name' })}
-                        onClick={(event) => {
-                          const target = event.target as HTMLElement;
-                          if (target.closest('button, [draggable]')) return;
-                          if (reorderMode) return;
-                          choose(
-                            {
-                              kind: 'issues',
-                              developerId: row.developer.id,
-                              developerName: row.developer.displayName,
-                              statusKey: null,
-                              issues: rowIssues,
-                            },
-                            'clear',
-                          );
-                        }}
-                        className={`sticky left-0 z-10 relative cursor-pointer border-b border-white px-1.5 py-0 ${nameColBorder} align-middle ${nameColW} ${shade(row.developer.id, 'name')} ${rowDropMark(row.developer.id)}`}
+                        className={`sticky left-0 z-10 relative h-px border-b border-white p-0 ${nameColBorder} ${nameColW} ${shade(row.developer.id, 'name')} ${rowDropMark(row.developer.id)}`}
                         style={{ backgroundColor: away ? '#e5e7eb' : nameColor }}
                       >
-                        <span className="flex items-center gap-1">
-                          <span
-                            className={`font-medium text-sm leading-tight block min-w-0 flex-1 truncate pr-1 ${
-                              reorderMode && !readOnly && !rowFixed ? 'cursor-grab active:cursor-grabbing' : ''
+                        <div className="relative h-full w-full">
+                          <div
+                            className={`absolute inset-0 z-[1] flex items-center gap-1 px-1.5 ${
+                              reorderMode ? '' : 'cursor-pointer'
                             }`}
-                            title={away ? 'В отпуске' : row.developer.displayName}
-                            draggable={reorderMode && !readOnly && !rowFixed}
-                            onDragStart={(e) => {
-                              if (!reorderMode || readOnly || rowFixed) return;
-                              dragColKey.current = null;
-                              dragDevId.current = row.developer.id;
-                              setDraggingCol(null);
-                              setDraggingDev(row.developer.id);
-                              e.dataTransfer.effectAllowed = 'move';
-                              e.dataTransfer.setData('text/plain', String(row.developer.id));
-                              setMoveGhost(e, row.developer.displayName);
-                            }}
-                            onDragEnd={() => {
-                              dragDevId.current = null;
-                              setDraggingDev(null);
-                              setDropDevId(null);
+                            onClick={(event) => {
+                              if (reorderMode) return;
+                              if ((event.target as HTMLElement).closest('[data-row-hide]')) return;
+                              choose(
+                                {
+                                  kind: 'issues',
+                                  developerId: row.developer.id,
+                                  developerName: row.developer.displayName,
+                                  statusKey: null,
+                                  issues: rowIssues,
+                                },
+                                'clear',
+                              );
                             }}
                           >
-                            {row.developer.displayName}
-                          </span>
-                          {reorderMode && !readOnly && !rowFixed && (
-                            <button
-                              type="button"
-                              title="Скрыть с доски"
-                              className="inline-flex shrink-0 items-center justify-center text-slate-400 hover:text-red-700"
-                              onClick={() => {
-                                if (props.activeBoardId == null) return;
-                                updateRowPrefs(props.activeBoardId, row.developer, 'hide');
+                            <span
+                              className={`block min-w-0 flex-1 truncate pr-1 text-sm font-medium leading-tight ${
+                                reorderMode && !readOnly && !rowFixed ? 'cursor-grab active:cursor-grabbing' : ''
+                              }`}
+                              title={away ? 'В отпуске' : row.developer.displayName}
+                              draggable={reorderMode && !readOnly && !rowFixed}
+                              onDragStart={(e) => {
+                                if (!reorderMode || readOnly || rowFixed) return;
+                                dragColKey.current = null;
+                                dragDevId.current = row.developer.id;
+                                setDraggingCol(null);
+                                setDraggingDev(row.developer.id);
+                                e.dataTransfer.effectAllowed = 'move';
+                                e.dataTransfer.setData('text/plain', String(row.developer.id));
+                                setMoveGhost(e, row.developer.displayName);
+                              }}
+                              onDragEnd={() => {
+                                dragDevId.current = null;
+                                setDraggingDev(null);
+                                setDropDevId(null);
                               }}
                             >
-                              <EyeOffIcon className="h-3 w-3" />
-                            </button>
-                          )}
-                        </span>
+                              {row.developer.displayName}
+                            </span>
+                            {reorderMode && !readOnly && !rowFixed && (
+                              <button
+                                type="button"
+                                data-row-hide=""
+                                title="Скрыть с доски"
+                                className="inline-flex shrink-0 items-center justify-center text-slate-400 hover:text-red-700"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (props.activeBoardId == null) return;
+                                  updateRowPrefs(props.activeBoardId, row.developer, 'hide');
+                                }}
+                              >
+                                <EyeOffIcon className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
+                          <span className="bro-cell-spacer invisible block leading-none" aria-hidden>
+                            0
+                          </span>
+                        </div>
                       </td>
                       {shownColumns.map((c) => {
                         const count = row.counts[c.statusKey] || 0;
@@ -4020,22 +4030,19 @@ export default function BoardPage(props: Props) {
                 <tr>
                   <td
                     onMouseEnter={() => setTableHover({ row: 'total', col: 'name' })}
-                    onClick={(event) => {
-                      const target = event.target as HTMLElement;
-                      if (target.closest('button, [draggable]')) return;
-                      selectPending(
-                        null,
-                        'Вся команда',
-                        matrix.developers.flatMap((person) =>
-                          columns.flatMap((column) => person.issuesByColumn[column.statusKey] || []),
-                        ),
-                      );
-                    }}
-                    className={`sticky left-0 z-10 cursor-pointer border-t border-slate-200 bg-slate-100 px-1.5 py-0 ${nameColBorder} font-bold text-base align-middle ${nameColW} ${shade('total', 'name')}`}
+                    className={`sticky left-0 z-10 relative h-px border-t border-slate-200 bg-slate-100 p-0 ${nameColBorder} font-bold text-base ${nameColW} ${shade('total', 'name')}`}
                   >
-                    <span className="flex items-center gap-1">
-                      <span className="min-w-0 flex-1 truncate">TOTAL</span>
-                    </span>
+                    <div className="relative h-full w-full">
+                      <div
+                        className="absolute inset-0 z-[1] flex cursor-pointer items-center px-1.5"
+                        onClick={selectAllTasks}
+                      >
+                        <span className="min-w-0 flex-1 truncate">TOTAL</span>
+                      </div>
+                      <span className="bro-cell-spacer bro-cell-total invisible block leading-none" aria-hidden>
+                        0
+                      </span>
+                    </div>
                   </td>
                   {shownColumns.map((c) => {
                     const selected = isCellSelected(null, c.statusKey);

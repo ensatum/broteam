@@ -25,6 +25,9 @@ import {
   EditIcon,
   EyeIcon,
   CastIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CodeIcon,
   HashIcon,
   IconActionButton,
   NoteClipboardButton,
@@ -111,11 +114,17 @@ export default function SummaryDock(props: {
   const [personOpen, setPersonOpen] = useState(false);
   const [sort, setSort] = useState<SummarySort>(loadSummarySort);
   const [goals, setGoals] = useState(false);
+  const [indirect, setIndirect] = useState(false);
   const [goalsOpen, setGoalsOpen] = useState(false);
   const [goalRows, setGoalRows] = useState<SummaryGoal[]>([]);
   const [goalsBusy, setGoalsBusy] = useState(false);
   const personRef = useRef<HTMLDivElement>(null);
   const selected = roster.find((person) => person.id === props.personId) || null;
+  useEffect(() => {
+    setGoals(selected != null);
+    setIndirect(selected != null);
+    setGoalsOpen(false);
+  }, [selected?.id]);
 
   useEffect(() => {
     if (props.boardLocalId == null || props.personId == null) {
@@ -166,10 +175,15 @@ export default function SummaryDock(props: {
   const [boardFilter, setBoardFilter] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const audienceRows = useMemo(() => {
-    return selected == null
-      ? namedRows
-      : namedRows.filter((row) => personOnRow(row, selected)).map((row) => focusSummaryRow(row, selected));
-  }, [namedRows, selected]);
+    if (selected == null) return namedRows;
+    return namedRows
+      .filter((row) => {
+        if (!personOnRow(row, selected)) return false;
+        if (indirect) return true;
+        return (row.touchedIds || []).includes(selected.id);
+      })
+      .map((row) => focusSummaryRow(row, selected));
+  }, [namedRows, selected, indirect]);
   const summaryKeys = useMemo(() => new Set(namedRows.map((row) => row.key)), [namedRows]);
   useEffect(() => {
     if (!goals || !selected || (selected.role !== 'developer' && selected.role !== 'qa')) {
@@ -189,7 +203,14 @@ export default function SummaryDock(props: {
       cancel = true;
     };
   }, [goals, selected, props.boards, props.columns, summaryKeys]);
-  const boardBadges = useMemo(() => summaryBoardBadges(audienceRows, props.boards), [audienceRows, props.boards]);
+  const planMarks = useMemo(
+    () => (goals && selected ? goalRows.map((row) => ({ boardLocalId: row.boardLocalId, statusKey: row.statusKey })) : []),
+    [goals, selected, goalRows],
+  );
+  const boardBadges = useMemo(
+    () => summaryBoardBadges(audienceRows, props.boards, planMarks),
+    [audienceRows, props.boards, planMarks],
+  );
   const statusColumns = useMemo(
     () =>
       boardFilter == null
@@ -200,9 +221,15 @@ export default function SummaryDock(props: {
     [props.columns, boardFilter],
   );
   const statusBadges = useMemo(
-    () => (boardFilter == null ? [] : summaryStatusBadges(audienceRows, boardFilter, statusColumns)),
-    [audienceRows, boardFilter, statusColumns],
+    () => (boardFilter == null ? [] : summaryStatusBadges(audienceRows, boardFilter, statusColumns, planMarks)),
+    [audienceRows, boardFilter, statusColumns, planMarks],
   );
+  const visibleGoals = useMemo(() => {
+    let list = goalRows;
+    if (boardFilter != null) list = list.filter((row) => row.boardLocalId === boardFilter);
+    if (statusFilter) list = list.filter((row) => row.statusKey === statusFilter);
+    return list;
+  }, [goalRows, boardFilter, statusFilter]);
   useEffect(() => {
     if (boardFilter != null && !boardBadges.some((badge) => badge.id === boardFilter)) {
       setBoardFilter(null);
@@ -353,24 +380,6 @@ export default function SummaryDock(props: {
     <div className="flex h-full min-h-0 flex-col bg-white">
       <div className="relative flex h-8 shrink-0 items-center gap-2 border-b border-slate-200 px-2 text-sm font-semibold text-slate-900">
         Сводка
-        <button
-          type="button"
-          aria-pressed={goals}
-          className={`absolute left-1/2 inline-flex h-6 -translate-x-1/2 items-center gap-1 rounded border px-2 text-[11px] font-medium ${
-            goals
-              ? 'border-slate-700 bg-white text-slate-900'
-              : 'border-slate-300 bg-white text-slate-500 hover:text-slate-800'
-          }`}
-          onClick={() => {
-            setGoals((on) => {
-              if (!on) setGoalsOpen(false);
-              return !on;
-            });
-          }}
-        >
-          <TargetIcon className="h-3.5 w-3.5" />
-          + цели
-        </button>
         <div className="ml-auto flex min-w-0 items-center gap-1">
           <div className="inline-flex shrink-0 items-center gap-0.5">
             <button
@@ -508,9 +517,10 @@ export default function SummaryDock(props: {
           className="ml-auto h-6 w-[30%] shrink-0 rounded border border-slate-300 bg-white px-2 text-xs font-normal text-slate-800"
         />
       </div>
-      {boardBadges.length > 0 && (
+      {(boardBadges.length > 0 || selected) && (
         <div className="flex shrink-0 flex-col gap-1 border-b border-slate-200 px-2 py-1">
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="flex items-center gap-1">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
             {boardBadges.map((badge) => (
               <BoardFilterBadge
                 key={badge.id}
@@ -529,6 +539,36 @@ export default function SummaryDock(props: {
                 }}
               />
             ))}
+            </div>
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                aria-pressed={Boolean(selected) && indirect}
+                disabled={!selected}
+                title={selected ? 'Задачи участника, которых он сам в этот период не трогал' : 'Сначала выберите участника'}
+                className={summaryToggleClass(Boolean(selected) && indirect, !selected)}
+                onClick={() => setIndirect((on) => !on)}
+              >
+                <CodeIcon className="h-3 w-3" />
+                Косвенно
+              </button>
+              <button
+                type="button"
+                aria-pressed={Boolean(selected) && goals}
+                disabled={!selected}
+                title={selected ? 'Задачи, которые ждут участника' : 'Сначала выберите участника'}
+                className={summaryToggleClass(Boolean(selected) && goals, !selected)}
+                onClick={() => {
+                  setGoals((on) => {
+                    if (!on) setGoalsOpen(false);
+                    return !on;
+                  });
+                }}
+              >
+                <TargetIcon className="h-3 w-3" />
+                Планы
+              </button>
+            </div>
           </div>
           {boardFilter != null && statusBadges.length > 0 && (
             <div className="flex flex-wrap items-center gap-1">
@@ -547,16 +587,16 @@ export default function SummaryDock(props: {
         </div>
       )}
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2 text-xs [&>*]:shrink-0">
-        {goals && (
+        {selected && goals && (
           <GoalBlock
             open={goalsOpen}
             busy={goalsBusy}
-            rows={goalRows}
+            rows={visibleGoals}
             onToggle={() => setGoalsOpen((open) => !open)}
             onOpenBoard={props.onOpenBoard}
           />
         )}
-        {goals && <div className="border-t border-slate-300" />}
+        {selected && goals && <div className="border-t border-slate-300" />}
         {formedAt && (
           <div className="text-[11px] text-slate-500">
             Сформирована {formatStamp(formedAt)}
@@ -1876,9 +1916,21 @@ function SummaryHours(props: {
 
 const SUMMARY_BADGE_GRAY = '#64748b';
 
-function summaryBoardBadges(rows: SummaryRow[], boards: SavedBoard[]) {
+function summaryToggleClass(on: boolean, disabled: boolean): string {
+  const base = 'inline-flex h-5 shrink-0 items-center gap-1 rounded border px-1.5 text-[10px] font-medium leading-none';
+  if (disabled) return `${base} cursor-default border-slate-200 bg-slate-50 text-slate-300`;
+  return on
+    ? `${base} border-slate-700 bg-white text-slate-900`
+    : `${base} border-slate-300 bg-white text-slate-400 hover:text-slate-800`;
+}
+
+function summaryBoardBadges(
+  rows: SummaryRow[],
+  boards: SavedBoard[],
+  extra: Array<{ boardLocalId: number | null }> = [],
+) {
   const counts = new Map<number, number>();
-  for (const row of rows) {
+  for (const row of [...rows, ...extra]) {
     if (row.boardLocalId == null) continue;
     counts.set(row.boardLocalId, (counts.get(row.boardLocalId) || 0) + 1);
   }
@@ -1893,13 +1945,24 @@ function summaryBoardBadges(rows: SummaryRow[], boards: SavedBoard[]) {
     }));
 }
 
-function summaryStatusBadges(rows: SummaryRow[], boardId: number, columns: BoardColumnConfig[]) {
+function summaryStatusBadges(
+  rows: SummaryRow[],
+  boardId: number,
+  columns: BoardColumnConfig[],
+  extra: Array<{ boardLocalId: number | null; statusKey: string }> = [],
+) {
   const counts = new Map<string, number>();
+  const add = (key: string) => {
+    if (!key || !columns.some((column) => column.statusKey === key)) return;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  };
   for (const row of rows) {
     if (row.boardLocalId !== boardId) continue;
-    const key = rowStatusKey(row, columns);
-    if (!key || !columns.some((column) => column.statusKey === key)) continue;
-    counts.set(key, (counts.get(key) || 0) + 1);
+    add(rowStatusKey(row, columns));
+  }
+  for (const row of extra) {
+    if (row.boardLocalId !== boardId) continue;
+    add(row.statusKey);
   }
   const seen = new Set<string>();
   const badges: Array<{ key: string; label: string; color: string; count: number }> = [];
@@ -1983,6 +2046,7 @@ type SummaryGoal = {
   boardLabel: string;
   boardColor: string;
   group: 'development' | 'review' | 'testing';
+  statusKey: string;
 };
 
 const GOAL_LABEL: Record<SummaryGoal['group'], string> = {
@@ -2053,6 +2117,7 @@ function addGoal(
     boardLabel: (board.alias || '').trim() || board.name,
     boardColor: (board.color || '').trim() || '#64748b',
     group,
+    statusKey: issue.statusKey,
   });
 }
 
@@ -2073,8 +2138,8 @@ function GoalBlock(props: {
         className="flex w-full items-center gap-1 px-2 py-1 text-left text-[11px] font-medium text-slate-700"
         onClick={props.onToggle}
       >
-        <span>{props.open ? '▾' : '▸'}</span>
-        <span>Цели</span>
+        {props.open ? <ChevronDownIcon className="h-3 w-3 shrink-0" /> : <ChevronRightIcon className="h-3 w-3 shrink-0" />}
+        <span>Планы</span>
         <span className="tabular-nums text-slate-400">{props.busy ? '…' : props.rows.length}</span>
       </button>
       {props.open && (

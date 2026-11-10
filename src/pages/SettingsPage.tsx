@@ -27,8 +27,8 @@ type BackupChoice = {
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'app', label: 'Приложение' },
   { id: 'integrations', label: 'Интеграции' },
+  { id: 'boards', label: 'Доски' },
   { id: 'people', label: 'Участники' },
-  { id: 'boards', label: 'Доски и колонки' },
   { id: 'backup', label: 'Импорт / экспорт' },
 ];
 
@@ -913,7 +913,7 @@ export default function SettingsPage(props: Props) {
         busy={busy}
         onSave={props.onScheduleSave}
       />
-      <SettingsSection title="Доски и колонки" note={noteFor('boards')}>
+      <SettingsSection title="Доски" note={noteFor('boards')}>
 
         <div className="space-y-2">
           <p className="text-xs text-slate-500">Название доски, ключ очереди или id. Регистр не важен.</p>
