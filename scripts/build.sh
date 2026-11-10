@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Поднимает номер билда, собирает AppImage в builds/ и публикует коммит в develop на origin.
-# Локальные изменения develop входят в этот же коммит. Год берётся из текущей даты.
-# Номер релиза не меняется. Тегов нет.
+# Собирает AppImage в builds/ и публикует коммит в develop на origin.
+# main не вливается. Локальные изменения develop входят в этот же коммит.
+# Если тег текущего релиза уже есть, поднимаются релиз и сборка. Иначе только сборка.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -24,6 +24,12 @@ else
   git checkout -b develop
 fi
 
+current="$(node -p 'require("./package.json").version')"
+current_tag="${current%.*}"
+if git rev-parse -q --verify "refs/tags/${current_tag}" >/dev/null \
+  || git ls-remote --exit-code origin "refs/tags/${current_tag}" >/dev/null; then
+  node scripts/bump-version.mjs release >/dev/null
+fi
 version="$(node scripts/bump-version.mjs build)"
 echo "Build ${version}"
 npm run build

@@ -55,6 +55,29 @@ function isUnassignedIssue(issue: TrackerIssue): boolean {
   return !issue.assigneeDisplay?.trim() && !issue.assigneeLogin && !issue.assigneeUid;
 }
 
+function emptyBucketRow(login: string, columns: BoardMatrix['columns']): BoardMatrix['developers'][number] {
+  const unassigned = login === '__unassigned__';
+  return {
+    developer: {
+      id: unassigned ? UNASSIGNED_ROW_ID : OTHERS_ROW_ID,
+      login: unassigned ? '__unassigned__' : '__others__',
+      displayName: unassigned ? 'Не назначено' : 'Остальные',
+      uid: '',
+      color: 'muted',
+      sortOrder: unassigned ? 10001 : 10000,
+      role: 'developer',
+      onVacation: false,
+      hidden: false,
+      summary: false,
+    },
+    counts: Object.fromEntries(columns.map((column) => [column.statusKey, 0])),
+    total: 0,
+    note: '',
+    todos: [],
+    issuesByColumn: Object.fromEntries(columns.map((column) => [column.statusKey, [] as TrackerIssue[]])),
+  };
+}
+
 function computeSprintStatsById(
   issues: TrackerIssue[],
 ): Record<number, { total: number; unassigned: number; done: number }> {
@@ -407,6 +430,7 @@ export async function buildLiveMatrix(options?: {
       role: 'developer',
       onVacation: false,
       hidden: false,
+      summary: false,
     });
   }
   if ((byDev.get('__unassigned__') || []).length) {
@@ -420,6 +444,7 @@ export async function buildLiveMatrix(options?: {
       role: 'developer',
       onVacation: false,
       hidden: false,
+      summary: false,
     });
   }
 
@@ -489,20 +514,19 @@ export async function buildLiveMatrix(options?: {
 export function patchIssueInMatrix(matrix: BoardMatrix, issue: TrackerIssue): BoardMatrix {
   const columns = matrix.columns;
   const statusToColumn = new Map(columns.map((c) => [c.statusKey, c]));
-  const loginByLower = new Map(
-    matrix.developers.map((r) => [r.developer.login.toLowerCase(), r.developer.login]),
-  );
+  const namedDevelopers = matrix.developers.map((row) => row.developer).filter((person) => person.id > 0);
+  const loginByLower = new Map(namedDevelopers.map((person) => [person.login.toLowerCase(), person.login]));
   const loginByUid = new Map(
-    matrix.developers.map((r) => [String(r.developer.uid), r.developer.login]),
+    namedDevelopers.filter((person) => person.uid).map((person) => [String(person.uid), person.login]),
   );
 
-  const targetLogin =
-    (issue.assigneeLogin && loginByLower.get(issue.assigneeLogin.toLowerCase())) ||
-    (issue.assigneeUid && loginByUid.get(issue.assigneeUid)) ||
-    (issue.assigneeLogin && loginByUid.get(issue.assigneeLogin)) ||
+  const resolvedIssue = applyDeveloperDisplayNames(issue, namedDevelopers);
+  const matched =
+    (resolvedIssue.assigneeLogin && loginByLower.get(resolvedIssue.assigneeLogin.toLowerCase())) ||
+    (resolvedIssue.assigneeUid && loginByUid.get(resolvedIssue.assigneeUid)) ||
+    (resolvedIssue.assigneeLogin && loginByUid.get(resolvedIssue.assigneeLogin)) ||
     null;
-  const developers = matrix.developers.map((r) => r.developer);
-  const resolvedIssue = applyDeveloperDisplayNames(issue, developers);
+  const targetLogin = isUnassignedIssue(resolvedIssue) ? '__unassigned__' : matched || '__others__';
   const boardConfig = getBoardConfig();
   const requiredBoardId = boardConfig.boardId;
   const onConfiguredBoard =
@@ -510,9 +534,11 @@ export function patchIssueInMatrix(matrix: BoardMatrix, issue: TrackerIssue): Bo
     !(resolvedIssue.boardIds?.length) ||
     resolvedIssue.boardIds.includes(requiredBoardId);
   const onHomeQueue = belongsToBoardQueue(issue.key, boardConfig.queueKey);
-  const placeOnBoard = Boolean(
-    targetLogin && statusToColumn.has(resolvedIssue.statusKey) && onConfiguredBoard && onHomeQueue,
+  const wasPresent = matrix.developers.some((row) =>
+    Object.values(row.issuesByColumn).some((items) => items.some((item) => item.key === issue.key)),
   );
+  const placeOnBoard =
+    statusToColumn.has(resolvedIssue.statusKey) && onHomeQueue && (onConfiguredBoard || wasPresent);
 
   const prevSprintDates = new Map(
     matrix.sprintCounts.map((s) => [
@@ -527,7 +553,11 @@ export function patchIssueInMatrix(matrix: BoardMatrix, issue: TrackerIssue): Bo
   );
   let grandTotal = 0;
 
-  const rows = matrix.developers.map((row) => {
+  const rowSource = matrix.developers.some((row) => row.developer.login === targetLogin)
+    ? matrix.developers
+    : [...matrix.developers, emptyBucketRow(targetLogin, columns)];
+
+  const rows = rowSource.map((row) => {
     const counts: Record<string, number> = Object.fromEntries(
       columns.map((c) => [c.statusKey, 0]),
     );

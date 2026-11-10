@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Вливает develop в main, поднимает номер релиза (билд не сбрасывается)
-# и собирает пакеты Linux и macOS в release/. Год берётся из текущей даты.
-# Коммит — полная версия со сборкой, тег — Год.Релиз без номера сборки.
-# Коммит и тег отправляются в origin. Пакеты остаются в release/ и в git не входят.
+# Перематывает main на коммит develop, собирает пакеты Linux и macOS в release/
+# и ставит тег Год.Релиз на этот же коммит. Версию, README и код не меняет.
+# Пакеты в git не входят: их прикрепляют к странице релиза отдельно.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,18 +28,25 @@ if ! git show-ref --verify --quiet refs/heads/main; then
   exit 1
 fi
 
-git checkout main
-git merge --no-edit develop
-
-version="$(node scripts/bump-version.mjs release)"
+version="$(git show develop:package.json | node --input-type=module -e '
+let raw = "";
+process.stdin.on("data", (chunk) => { raw += chunk; });
+process.stdin.on("end", () => process.stdout.write(JSON.parse(raw).version));
+')"
 tag="${version%.*}"
-if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
-  git checkout -- package.json
-  echo "Тег ${tag} уже есть." >&2
+if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null \
+  || git ls-remote --exit-code origin "refs/tags/${tag}" >/dev/null; then
+  echo "Тег ${tag} уже есть. Сначала сборка в develop поднимет номер релиза." >&2
   exit 1
 fi
 
-echo "Release ${tag}"
+git checkout main
+git merge --ff-only develop || {
+  echo "main не перематывается на develop: в main есть свои коммиты." >&2
+  exit 1
+}
+
+echo "Release ${tag} (${version})"
 npm run build
 
 failed=()
@@ -66,20 +72,11 @@ if [[ ${#artifacts[@]} -eq 0 ]]; then
   echo "Ни один пакет не собран." >&2
   exit 1
 fi
-git add package.json
-if git diff --cached --quiet; then
-  echo "Нечего коммитить." >&2
-  exit 1
-fi
-git commit -m "$(cat <<EOF
-Release ${version}
 
-EOF
-)"
 git tag -a "$tag" -m "Release ${tag}"
 git push origin HEAD
 git push origin "$tag"
-echo "Release ${version} закоммичен в main и отмечен тегом ${tag}."
+echo "Тег ${tag} стоит на коммите из develop. Версия ${version}."
 echo "Пакеты лежат в release/. Прикрепите их к релизу на GitHub:"
 echo "https://github.com/ensatum/broteam/releases/new?tag=${tag}"
 if [[ ${#failed[@]} -gt 0 ]]; then

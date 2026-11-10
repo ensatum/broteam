@@ -229,6 +229,7 @@ export default function SettingsPage(props: Props) {
         role,
         onVacation: false,
         hidden: false,
+        summary: role === 'developer' || role === 'qa',
       },
     ]);
     setUserResults([]);
@@ -247,6 +248,7 @@ export default function SettingsPage(props: Props) {
         role: 'contact',
         onVacation: false,
         hidden: false,
+        summary: false,
       },
     ]);
   }
@@ -335,22 +337,45 @@ export default function SettingsPage(props: Props) {
     const q = boardSearch.trim();
     if (!q) {
       setBoardHits([]);
-      setBoardSearchError('Введите точный id доски или точный ключ очереди');
+      setBoardSearchError('Введите название доски, ключ очереди или id');
       return;
     }
-    if (!/^\d+$/.test(q) && !/^[A-Za-z][A-Za-z0-9_-]{0,50}$/.test(q)) {
-      setBoardSearchError('Нужен точный id доски или точный ключ очереди');
-      return;
-    }
+    const needle = q.toLowerCase();
+    const local = savedBoards
+      .filter((board) => {
+        const alias = (board.alias || '').trim();
+        return (
+          String(board.trackerBoardId) === q ||
+          board.name.toLowerCase().includes(needle) ||
+          alias.toLowerCase().includes(needle) ||
+          (board.queueKey || '').toLowerCase().includes(needle)
+        );
+      })
+      .map((board) => ({
+        id: board.trackerBoardId,
+        name: (board.alias || '').trim() || board.name,
+        queueKey: board.queueKey || null,
+      }));
+    const remoteOk = /^\d+$/.test(q) || /^[A-Za-z][A-Za-z0-9_-]{0,50}$/.test(q);
     setBusy(true);
     setBoardSearchError(null);
     try {
-      const known = savedBoards.map((board) => ({
-        id: board.trackerBoardId,
-        name: board.name,
-        queueKey: board.queueKey || null,
-      }));
-      const list = await window.api.searchBoards(q, undefined, known);
+      let remote: TrackerBoard[] = [];
+      if (remoteOk) {
+        const known = savedBoards.map((board) => ({
+          id: board.trackerBoardId,
+          name: `${board.name} ${(board.alias || '').trim()}`.trim(),
+          queueKey: board.queueKey || null,
+        }));
+        try {
+          remote = await window.api.searchBoards(q, undefined, known);
+        } catch (error) {
+          if (!local.length) throw error;
+        }
+      }
+      const byId = new Map<number, TrackerBoard>();
+      for (const board of [...local, ...remote]) byId.set(board.id, board);
+      const list = [...byId.values()];
       setBoardHits(list);
       if (!list.length) setBoardSearchError('Ничего не найдено');
     } catch (e) {
@@ -823,6 +848,18 @@ export default function SettingsPage(props: Props) {
                     </option>
                   ))}
                 </select>
+                <label className="inline-flex shrink-0 items-center gap-1 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(d.summary)}
+                    onChange={(e) => {
+                      const next = [...devDraft];
+                      next[index] = { ...d, summary: e.target.checked };
+                      setDevDraft(next);
+                    }}
+                  />
+                  Сводка
+                </label>
                 {d.role !== 'contact' && (
                   <span
                     className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-slate-400"
@@ -875,7 +912,7 @@ export default function SettingsPage(props: Props) {
       <SettingsSection title="Доски и колонки" note={noteFor('boards')}>
 
         <div className="space-y-2">
-          <p className="text-xs text-slate-500">Точный id доски или точный ключ очереди.</p>
+          <p className="text-xs text-slate-500">Название доски, ключ очереди или id. Регистр не важен.</p>
           <div className="flex flex-wrap gap-2">
             <input
               className="min-w-[220px] flex-1 rounded border border-slate-300 px-3 py-2 text-sm"
@@ -1032,17 +1069,21 @@ export default function SettingsPage(props: Props) {
                           }}
                         />
                         <select
-                          className="h-8 w-24 shrink-0 rounded border border-slate-300 bg-white px-1 text-xs text-slate-700"
+                          className="h-8 w-32 shrink-0 rounded border border-slate-300 bg-white px-1 text-xs text-slate-700"
                           value={c.duty || ''}
                           title="Тег колонки"
                           onChange={(e) => {
-                            const duty = e.target.value === 'review' || e.target.value === 'testing' ? e.target.value : '';
+                            const duty =
+                              e.target.value === 'review' || e.target.value === 'testing' || e.target.value === 'development'
+                                ? e.target.value
+                                : '';
                             const next = [...colDraft];
                             next[index] = { ...c, duty };
                             setColDraft(next);
                           }}
                         >
                           <option value="">Без тега</option>
+                          <option value="development">Разработка</option>
                           <option value="testing">Тесты</option>
                           <option value="review">Ревью</option>
                         </select>

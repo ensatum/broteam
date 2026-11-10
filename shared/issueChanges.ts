@@ -2,6 +2,22 @@ import type { TrackerIssue } from './types';
 
 export type IssueChangeNote = { text: string; at: string; commentOnly?: boolean };
 
+/** A task missing from the previous snapshot is new only if Tracker created it after that snapshot. */
+export function bornSince(createdAt: string | null | undefined, sinceIso: string | null | undefined): boolean {
+  const created = Date.parse(createdAt || '');
+  const since = Date.parse(sinceIso || '');
+  if (!Number.isFinite(created) || !Number.isFinite(since)) return false;
+  return created >= since - 60_000;
+}
+
+/** Stored "Новая задача" for a task Tracker created long before now. */
+export function staleNewTaskNote(text: string, createdAt: string | null | undefined): boolean {
+  if (!text.startsWith('Новая задача')) return false;
+  const created = Date.parse(createdAt || '');
+  if (!Number.isFinite(created)) return true;
+  return Date.now() - created > 36 * 60 * 60 * 1000;
+}
+
 function actorName(issue: TrackerIssue): string {
   return (issue.updatedByDisplay || '').trim();
 }
@@ -23,7 +39,7 @@ export function describeIssueChange(
 ): IssueChangeNote | null {
   const fallback = next.updatedAt || new Date().toISOString();
   const actor = actorName(next);
-  if (!prev) return { text: withActor('Новая задача', actor), at: fallback };
+  if (!prev) return { text: withActor('Новая задача', actor), at: next.createdAt || fallback };
   const bits: Array<{ at: number; text: string }> = [];
   const updatedAt = Date.parse(next.updatedAt || '') || 0;
   if (prev.statusKey !== next.statusKey) {

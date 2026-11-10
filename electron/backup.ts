@@ -210,6 +210,7 @@ export function applyBackup(backup: AppBackup, sections: BackupSections): string
           role: d.role,
           onVacation: Boolean(d.onVacation),
           hidden: Boolean(d.hidden),
+          summary: d.summary == null ? d.role === 'developer' || d.role === 'qa' : Boolean(d.summary),
         })),
       );
       replaceColumns(
@@ -223,7 +224,7 @@ export function applyBackup(backup: AppBackup, sections: BackupSections): string
           enabled: c.enabled,
           sortOrder: c.sortOrder ?? index,
           boardLocalId: c.boardLocalId || 0,
-          duty: c.duty === 'review' || c.duty === 'testing' ? c.duty : '',
+          duty: c.duty === 'review' || c.duty === 'testing' || c.duty === 'development' ? c.duty : '',
         })),
       );
       // The previous install kept one board's tasks. Those rows must not stay

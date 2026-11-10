@@ -11,6 +11,7 @@ import type {
   TrackerConnection,
 } from '../shared/types';
 import { DEFAULT_BOARD, DEFAULT_CONNECTION, DEFAULT_GITHUB, normalizeParticipantRole } from '../shared/types';
+import { normalizeColumnDuty } from '../shared/columnMeta';
 import { liveVersion, settingsIncompatible } from '../shared/version';
 
 let db: Database.Database | null = null;
@@ -191,6 +192,10 @@ function migratePeopleAndBoards(database: Database.Database): void {
   }
   if (!devCols.some((c) => c.name === 'hidden')) {
     database.exec(`ALTER TABLE developers ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!devCols.some((c) => c.name === 'summary')) {
+    database.exec(`ALTER TABLE developers ADD COLUMN summary INTEGER NOT NULL DEFAULT 0`);
+    database.exec(`UPDATE developers SET summary = 1 WHERE role IN ('developer', 'qa')`);
   }
 
   database.exec(`
@@ -454,7 +459,9 @@ function mapDeveloper(row: {
   role?: string;
   onVacation?: number;
   hidden?: number;
+  summary?: number;
 }): Developer {
+  const role = normalizeParticipantRole(row.role);
   return {
     id: row.id,
     login: row.login,
@@ -462,9 +469,10 @@ function mapDeveloper(row: {
     uid: row.uid,
     color: row.color,
     sortOrder: row.sortOrder,
-    role: normalizeParticipantRole(row.role),
+    role,
     onVacation: Boolean(row.onVacation),
     hidden: Boolean(row.hidden),
+    summary: row.summary == null ? role === 'developer' || role === 'qa' : Boolean(row.summary),
   };
 }
 
@@ -472,7 +480,7 @@ export function listDevelopers(): Developer[] {
   const rows = getDb()
     .prepare(
       `SELECT id, login, display_name as displayName, uid, color, sort_order as sortOrder,
-              role, on_vacation as onVacation, hidden
+              role, on_vacation as onVacation, hidden, summary
        FROM developers ORDER BY sort_order ASC, id ASC`,
     )
     .all() as Array<{
@@ -485,6 +493,7 @@ export function listDevelopers(): Developer[] {
     role: string;
     onVacation: number;
     hidden: number;
+    summary: number;
   }>;
   return rows.map(mapDeveloper);
 }
@@ -507,25 +516,26 @@ export function replaceDevelopers(
     const keep = new Set<number>();
     const update = database.prepare(
       `UPDATE developers
-       SET login = ?, display_name = ?, uid = ?, color = ?, sort_order = ?, role = ?, on_vacation = ?, hidden = ?
+       SET login = ?, display_name = ?, uid = ?, color = ?, sort_order = ?, role = ?, on_vacation = ?, hidden = ?, summary = ?
        WHERE id = ?`,
     );
     const insert = database.prepare(
-      `INSERT INTO developers(login, display_name, uid, color, sort_order, role, on_vacation, hidden)
-       VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO developers(login, display_name, uid, color, sort_order, role, on_vacation, hidden, summary)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const [index, d] of developers.entries()) {
       const role: ParticipantRole = normalizeParticipantRole(d.role);
       const vacation = d.onVacation ? 1 : 0;
       const hidden = d.hidden ? 1 : 0;
+      const summary = d.summary == null ? (role === 'developer' || role === 'qa' ? 1 : 0) : d.summary ? 1 : 0;
       const order = d.sortOrder ?? index;
       const loginId = byLogin.get(d.login.toLowerCase());
       const id = loginId ?? (d.id && byId.has(d.id) ? d.id : null);
       if (id != null) {
-        update.run(d.login, d.displayName, d.uid, d.color, order, role, vacation, hidden, id);
+        update.run(d.login, d.displayName, d.uid, d.color, order, role, vacation, hidden, summary, id);
         keep.add(id);
       } else {
-        const info = insert.run(d.login, d.displayName, d.uid, d.color, order, role, vacation, hidden);
+        const info = insert.run(d.login, d.displayName, d.uid, d.color, order, role, vacation, hidden, summary);
         keep.add(Number(info.lastInsertRowid));
       }
     }
@@ -556,8 +566,8 @@ export function ensureAssigneeDevelopers(
       n: number;
     };
     const insert = database.prepare(
-      `INSERT INTO developers(login, display_name, uid, color, sort_order, role, on_vacation, hidden)
-       VALUES(?, ?, ?, 'auto', ?, 'developer', 0, 0)`,
+      `INSERT INTO developers(login, display_name, uid, color, sort_order, role, on_vacation, hidden, summary)
+       VALUES(?, ?, ?, 'auto', ?, 'developer', 0, 0, 1)`,
     );
     let order = nextOrder.n + 1;
     for (const person of incoming) {
@@ -737,7 +747,7 @@ export function listColumns(): BoardColumnConfig[] {
     .all()
     .map((row) => {
       const raw = row as Omit<BoardColumnConfig, 'enabled' | 'duty'> & { enabled: number; duty: string | null };
-      const duty = raw.duty === 'review' || raw.duty === 'testing' ? raw.duty : '';
+      const duty = normalizeColumnDuty(raw.duty);
       return { ...raw, duty, enabled: Boolean(raw.enabled), boardLocalId: raw.boardLocalId || 0 };
     });
 }
@@ -754,7 +764,7 @@ export function replaceColumns(
        ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const [index, c] of columns.entries()) {
-      const duty = c.duty === 'review' || c.duty === 'testing' ? c.duty : '';
+      const duty = normalizeColumnDuty(c.duty);
       insert.run(
         c.columnId,
         c.columnName,
@@ -1321,6 +1331,17 @@ export function upsertIssueChanges(
       if (prev && prev.text === change.text && (Date.parse(prev.at) || 0) >= nextAt) continue;
       write.run(change.issueKey, boardLocalId, change.text, change.at);
     }
+  });
+  tx();
+}
+
+export function deleteIssueChanges(boardLocalId: number, issueKeys: string[]): void {
+  if (!issueKeys.length) return;
+  const stmt = getDb().prepare(
+    `DELETE FROM issue_changes WHERE board_local_id = ? AND issue_key = ? AND text LIKE 'Новая задача%'`,
+  );
+  const tx = getDb().transaction(() => {
+    for (const key of issueKeys) stmt.run(boardLocalId, key);
   });
   tx();
 }

@@ -91,6 +91,7 @@ export function reflowMatrix(
       role: 'developer',
       onVacation: false,
       hidden: false,
+      summary: false,
     });
   }
   if ((byLogin.get('__unassigned__') || []).length) {
@@ -104,6 +105,7 @@ export function reflowMatrix(
       role: 'developer',
       onVacation: false,
       hidden: false,
+      summary: false,
     });
   }
 

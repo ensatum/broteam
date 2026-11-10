@@ -678,6 +678,27 @@ export function AnchorIcon({ className = 'h-3 w-3' }: { className?: string }) {
   );
 }
 
+/** Feather: cast */
+export function CastIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" {...strokeCrisp} aria-hidden>
+      <path d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6" />
+      <line x1="2" y1="20" x2="2.01" y2="20" />
+    </svg>
+  );
+}
+
+/** Feather: target */
+export function TargetIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" {...strokeCrisp} aria-hidden>
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
+    </svg>
+  );
+}
+
 /** Feather: table */
 export function TableIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
   return (

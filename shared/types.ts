@@ -40,10 +40,12 @@ export type Developer = {
   onVacation: boolean;
   /** When true, the person stays in settings and notes but has no table row. */
   hidden: boolean;
+  /** When true, the person is listed in the summary participant menu. */
+  summary: boolean;
 };
 
 /** Optional column duty. Empty means no role tag; the name of the column does not count. */
-export type ColumnDuty = '' | 'review' | 'testing';
+export type ColumnDuty = '' | 'review' | 'testing' | 'development';
 
 export type BoardColumnConfig = {
   id: number;
@@ -57,7 +59,7 @@ export type BoardColumnConfig = {
   sortOrder: number;
   /** Local agile_boards.id. 0 = legacy rows before boards were split. */
   boardLocalId: number;
-  /** Тесты or Ревью. Empty leaves the missing-role icon on the name heuristic. */
+  /** Тесты, Ревью or Разработка. Empty leaves the missing-role icon on the name heuristic. */
   duty: ColumnDuty;
 };
 

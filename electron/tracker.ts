@@ -48,13 +48,19 @@ function looksLikeQueueKey(query: string): boolean {
   return /^[A-Za-z][A-Za-z0-9_-]{0,50}$/.test(query.trim());
 }
 
-/** Exact board id or exact queue key. Name substrings are not a match. */
+/**
+ * Id, or a case-insensitive piece of the board name or queue key.
+ * A name like AI_BC used to be sent to Tracker as a queue: `_` is legal in a
+ * queue key, so the lookup 404'd before any name comparison.
+ */
 function boardMatchesQuery(board: TrackerBoard, query: string): boolean {
-  const q = query.trim();
+  const raw = query.trim();
+  const q = raw.toLowerCase();
   if (!q) return false;
-  if (/^\d+$/.test(q)) return board.id === Number(q);
-  if (!looksLikeQueueKey(q)) return false;
-  return board.queueKey?.trim().toLowerCase() === q.toLowerCase();
+  if (/^\d+$/.test(raw) && board.id === Number(raw)) return true;
+  const name = (board.name || '').trim().toLowerCase();
+  const queue = (board.queueKey || '').trim().toLowerCase();
+  return name.includes(q) || queue.includes(q);
 }
 
 function sortBoards(list: TrackerBoard[]): TrackerBoard[] {
@@ -298,7 +304,8 @@ export class TrackerClient {
       return [await this.getBoard(Number(q))];
     }
 
-    const queueKey = (looksLikeQueueKey(q) ? q : queue?.trim() || '').trim();
+    const typedQueue = (looksLikeQueueKey(q) ? q : queue?.trim() || '').trim();
+    const queueKey = typedQueue.toUpperCase();
     if (!queueKey || !looksLikeQueueKey(queueKey)) return [];
     if (queueAlreadyListed(normalizeKnownBoards(known), queueKey)) {
       return this.knownBoardHits(queueKey, known);

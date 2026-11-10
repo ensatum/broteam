@@ -504,6 +504,7 @@ function registerIpc(): void {
         role: d.role,
         onVacation: Boolean(d.onVacation),
         hidden: Boolean(d.hidden),
+        summary: d.summary == null ? d.role === 'developer' || d.role === 'qa' : Boolean(d.summary),
       }));
       return replaceDevelopers(normalized);
     },

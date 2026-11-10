@@ -519,7 +519,13 @@ export default function IssuePanel(props: Props) {
             .filter((name): name is string => Boolean(name));
           const change = props.changeByKey?.get(issue.key);
           const freshChange = change && change.seen === false ? change : null;
-          const shownChange = freshChange || trackerLastChange(issue);
+          const shownChange = change || trackerLastChange(issue);
+          const acknowledge = () => {
+            if (!freshChange) return;
+            invalidateIssueStories(issue.key);
+            props.onDismissChange?.(issue.key);
+            if (!expanded) props.onToggleExpand?.(issue.key);
+          };
           const header = (
             <div
               className="flex cursor-pointer items-center gap-1.5 bg-slate-100 px-2 py-1 hover:bg-slate-200"
@@ -578,9 +584,7 @@ export default function IssuePanel(props: Props) {
                         actor={resolvePersonDisplayName(issue.updatedByMatchKeys, issue.updatedByDisplay, people) || ''}
                         rawActor={issue.updatedByDisplay}
                         seen={!freshChange}
-                        onDismiss={() => {
-                          if (freshChange) props.onDismissChange?.(issue.key);
-                        }}
+                        onDismiss={acknowledge}
                       />
                     ) : (
                       <span className="min-w-0 flex-1" />
@@ -635,9 +639,7 @@ export default function IssuePanel(props: Props) {
                       actor={resolvePersonDisplayName(issue.updatedByMatchKeys, issue.updatedByDisplay, people) || ''}
                       rawActor={issue.updatedByDisplay}
                       seen={!freshChange}
-                      onDismiss={() => {
-                        if (freshChange) props.onDismissChange?.(issue.key);
-                      }}
+                      onDismiss={acknowledge}
                     />
                   </div>
                 )}

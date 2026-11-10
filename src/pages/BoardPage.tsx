@@ -13,6 +13,8 @@ import { resolveDeveloperRowColor, darkenHex } from '@shared/types';
 import { describeMatrix } from '@shared/matrixShape';
 import { sessionLog } from '../sessionLog';
 import { PENDING_COLUMN, cellMissingBadges, cellTimeWarn, issueIsDone, issueTimeWarn } from '@shared/columnMeta';
+import { staleNewTaskNote } from '@shared/issueChanges';
+import { invalidateIssueStories } from '../issueStoryCache';
 import IssuePanel from '../components/IssuePanel';
 import SummaryDock from '../components/SummaryDock';
 import { RunSpinner } from '../components/ApiRunControls';
@@ -46,6 +48,7 @@ import {
   UserCheckIcon,
   TableIcon,
   CheckIcon,
+  XIcon,
   MoveIcon,
   UsersIcon,
 } from '../components/Icons';
@@ -623,6 +626,10 @@ export default function BoardPage(props: Props) {
   const [appliedPinnedIcons, setAppliedPinnedIcons] = useState<Set<CellBadgeKind>>(() => new Set());
   const [appliedShowDone, setAppliedShowDone] = useState(loadShowDone);
   const [summaryPersonId, setSummaryPersonId] = useState<number | null>(null);
+  const [castPersonId, setCastPersonId] = useState<number | null>(null);
+  useEffect(() => {
+    if (castPersonId != null && castPersonId !== summaryPersonId) setCastPersonId(null);
+  }, [castPersonId, summaryPersonId]);
   const [summaryPeriod, setSummaryPeriod] = useState<SummaryPeriod>(defaultSummaryPeriod);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [consoleHeight, setConsoleHeight] = useState(220);
@@ -957,22 +964,27 @@ export default function BoardPage(props: Props) {
   }, [boardScope, unseenChangeKeys]);
   const matrix = useMemo(() => {
     if (!reflowed) return null;
+    const castPerson =
+      castPersonId == null ? null : props.participants.find((person) => person.id === castPersonId) || null;
     return applyBoardScope(
-      applyFilters(
-        reflowed.matrix,
-        dataSprints,
-        dataReviewers,
-        dataQas,
-        dataAuthors,
-        dataAssignees,
-        {
-          sprints: appliedExcludedSprints,
-          reviewers: appliedExcludedReviewers,
-          qas: appliedExcludedQas,
-          authors: appliedExcludedAuthors,
-          assignees: appliedExcludedAssignees,
-        },
-        doneStatusKeys,
+      applyCast(
+        applyFilters(
+          reflowed.matrix,
+          dataSprints,
+          dataReviewers,
+          dataQas,
+          dataAuthors,
+          dataAssignees,
+          {
+            sprints: appliedExcludedSprints,
+            reviewers: appliedExcludedReviewers,
+            qas: appliedExcludedQas,
+            authors: appliedExcludedAuthors,
+            assignees: appliedExcludedAssignees,
+          },
+          doneStatusKeys,
+        ),
+        castPerson,
       ),
       boardScope,
       doneStatusKeys,
@@ -993,6 +1005,8 @@ export default function BoardPage(props: Props) {
     boardScope,
     doneStatusKeys,
     unseenChangeKeys,
+    castPersonId,
+    props.participants,
   ]);
   const rowPicks = useMemo(() => {
     const visibleIds = new Set(
@@ -2436,6 +2450,7 @@ export default function BoardPage(props: Props) {
             role: 'developer',
             onVacation: false,
             hidden: true,
+            summary: true,
           },
         ]);
         props.onDevelopersChange(saved);
@@ -2685,7 +2700,18 @@ export default function BoardPage(props: Props) {
       columns={props.columns}
       personId={summaryPersonId}
       period={summaryPeriod}
+      castOn={castPersonId != null && castPersonId === summaryPersonId}
       onPersonId={setSummaryPersonId}
+      onCast={() => {
+        if (summaryPersonId == null) return;
+        setCastPersonId((current) => (current === summaryPersonId ? null : summaryPersonId));
+      }}
+      onOpenBoard={(id) => {
+        if (id == null) return;
+        setTableShown(true);
+        saveTableShown(true);
+        props.onActiveBoard(id);
+      }}
       onPeriod={setSummaryPeriod}
       onIssueHover={(issueKey, boardLocalId) => {
         if (!issueKey) {
@@ -2985,8 +3011,16 @@ export default function BoardPage(props: Props) {
       issue.sprintId != null &&
       issue.sprintId !== currentSprintId,
   );
+  const createdAtByKey = new Map<string, string | null | undefined>();
+  for (const row of sourceMatrix.developers) {
+    for (const issues of Object.values(row.issuesByColumn)) {
+      for (const issue of issues) createdAtByKey.set(issue.key, issue.createdAt);
+    }
+  }
   const boardChangeRows = props.changes.filter(
-    (change) => change.boardLocalId === props.activeBoardId,
+    (change) =>
+      change.boardLocalId === props.activeBoardId &&
+      !staleNewTaskNote(change.text, createdAtByKey.get(change.issueKey)),
   );
   const boardChanges = boardChangeRows.filter((change) => !change.seen);
   const changeByKey = new Map(boardChangeRows.map((change) => [change.issueKey, change]));
@@ -3082,14 +3116,19 @@ export default function BoardPage(props: Props) {
       onPinChangesFilter={() => pinIconFilter('changes')}
       expandedKeys={expandedKeys}
       visibleIssueKeys={visibleIssueKeys}
-      onToggleExpand={(issueKey) =>
+      onToggleExpand={(issueKey) => {
+        const opening = !expandedKeys.has(issueKey);
+        if (opening && unseenChangeKeys.has(issueKey)) {
+          invalidateIssueStories(issueKey);
+          props.onDismissChanges([issueKey]);
+        }
         setExpandedKeys((prev) => {
           const next = new Set(prev);
           if (next.has(issueKey)) next.delete(issueKey);
           else next.add(issueKey);
           return next;
-        })
-      }
+        });
+      }}
       onExpandAll={() => setExpandedKeys(new Set(visibleIssueKeys))}
       onCollapseAll={() => setExpandedKeys(new Set())}
       listSort={listSort}
@@ -3555,6 +3594,23 @@ export default function BoardPage(props: Props) {
               </InstantTip>
             </div>
           </div>}
+          {castPersonId != null && (tableShown || issuesOpen) && (
+            <div className="flex h-6 shrink-0 items-center gap-2 border-b border-sky-200 bg-sky-50 px-2 text-[11px] text-sky-950">
+              <span className="min-w-0 truncate">
+                Включен режим трансляции сводки для участника{' '}
+                {props.participants.find((person) => person.id === castPersonId)?.displayName ||
+                  props.participants.find((person) => person.id === castPersonId)?.login}
+              </span>
+              <button
+                type="button"
+                title="Выключить трансляцию"
+                className="ml-auto inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-sky-800 hover:bg-sky-100"
+                onClick={() => setCastPersonId(null)}
+              >
+                <XIcon className="h-3 w-3" />
+              </button>
+            </div>
+          )}
           {reorderMode && tableMode !== 'hidden' && (
             <div className="flex h-5 shrink-0 items-center gap-1.5 border-b border-amber-300 bg-amber-50 px-2 text-[11px] text-amber-950">
               <span className="font-medium">Редактирование таблицы</span>
@@ -5165,6 +5221,32 @@ function sprintAllowed(
   if (include.has(NO_SPRINT) && real.length === 0) return false;
   if (real.length > 0 && !real.includes(issue.sprintId as number)) return false;
   return true;
+}
+
+function applyCast(matrix: BoardMatrix, person: Developer | null): BoardMatrix {
+  if (!person) return matrix;
+  const names = [person.displayName, person.login].map((item) => item.trim().toLowerCase()).filter(Boolean);
+  const hit = (value: string | null | undefined) => names.includes((value || '').trim().toLowerCase());
+  const match = (issue: TrackerIssue) =>
+    hit(issue.authorDisplay) || hit(issue.assigneeDisplay) || hit(issue.reviewerDisplay) || hit(issue.qaDisplay);
+  const developers = matrix.developers.map((row) => {
+    const issuesByColumn: Record<string, TrackerIssue[]> = {};
+    const counts: Record<string, number> = {};
+    for (const col of matrix.columns) {
+      const issues = (row.issuesByColumn[col.statusKey] || []).filter(match);
+      issuesByColumn[col.statusKey] = issues;
+      counts[col.statusKey] = issues.length;
+    }
+    const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
+    return { ...row, issuesByColumn, counts, total };
+  });
+  const columnTotals: Record<string, number> = Object.fromEntries(matrix.columns.map((col) => [col.statusKey, 0]));
+  let grandTotal = 0;
+  for (const row of developers) {
+    for (const col of matrix.columns) columnTotals[col.statusKey] += row.counts[col.statusKey] || 0;
+    grandTotal += row.total;
+  }
+  return { ...matrix, developers, columnTotals, grandTotal };
 }
 
 function applyFilters(
