@@ -110,6 +110,7 @@ function ChangeBadge(props: {
   rawActor?: string | null;
   seen?: boolean;
   onDismiss: () => void;
+  onOpen?: () => void;
   inline?: boolean;
 }) {
   const seen = Boolean(props.seen);
@@ -129,13 +130,24 @@ function ChangeBadge(props: {
           ? 'border border-[#e7edf2] bg-white text-slate-400'
           : 'cursor-pointer bg-amber-100 text-amber-950'
       }`}
-      title={seen ? undefined : 'Просмотрено'}
       onClick={(event) => {
         event.stopPropagation();
-        if (!seen) props.onDismiss();
+        if (!seen) props.onOpen?.();
       }}
     >
-      <BellOffIcon className="h-3 w-3 shrink-0" />
+      {!seen && (
+        <button
+          type="button"
+          title="Просмотрено"
+          className="inline-flex h-3.5 shrink-0 items-center border-r border-amber-300 pr-1 text-amber-950"
+          onClick={(event) => {
+            event.stopPropagation();
+            props.onDismiss();
+          }}
+        >
+          <BellOffIcon className="h-3 w-3" />
+        </button>
+      )}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {actor && <span className="ml-auto max-w-[40%] shrink-0 truncate">{actor}</span>}
       <span className={`shrink-0 tabular-nums ${seen ? 'text-slate-400' : 'text-amber-900/70'}`}>
@@ -522,8 +534,9 @@ export default function IssuePanel(props: Props) {
           const shownChange = change || trackerLastChange(issue);
           const acknowledge = () => {
             if (!freshChange) return;
-            invalidateIssueStories(issue.key);
             props.onDismissChange?.(issue.key);
+          };
+          const openFromBadge = () => {
             if (!expanded) props.onToggleExpand?.(issue.key);
           };
           const header = (
@@ -585,6 +598,7 @@ export default function IssuePanel(props: Props) {
                         rawActor={issue.updatedByDisplay}
                         seen={!freshChange}
                         onDismiss={acknowledge}
+                        onOpen={openFromBadge}
                       />
                     ) : (
                       <span className="min-w-0 flex-1" />
@@ -640,6 +654,7 @@ export default function IssuePanel(props: Props) {
                       rawActor={issue.updatedByDisplay}
                       seen={!freshChange}
                       onDismiss={acknowledge}
+                      onOpen={openFromBadge}
                     />
                   </div>
                 )}

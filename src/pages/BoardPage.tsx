@@ -3118,10 +3118,7 @@ export default function BoardPage(props: Props) {
       visibleIssueKeys={visibleIssueKeys}
       onToggleExpand={(issueKey) => {
         const opening = !expandedKeys.has(issueKey);
-        if (opening && unseenChangeKeys.has(issueKey)) {
-          invalidateIssueStories(issueKey);
-          props.onDismissChanges([issueKey]);
-        }
+        if (opening && unseenChangeKeys.has(issueKey)) invalidateIssueStories(issueKey);
         setExpandedKeys((prev) => {
           const next = new Set(prev);
           if (next.has(issueKey)) next.delete(issueKey);

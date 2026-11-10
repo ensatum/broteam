@@ -574,7 +574,7 @@ export default function SummaryDock(props: {
         {error && <div className="text-red-700">{error}</div>}
         {visibleRows.map((row) => {
           const open = expanded.has(row.key);
-          const color = markerColor(row, props.columns, props.boardLocalId);
+          const color = markerColor(row, props.columns);
           const toggle = () =>
             setExpanded((prev) => {
               const next = new Set(prev);
@@ -1223,7 +1223,7 @@ function SummaryCard(props: {
               ))}
             </div>
           )}
-          <TaskActivity row={row} personId={props.personId} />
+          <TaskActivity row={row} personId={props.personId} personName={props.personName} />
           <div className="mt-2 flex gap-1 pl-3.5">
             <button
               type="button"
@@ -1300,15 +1300,16 @@ function SummaryCard(props: {
   );
 }
 
-function TaskActivity(props: { row: SummaryRow; personId: number | null }) {
+function TaskActivity(props: { row: SummaryRow; personId: number | null; personName: string }) {
   const id = props.personId == null ? '' : String(props.personId);
   const own = id ? props.row.commentsById : undefined;
   const comments = own ? own[id] || 0 : props.row.commentCount;
-  const last = id ? props.row.lastById?.[id] : null;
-  const at = last?.at || (!id ? props.row.lastActionAt || props.row.lastActivityAt : null);
-  const text = last?.text || (!id ? props.row.lastActionText : '');
-  const when = actionStamp(at);
-  const action = [text, when].filter(Boolean).join(' · ') || '—';
+  const last = id ? props.row.lastById?.[id] : newestParticipantAction(props.row.lastById);
+  const when = actionStamp(last?.at);
+  const action = [last?.text, when].filter(Boolean).join(' · ') || '—';
+  const label = props.personName.trim()
+    ? `Последнее действие ${props.personName.trim()}`
+    : 'Последнее действие любого участника';
   return (
     <div className="mt-1.5 space-y-0.5 pl-3.5 text-[11px] text-slate-600">
       <div>
@@ -1316,11 +1317,25 @@ function TaskActivity(props: { row: SummaryRow; personId: number | null }) {
         {comments}
       </div>
       <div>
-        <span className="text-slate-500">Последнее: </span>
+        <span className="text-slate-500">{label}: </span>
         {action}
       </div>
     </div>
   );
+}
+
+function newestParticipantAction(
+  lastById: SummaryRow['lastById'],
+): { at: string; text: string } | null {
+  let best: { at: string; text: string } | null = null;
+  let bestAt = Number.NEGATIVE_INFINITY;
+  for (const item of Object.values(lastById || {})) {
+    const at = Date.parse(item.at || '');
+    if (!Number.isFinite(at) || at < bestAt) continue;
+    best = item;
+    bestAt = at;
+  }
+  return best;
 }
 
 function actionStamp(iso: string | null | undefined): string {
@@ -1436,15 +1451,18 @@ function stampValue(iso: string | null | undefined): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-function markerColor(row: SummaryRow, columns: BoardColumnConfig[], boardId: number | null): string {
-  const match = columns.find(
-    (column) =>
-      column.boardLocalId === boardId &&
-      (column.statusKey === row.statusKey ||
+function markerColor(row: SummaryRow, columns: BoardColumnConfig[]): string {
+  const onBoard = columns.filter(
+    (column) => row.boardLocalId == null || column.boardLocalId === row.boardLocalId,
+  );
+  const match =
+    onBoard.find((column) => column.statusKey === row.statusKey) ||
+    onBoard.find(
+      (column) =>
         column.statusDisplay === row.currentStatus ||
         column.alias === row.currentStatus ||
-        column.columnName === row.currentStatus),
-  );
+        column.columnName === row.currentStatus,
+    );
   return match?.color || '#94a3b8';
 }
 
