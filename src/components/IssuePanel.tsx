@@ -111,6 +111,7 @@ function ChangeBadge(props: {
   seen?: boolean;
   onDismiss: () => void;
   onOpen?: () => void;
+  expanded?: boolean;
   inline?: boolean;
 }) {
   const seen = Boolean(props.seen);
@@ -132,21 +133,24 @@ function ChangeBadge(props: {
       }`}
       onClick={(event) => {
         event.stopPropagation();
-        if (!seen) props.onOpen?.();
+        if (seen) return;
+        if (props.expanded) props.onDismiss();
+        else props.onOpen?.();
       }}
     >
       {!seen && (
-        <button
-          type="button"
-          title="Просмотрено"
-          className="inline-flex h-3.5 shrink-0 items-center border-r border-amber-300 pr-1 text-amber-950"
-          onClick={(event) => {
-            event.stopPropagation();
-            props.onDismiss();
-          }}
-        >
-          <BellOffIcon className="h-3 w-3" />
-        </button>
+        <InstantTip text="Просмотрено" place="top" className="inline-flex shrink-0">
+          <button
+            type="button"
+            className="inline-flex h-3.5 items-center border-r border-amber-300 pr-1 text-amber-950 hover:text-red-600"
+            onClick={(event) => {
+              event.stopPropagation();
+              props.onDismiss();
+            }}
+          >
+            <BellOffIcon className="h-3 w-3" />
+          </button>
+        </InstantTip>
       )}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {actor && <span className="ml-auto max-w-[40%] shrink-0 truncate">{actor}</span>}
@@ -374,7 +378,7 @@ export default function IssuePanel(props: Props) {
         </div>
         <input
           type="search"
-          className="w-1/2 shrink-0 rounded border border-slate-300 bg-white px-2 py-1 text-xs"
+          className="w-[30%] shrink-0 rounded border border-slate-300 bg-white px-2 py-1 text-xs"
           placeholder="Поиск по ключу"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -653,6 +657,7 @@ export default function IssuePanel(props: Props) {
                       actor={resolvePersonDisplayName(issue.updatedByMatchKeys, issue.updatedByDisplay, people) || ''}
                       rawActor={issue.updatedByDisplay}
                       seen={!freshChange}
+                      expanded
                       onDismiss={acknowledge}
                       onOpen={openFromBadge}
                     />

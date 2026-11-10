@@ -503,7 +503,7 @@ export default function SummaryDock(props: {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Поиск по ключу"
-          className="ml-auto h-6 w-1/2 shrink-0 rounded border border-slate-300 bg-white px-2 text-xs font-normal text-slate-800"
+          className="ml-auto h-6 w-[30%] shrink-0 rounded border border-slate-300 bg-white px-2 text-xs font-normal text-slate-800"
         />
       </div>
       {boardBadges.length > 0 && (
@@ -712,7 +712,7 @@ function PeriodField(props: {
   }, [open]);
 
   return (
-    <div ref={rootRef} className="flex items-center gap-1">
+    <div ref={rootRef} className="flex shrink-0 items-center gap-1">
       <span className="shrink-0 text-[11px] font-normal text-slate-600">{label}</span>
       <button
         ref={buttonRef}
