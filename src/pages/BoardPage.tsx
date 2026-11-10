@@ -627,10 +627,8 @@ export default function BoardPage(props: Props) {
   const [appliedPinnedIcons, setAppliedPinnedIcons] = useState<Set<CellBadgeKind>>(() => new Set());
   const [appliedShowDone, setAppliedShowDone] = useState(loadShowDone);
   const [summaryPersonId, setSummaryPersonId] = useState<number | null>(null);
-  const [castPersonId, setCastPersonId] = useState<number | null>(null);
-  useEffect(() => {
-    if (castPersonId != null && castPersonId !== summaryPersonId) setCastPersonId(null);
-  }, [castPersonId, summaryPersonId]);
+  const [castOn, setCastOn] = useState(false);
+  const castPersonId = castOn ? summaryPersonId : null;
   const [summaryPeriod, setSummaryPeriod] = useState<SummaryPeriod>(defaultSummaryPeriod);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [consoleHeight, setConsoleHeight] = useState(220);
@@ -1185,7 +1183,6 @@ export default function BoardPage(props: Props) {
     setTableShown(true);
     saveTableShown(true);
     setIssuesOpen(true);
-    setCastPersonId(null);
     const current = matrixRef.current;
     if (!current) return;
     setSelection({
@@ -2725,11 +2722,11 @@ export default function BoardPage(props: Props) {
       columns={props.columns}
       personId={summaryPersonId}
       period={summaryPeriod}
-      castOn={castPersonId != null && castPersonId === summaryPersonId}
+      castOn={castOn}
       onPersonId={setSummaryPersonId}
       onCast={() => {
-        if (summaryPersonId == null) return;
-        setCastPersonId((current) => (current === summaryPersonId ? null : summaryPersonId));
+        if (summaryPersonId == null && !castOn) return;
+        setCastOn((on) => !on);
       }}
       onOpenBoard={(id) => {
         if (id == null) return;
@@ -3627,7 +3624,7 @@ export default function BoardPage(props: Props) {
                 type="button"
                 title="Выключить трансляцию"
                 className="ml-auto inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-sky-800 hover:bg-sky-100"
-                onClick={() => setCastPersonId(null)}
+                onClick={() => setCastOn(false)}
               >
                 <XIcon className="h-3 w-3" />
               </button>

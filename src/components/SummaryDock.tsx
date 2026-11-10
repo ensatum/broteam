@@ -27,7 +27,7 @@ import {
   CastIcon,
   ChevronDownIcon,
   ChevronRightIcon,
-  CodeIcon,
+  CoffeeIcon,
   HashIcon,
   IconActionButton,
   NoteClipboardButton,
@@ -113,18 +113,13 @@ export default function SummaryDock(props: {
   const [query, setQuery] = useState('');
   const [personOpen, setPersonOpen] = useState(false);
   const [sort, setSort] = useState<SummarySort>(loadSummarySort);
-  const [goals, setGoals] = useState(false);
+  const [goals, setGoals] = useState(true);
   const [indirect, setIndirect] = useState(false);
   const [goalsOpen, setGoalsOpen] = useState(false);
   const [goalRows, setGoalRows] = useState<SummaryGoal[]>([]);
   const [goalsBusy, setGoalsBusy] = useState(false);
   const personRef = useRef<HTMLDivElement>(null);
   const selected = roster.find((person) => person.id === props.personId) || null;
-  useEffect(() => {
-    setGoals(selected != null);
-    setIndirect(selected != null);
-    setGoalsOpen(false);
-  }, [selected?.id]);
 
   useEffect(() => {
     if (props.boardLocalId == null || props.personId == null) {
@@ -415,9 +410,15 @@ export default function SummaryDock(props: {
       <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-slate-200 bg-slate-50 px-2">
         <button
           type="button"
-          title={selected ? 'Оставить на всех досках задачи этого участника' : 'Сначала выберите участника'}
+          title={
+            selected
+              ? 'Оставить на всех досках задачи этого участника'
+              : props.castOn
+                ? 'Выключить трансляцию'
+                : 'Сначала выберите участника'
+          }
           aria-pressed={props.castOn}
-          disabled={!selected}
+          disabled={!selected && !props.castOn}
           className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded ${
             props.castOn
               ? 'bg-[#3647d2] text-white'
@@ -549,7 +550,7 @@ export default function SummaryDock(props: {
                 className={summaryToggleClass(Boolean(selected) && indirect, !selected)}
                 onClick={() => setIndirect((on) => !on)}
               >
-                <CodeIcon className="h-3 w-3" />
+                <CoffeeIcon className="h-3 w-3" />
                 Косвенно
               </button>
               <button

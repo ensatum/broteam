@@ -36,8 +36,8 @@ function paint(alert: boolean): Buffer {
     raw[index + 3] = a;
   };
   const glyphW = 5;
-  const gap = 0;
-  const ox = 2;
+  const gap = 1;
+  const ox = 1;
   const oy = 9;
   GLYPHS.forEach((glyph, index) => {
     const left = ox + index * (glyphW + gap);
@@ -48,7 +48,7 @@ function paint(alert: boolean): Buffer {
     });
   });
   if (alert) {
-    const cx = 17;
+    const cx = 18;
     const cy = 7;
     for (let y = cy - 3; y <= cy + 3; y += 1) {
       for (let x = cx - 3; x <= cx + 3; x += 1) {
