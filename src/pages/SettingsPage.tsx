@@ -1527,10 +1527,9 @@ function CloseToTraySetting() {
     void window.api.getCloseToTray().then(setEnabled).catch(() => {});
   }, []);
   return (
-    <label className="flex max-w-xl items-start gap-2 text-sm text-slate-700">
+    <label className="flex items-center gap-2 text-sm text-slate-700">
       <input
         type="checkbox"
-        className="mt-0.5"
         checked={enabled}
         onChange={(event) => {
           const next = event.target.checked;

@@ -73,6 +73,11 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [apiRequests, setApiRequests] = useState(0);
+  const [trayCue, setTrayCue] = useState<{ tick: number; boardId: number | null; bell: boolean }>({
+    tick: 0,
+    boardId: null,
+    bell: false,
+  });
   const [apiUsage, setApiUsage] = useState({ sinceRefresh: 0, dayTotal: 0 });
   const [storageStats, setStorageStats] = useState({ database: 0, settings: 0, logs: 0 });
   const [changes, setChanges] = useState<
@@ -383,6 +388,21 @@ export default function App() {
     })();
   };
 
+  const trayNav = useRef({ boards, changes, switchBoard });
+  trayNav.current = { boards, changes, switchBoard };
+  useEffect(() => {
+    return window.api.onTrayShow(() => {
+      const nav = trayNav.current;
+      const target = [...nav.boards]
+        .filter((board) => board.enabled)
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .find((board) => nav.changes.some((change) => change.boardLocalId === board.id && !change.seen));
+      setTab('board');
+      if (target) nav.switchBoard(target.id);
+      setTrayCue((prev) => ({ tick: prev.tick + 1, boardId: target?.id ?? null, bell: target != null }));
+    });
+  }, []);
+
   return (
     <div className="h-dvh overflow-hidden flex flex-col">
       <header className="grid h-12 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-slate-200 bg-white px-3">
@@ -578,6 +598,7 @@ export default function App() {
             onSnapshotContentChange={markSnapshotDirty}
             changes={changes}
             apiRequests={apiRequests}
+            trayCue={trayCue}
             onDismissChanges={(keys) => {
               if (activeBoardId == null || !keys.length) return;
               void window.api.dismissIssueChanges(activeBoardId, keys).then(setChanges);

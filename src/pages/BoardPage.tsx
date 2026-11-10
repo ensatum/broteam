@@ -492,6 +492,7 @@ type Props = {
   changes: Array<{ issueKey: string; boardLocalId: number; text: string; at: string; seen: boolean }>;
   onDismissChanges: (keys: string[]) => void;
   apiRequests: number;
+  trayCue: { tick: number; boardId: number | null; bell: boolean };
 };
 
 export type BoardHeaderModel = {
@@ -1172,29 +1173,13 @@ export default function BoardPage(props: Props) {
     setBoardScope('total');
   }, [props.activeBoardId]);
 
-  const trayLanding = useRef(false);
-  const trayBell = useRef(false);
-  const [trayNonce, setTrayNonce] = useState(0);
+  const seenTray = useRef(0);
   useEffect(() => {
-    return window.api.onTrayShow(() => {
-      const boards = [...props.boards]
-        .filter((board) => board.enabled)
-        .sort((a, b) => a.sortOrder - b.sortOrder);
-      const target = boards.find((board) =>
-        props.changes.some((change) => change.boardLocalId === board.id && !change.seen),
-      );
-      trayLanding.current = true;
-      trayBell.current = target != null;
-      if (target && target.id !== props.activeBoardId) props.onActiveBoard(target.id);
-      else setTrayNonce((value) => value + 1);
-    });
-  }, [props.boards, props.changes, props.activeBoardId, props.onActiveBoard]);
-  useEffect(() => {
-    if (!trayLanding.current) return;
-    trayLanding.current = false;
-    const bell = trayBell.current;
+    if (props.trayCue.tick === 0 || props.trayCue.tick === seenTray.current) return;
+    if (props.trayCue.boardId != null && props.trayCue.boardId !== props.activeBoardId) return;
+    seenTray.current = props.trayCue.tick;
     resetTaskFiltersNow();
-    setBoardScope(bell ? 'changes' : 'total');
+    setBoardScope(props.trayCue.bell ? 'changes' : 'total');
     setShowDoneIssues(true);
     saveShowDone(true);
     setTableShown(true);
@@ -1210,7 +1195,7 @@ export default function BoardPage(props: Props) {
       statusKey: null,
       issues: current.developers.flatMap((row) => Object.values(row.issuesByColumn).flat()),
     });
-  }, [props.activeBoardId, trayNonce]);
+  }, [props.activeBoardId, props.trayCue]);
 
   useEffect(() => {
     const snap = leftSnapshotRef.current;
