@@ -1172,6 +1172,46 @@ export default function BoardPage(props: Props) {
     setBoardScope('total');
   }, [props.activeBoardId]);
 
+  const trayLanding = useRef(false);
+  const trayBell = useRef(false);
+  const [trayNonce, setTrayNonce] = useState(0);
+  useEffect(() => {
+    return window.api.onTrayShow(() => {
+      const boards = [...props.boards]
+        .filter((board) => board.enabled)
+        .sort((a, b) => a.sortOrder - b.sortOrder);
+      const target = boards.find((board) =>
+        props.changes.some((change) => change.boardLocalId === board.id && !change.seen),
+      );
+      trayLanding.current = true;
+      trayBell.current = target != null;
+      if (target && target.id !== props.activeBoardId) props.onActiveBoard(target.id);
+      else setTrayNonce((value) => value + 1);
+    });
+  }, [props.boards, props.changes, props.activeBoardId, props.onActiveBoard]);
+  useEffect(() => {
+    if (!trayLanding.current) return;
+    trayLanding.current = false;
+    const bell = trayBell.current;
+    resetTaskFiltersNow();
+    setBoardScope(bell ? 'changes' : 'total');
+    setShowDoneIssues(true);
+    saveShowDone(true);
+    setTableShown(true);
+    saveTableShown(true);
+    setIssuesOpen(true);
+    setCastPersonId(null);
+    const current = matrixRef.current;
+    if (!current) return;
+    setSelection({
+      kind: 'issues',
+      developerId: null,
+      developerName: 'Вся команда',
+      statusKey: null,
+      issues: current.developers.flatMap((row) => Object.values(row.issuesByColumn).flat()),
+    });
+  }, [props.activeBoardId, trayNonce]);
+
   useEffect(() => {
     const snap = leftSnapshotRef.current;
     if (snap.boardId == null || snap.boardId !== filterOwnerRef.current) return;
@@ -3156,7 +3196,7 @@ export default function BoardPage(props: Props) {
   const refreshVeil = refreshOnThisBoard ? (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/60">
       <div className="pointer-events-auto">
-        <RunSpinner countId="bro-api-count" />
+        <RunSpinner requests={props.apiRequests} />
       </div>
     </div>
   ) : null;
@@ -4108,7 +4148,7 @@ export default function BoardPage(props: Props) {
             ref={(node) => attachFadeHost('spinner', node)}
             className="pointer-events-none absolute inset-0 z-40 hidden flex-col items-center justify-center"
           >
-            <RunSpinner countId="bro-api-count" />
+            <RunSpinner requests={props.apiRequests} />
           </div>
           {refreshVeil}
           </div>

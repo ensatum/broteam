@@ -45,7 +45,7 @@ export type Developer = {
 };
 
 /** Optional column duty. Empty means no role tag; the name of the column does not count. */
-export type ColumnDuty = '' | 'review' | 'testing' | 'development';
+export type ColumnDuty = '' | 'review' | 'testing' | 'development' | 'ai';
 
 export type BoardColumnConfig = {
   id: number;

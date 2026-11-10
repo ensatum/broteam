@@ -21,7 +21,7 @@ export type SummaryBuildRequest = {
   queueKey: string;
   participant: Developer | null;
   period: SummaryPeriod;
-  columns: Array<Pick<BoardColumnConfig, 'statusKey' | 'alias' | 'statusDisplay' | 'columnName'>>;
+  columns: Array<Pick<BoardColumnConfig, 'statusKey' | 'alias' | 'statusDisplay' | 'columnName' | 'duty' | 'boardLocalId'>>;
   boards?: SummaryBoardRef[];
 };
 
@@ -42,6 +42,10 @@ export type SummaryColumnTime = {
   byAssignee?: Record<string, number>;
   /** Person id → milliseconds spent in this status as tester. */
   byQa?: Record<string, number>;
+  /** Person id → milliseconds spent in a review-tagged status as reviewer. */
+  byReviewer?: Record<string, number>;
+  /** Person id → milliseconds in an untagged status, credited to the task author. */
+  byAuthor?: Record<string, number>;
   kind: 'testing' | 'work' | 'review' | 'other';
 };
 

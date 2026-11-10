@@ -148,6 +148,7 @@ export type ElectronApi = {
   getAppInfo: () => Promise<{ name: string; version: string; headerVersion: string }>;
   updateAppFromRepo: () => Promise<{ updated: boolean; restarted: boolean; message: string }>;
   onAppUpdateProgress: (listener: (message: string) => void) => () => void;
+  onTrayShow: (listener: () => void) => () => void;
   sessionLog: (level: 'info' | 'error', message: string, extra?: unknown) => void;
   resetTrackerActivity: () => Promise<{ total: number; inflight: number; sinceRefresh: number; dayTotal: number }>;
   beginBoardRefresh: () => Promise<{ total: number; inflight: number; sinceRefresh: number; dayTotal: number }>;
@@ -286,6 +287,11 @@ const api: ElectronApi = {
     const wrapped = (_event: unknown, message: string) => listener(message);
     ipcRenderer.on('app:updateProgress', wrapped);
     return () => ipcRenderer.removeListener('app:updateProgress', wrapped);
+  },
+  onTrayShow: (listener) => {
+    const wrapped = () => listener();
+    ipcRenderer.on('tray:show', wrapped);
+    return () => ipcRenderer.removeListener('tray:show', wrapped);
   },
   sessionLog: (level, message, extra) => ipcRenderer.send('log:write', level, message, extra),
   resetTrackerActivity: () => ipcRenderer.invoke('tracker:resetActivity'),

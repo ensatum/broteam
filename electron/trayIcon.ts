@@ -18,23 +18,10 @@ function chunk(type: string, data: Buffer): Buffer {
   return out;
 }
 
-const BELL = [
-  '......####......',
-  '.....######.....',
-  '....########....',
-  '....########....',
-  '...##########...',
-  '...##########...',
-  '..############..',
-  '..############..',
-  '.##############.',
-  '................',
-  '.......##.......',
-  '......####......',
-  '......####......',
-  '................',
-  '................',
-  '................',
+const GLYPHS = [
+  ['######', '##..##', '##..##', '#####.', '##..##', '##..##', '######'],
+  ['######', '##..##', '##..##', '#####.', '##.#..', '##..#.', '##...#'],
+  ['######', '##..##', '##..##', '##..##', '##..##', '##..##', '######'],
 ];
 
 function paint(alert: boolean): Buffer {
@@ -48,14 +35,18 @@ function paint(alert: boolean): Buffer {
     raw[index + 2] = b;
     raw[index + 3] = a;
   };
-  const ox = 3;
-  const oy = 3;
-  for (let y = 0; y < BELL.length; y += 1) {
-    const row = BELL[y];
-    for (let x = 0; x < row.length; x += 1) {
-      if (row[x] === '#') set(ox + x, oy + y, 45, 45, 45, 255);
-    }
-  }
+  const glyphW = 6;
+  const gap = 1;
+  const ox = 1;
+  const oy = 14;
+  GLYPHS.forEach((glyph, index) => {
+    const left = ox + index * (glyphW + gap);
+    glyph.forEach((row, y) => {
+      for (let x = 0; x < row.length; x += 1) {
+        if (row[x] === '#') set(left + x, oy + y, 25, 25, 25, 255);
+      }
+    });
+  });
   if (alert) {
     const cx = 16;
     const cy = 5;

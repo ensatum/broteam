@@ -224,7 +224,10 @@ export function applyBackup(backup: AppBackup, sections: BackupSections): string
           enabled: c.enabled,
           sortOrder: c.sortOrder ?? index,
           boardLocalId: c.boardLocalId || 0,
-          duty: c.duty === 'review' || c.duty === 'testing' || c.duty === 'development' ? c.duty : '',
+          duty:
+            c.duty === 'review' || c.duty === 'testing' || c.duty === 'development' || c.duty === 'ai'
+              ? c.duty
+              : '',
         })),
       );
       // The previous install kept one board's tasks. Those rows must not stay

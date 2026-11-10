@@ -1,7 +1,7 @@
 import type { BoardColumnConfig, ColumnDuty, TrackerIssue } from './types';
 
 export function normalizeColumnDuty(value: string | null | undefined): ColumnDuty {
-  if (value === 'review' || value === 'testing' || value === 'development') return value;
+  if (value === 'review' || value === 'testing' || value === 'development' || value === 'ai') return value;
   return '';
 }
 

@@ -154,6 +154,7 @@ export default function App() {
   useEffect(() => {
     const apply = (state: { total: number; sinceRefresh?: number; dayTotal?: number }) => {
       setApiCount(state.total);
+      setApiRequests(state.total);
       setApiUsage({ sinceRefresh: state.sinceRefresh ?? 0, dayTotal: state.dayTotal ?? 0 });
     };
     void window.api.trackerUsage().then(apply).catch(() => undefined);
@@ -289,6 +290,8 @@ export default function App() {
               alias: column.alias,
               statusDisplay: column.statusDisplay,
               columnName: column.columnName,
+              duty: column.duty,
+              boardLocalId: column.boardLocalId,
             })),
         });
         saveAutoSaveStamp(stamp);

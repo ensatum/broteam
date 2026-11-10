@@ -230,8 +230,13 @@ function showMainWindow(): void {
     return;
   }
   if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.setAlwaysOnTop(true);
   mainWindow.show();
+  mainWindow.moveTop();
   mainWindow.focus();
+  app.focus({ steal: true });
+  mainWindow.setAlwaysOnTop(false);
+  if (!mainWindow.webContents.isDestroyed()) mainWindow.webContents.send('tray:show');
 }
 
 function paintTray(): void {

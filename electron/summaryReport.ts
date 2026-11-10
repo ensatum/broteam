@@ -605,16 +605,20 @@ function interpretIssue(
     to: number;
     assigneeIds: number[];
     qaIds: number[];
+    reviewerIds: number[];
   }> = [];
   let assigneeIds: number[] = [];
   let qaIds: number[] = [];
+  let reviewerIds: number[] = [];
   let sawAssignee = false;
   let sawQa = false;
+  let sawReviewer = false;
   const idsHolding = (value: unknown) => audience.filter((person) => holds(person, value)).map((person) => person.id);
-  const fillHolders = (kind: 'assignee' | 'qa', ids: number[]) => {
+  const fillHolders = (kind: 'assignee' | 'qa' | 'reviewer', ids: number[]) => {
     for (const span of statusSpans) {
       if (kind === 'assignee' && !span.assigneeIds.length) span.assigneeIds = [...ids];
       if (kind === 'qa' && !span.qaIds.length) span.qaIds = [...ids];
+      if (kind === 'reviewer' && !span.reviewerIds.length) span.reviewerIds = [...ids];
     }
   };
   let spanStart = issue.createdAt ? Date.parse(issue.createdAt) : Number.NaN;
@@ -671,6 +675,7 @@ function interpretIssue(
         to: nextAt,
         assigneeIds: [...assigneeIds],
         qaIds: [...qaIds],
+        reviewerIds: [...reviewerIds],
       });
     };
     const retarget = (at: number) => {
@@ -693,6 +698,7 @@ function interpretIssue(
               to: at,
               assigneeIds: [...assigneeIds],
               qaIds: [...qaIds],
+              reviewerIds: [...reviewerIds],
             });
           }
         }
@@ -744,7 +750,19 @@ function interpretIssue(
           qaIds = toIds;
           sawQa = true;
           qa = label;
-        } else reviewer = label;
+        } else {
+          const fromIds = idsHolding(field.from);
+          const toIds = idsHolding(field.to);
+          if (!sawReviewer) {
+            reviewerIds = fromIds;
+            fillHolders('reviewer', fromIds);
+            sawReviewer = true;
+          }
+          retarget(at);
+          reviewerIds = toIds;
+          sawReviewer = true;
+          reviewer = label;
+        }
         noteRole(role, label);
         const involved = audience.filter((item) => holds(item, field.to) || holds(item, field.from));
         if (at >= fromMs && at <= toMs) {
@@ -846,6 +864,10 @@ function interpretIssue(
     qaIds = idsHolding(issue.qaDisplay);
     fillHolders('qa', qaIds);
   }
+  if (!sawReviewer) {
+    reviewerIds = idsHolding(issue.reviewerDisplay);
+    fillHolders('reviewer', reviewerIds);
+  }
   if (statusKey && Number.isFinite(spanStart)) {
     statusSpans.push({
       key: statusKey,
@@ -854,9 +876,10 @@ function interpretIssue(
       to: end,
       assigneeIds: [...assigneeIds],
       qaIds: [...qaIds],
+      reviewerIds: [...reviewerIds],
     });
   }
-  const columns = sumColumns(statusSpans, request.columns);
+  const columns = sumColumns(statusSpans, request.columns, origin?.boardLocalId, idsHolding(issue.authorDisplay));
   const name = focus?.displayName.trim() || '';
   const shuffles: SummaryShuffle[] = [];
   if (focus) {
@@ -961,22 +984,31 @@ function sumColumns(
     to: number;
     assigneeIds?: number[];
     qaIds?: number[];
+    reviewerIds?: number[];
   }>,
   columns: SummaryBuildRequest['columns'],
+  boardLocalId: number | undefined,
+  authorIds: number[],
 ): SummaryColumnTime[] {
   const byKey = new Map<string, SummaryColumnTime>();
   for (const span of spans) {
-    const column = columns.find((item) => item.statusKey === span.key);
+    const column = columns.find(
+      (item) => item.statusKey === span.key && (boardLocalId == null || item.boardLocalId === boardLocalId),
+    );
     const label = span.display || column?.statusDisplay || column?.columnName || span.key || '—';
     const kind = columnKind(span.key, label, column?.statusDisplay, column?.columnName);
     const prev = byKey.get(span.key || label);
     const ms = Math.max(0, span.to - span.from);
     const workMs = workingMs(span.from, span.to);
-    const row = prev || { statusKey: span.key, label, ms: 0, workMs: 0, kind, byAssignee: {}, byQa: {} };
+    const row =
+      prev || { statusKey: span.key, label, ms: 0, workMs: 0, kind, byAssignee: {}, byQa: {}, byReviewer: {}, byAuthor: {} };
     row.ms += ms;
     row.workMs = (row.workMs || 0) + workMs;
-    addBucket(row.byAssignee || (row.byAssignee = {}), span.assigneeIds || [], ms);
-    addBucket(row.byQa || (row.byQa = {}), span.qaIds || [], ms);
+    const duty = column?.duty || '';
+    if (duty === 'development') addBucket(row.byAssignee || (row.byAssignee = {}), span.assigneeIds || [], ms);
+    else if (duty === 'review') addBucket(row.byReviewer || (row.byReviewer = {}), span.reviewerIds || [], ms);
+    else if (duty === 'testing') addBucket(row.byQa || (row.byQa = {}), span.qaIds || [], ms);
+    else if (duty !== 'ai') addBucket(row.byAuthor || (row.byAuthor = {}), authorIds, ms);
     if (!prev) byKey.set(span.key || label, row);
   }
   return [...byKey.values()].filter((item) => item.ms >= 60_000);

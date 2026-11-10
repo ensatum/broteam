@@ -611,7 +611,8 @@ export default function SettingsPage(props: Props) {
       <div className="min-w-0 flex-1 space-y-4">
 
       {section === 'app' && (
-      <SettingsSection title="Приложение">
+      <>
+      <SettingsSection title="Версия приложения">
         <div className="flex flex-wrap items-end gap-3">
           <label className="min-w-48 flex-1 text-sm space-y-1">
             <span>Название</span>
@@ -633,8 +634,11 @@ export default function SettingsPage(props: Props) {
           </label>
           <AppUpdateButton />
         </div>
+      </SettingsSection>
+      <SettingsSection title="Поведение">
         <CloseToTraySetting />
       </SettingsSection>
+      </>
       )}
 
       {section === 'integrations' && (
@@ -1074,7 +1078,10 @@ export default function SettingsPage(props: Props) {
                           title="Тег колонки"
                           onChange={(e) => {
                             const duty =
-                              e.target.value === 'review' || e.target.value === 'testing' || e.target.value === 'development'
+                              e.target.value === 'review' ||
+                              e.target.value === 'testing' ||
+                              e.target.value === 'development' ||
+                              e.target.value === 'ai'
                                 ? e.target.value
                                 : '';
                             const next = [...colDraft];
@@ -1084,8 +1091,9 @@ export default function SettingsPage(props: Props) {
                         >
                           <option value="">Без тега</option>
                           <option value="development">Разработка</option>
-                          <option value="testing">Тесты</option>
                           <option value="review">Ревью</option>
+                          <option value="testing">Тесты</option>
+                          <option value="ai">ИИ</option>
                         </select>
                         <div className="min-w-0 flex-1 truncate text-slate-600" title={`${c.columnName} / ${c.statusDisplay}`}>
                           {c.columnName} → {c.statusDisplay}{' '}
@@ -1519,7 +1527,7 @@ function CloseToTraySetting() {
     void window.api.getCloseToTray().then(setEnabled).catch(() => {});
   }, []);
   return (
-    <label className="mt-3 flex max-w-xl items-start gap-2 text-sm text-slate-700">
+    <label className="flex max-w-xl items-start gap-2 text-sm text-slate-700">
       <input
         type="checkbox"
         className="mt-0.5"

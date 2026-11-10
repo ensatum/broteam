@@ -249,6 +249,8 @@ export default function SummaryDock(props: {
           alias: column.alias,
           statusDisplay: column.statusDisplay,
           columnName: column.columnName,
+          duty: column.duty,
+          boardLocalId: column.boardLocalId,
         })),
     };
   }
@@ -1762,9 +1764,13 @@ function ownStay(
 ): { own: number; total: number; split: boolean } {
   const total = column?.ms || 0;
   if (personId == null || !column) return { own: total, total, split: false };
-  const bucket = role === 'qa' ? column.byQa : column.byAssignee;
-  if (!bucket) return { own: total, total, split: false };
-  return { own: bucket[String(personId)] || 0, total, split: true };
+  const key = String(personId);
+  const author = column.byAuthor?.[key] || 0;
+  const own =
+    role === 'qa'
+      ? (column.byQa?.[key] || 0) + author
+      : (column.byAssignee?.[key] || 0) + (column.byReviewer?.[key] || 0) + author;
+  return { own, total, split: true };
 }
 
 function SummaryHours(props: {
@@ -1791,6 +1797,7 @@ function SummaryHours(props: {
       key: column.statusKey,
       label: spent?.label || column.statusDisplay || column.alias || column.statusKey,
       kind: spent?.kind || 'other',
+      duty: column.duty || '',
       reached: index <= frontier,
       stay: ownStay(spent, props.personId, props.personRole),
     };
@@ -1801,6 +1808,7 @@ function SummaryHours(props: {
       key: extra.statusKey,
       label: extra.label,
       kind: extra.kind,
+      duty: '',
       reached: true,
       stay: ownStay(extra, props.personId, props.personRole),
     }));
@@ -1810,11 +1818,14 @@ function SummaryHours(props: {
     else lines.splice(firstAhead, 0, ...extras);
   }
   const split = lines.some((line) => line.stay.split);
+  const showAi = lines.some((line) => line.duty === 'ai');
   const reachedLines = lines.filter((line) => line.reached);
-  const ownTotal = reachedLines.reduce((sum, line) => sum + (line.stay.split ? line.stay.own : line.stay.total), 0);
+  const ownTotal = reachedLines.reduce((sum, line) => sum + (line.duty === 'ai' ? 0 : line.stay.own), 0);
   const allTotal = reachedLines.reduce((sum, line) => sum + line.stay.total, 0);
+  const aiTotal = reachedLines.reduce((sum, line) => sum + (line.duty === 'ai' ? line.stay.total : 0), 0);
   if (!lines.length) return null;
   const cell = (line: (typeof lines)[number], ms: number) => (line.reached ? hourCount(ms) : '—');
+  const hover = 'group-hover:bg-sky-100';
   return (
     <div className="my-2.5 px-6">
       <table className="w-full text-[11px] leading-snug">
@@ -1823,19 +1834,27 @@ function SummaryHours(props: {
             <th className="py-0.5 pl-2.5 text-left font-medium">Статус</th>
             <th className="py-0.5 pr-2.5 text-right font-medium">Часы (личные)</th>
             {split && <th className="py-0.5 pr-2.5 text-right font-medium">Часы (общие)</th>}
+            {showAi && <th className="py-0.5 pr-2.5 text-right font-medium">ИИ</th>}
           </tr>
         </thead>
         <tbody>
           {lines.map((line, index) => {
             const stripe = index % 2 === 1 ? 'bg-slate-100' : '';
-            const own = line.stay.split ? line.stay.own : line.stay.total;
+            const own = line.duty === 'ai' ? null : line.stay.own;
             return (
-              <tr key={line.key} className={timeClass(props.row, line.kind)}>
-                <td className={`${stripe} py-0.5 pl-2.5 text-left`}>{line.label}</td>
-                <td className={`${stripe} py-0.5 pr-2.5 text-right font-medium tabular-nums`}>{cell(line, own)}</td>
+              <tr key={line.key} className={`group ${stripe} hover:bg-sky-100 ${timeClass(props.row, line.kind)}`}>
+                <td className={`py-0.5 pl-2.5 text-left ${hover}`}>{line.label}</td>
+                <td className={`py-0.5 pr-2.5 text-right font-medium tabular-nums ${hover}`}>
+                  {own == null ? '—' : cell(line, own)}
+                </td>
                 {split && (
-                  <td className={`${stripe} py-0.5 pr-2.5 text-right tabular-nums text-slate-400`}>
+                  <td className={`py-0.5 pr-2.5 text-right tabular-nums text-slate-400 ${hover}`}>
                     {cell(line, line.stay.total)}
+                  </td>
+                )}
+                {showAi && (
+                  <td className={`py-0.5 pr-2.5 text-right tabular-nums text-slate-400 ${hover}`}>
+                    {line.duty === 'ai' ? cell(line, line.stay.total) : '—'}
                   </td>
                 )}
               </tr>
@@ -1847,6 +1866,7 @@ function SummaryHours(props: {
             <td className="py-0.5 pl-2.5 text-left">Total</td>
             <td className="py-0.5 pr-2.5 text-right tabular-nums">{hourCount(ownTotal)}</td>
             {split && <td className="py-0.5 pr-2.5 text-right tabular-nums text-slate-400">{hourCount(allTotal)}</td>}
+            {showAi && <td className="py-0.5 pr-2.5 text-right tabular-nums text-slate-400">{hourCount(aiTotal)}</td>}
           </tr>
         </tfoot>
       </table>

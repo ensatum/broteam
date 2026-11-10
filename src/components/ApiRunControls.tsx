@@ -43,7 +43,7 @@ export function RunSpinner(props: { requests?: number; seen?: number; total?: nu
         id={props.countId}
         className="mt-3 text-center text-sm font-medium text-sky-800"
       >
-        {props.countId ? 'Запросов к API: 0' : `Запросов к API: ${props.requests ?? 0}`}
+        {`Запросов к API: ${props.requests ?? 0}`}
       </div>
       {total > 0 && (
         <div className="mt-0.5 text-center text-xs text-slate-500" title="Задачи доски, обновлённые за выбранный период">
