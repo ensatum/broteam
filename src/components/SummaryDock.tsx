@@ -180,7 +180,7 @@ export default function SummaryDock(props: {
       .filter((row) => {
         if (!personOnRow(row, selected)) return false;
         if (indirect) return true;
-        return (row.touchedIds || []).includes(selected.id);
+        return (row.changedByIds || []).includes(selected.id);
       })
       .map((row) => focusSummaryRow(row, selected));
   }, [namedRows, selected, indirect]);
@@ -545,7 +545,7 @@ export default function SummaryDock(props: {
                 type="button"
                 aria-pressed={Boolean(selected) && indirect}
                 disabled={!selected}
-                title={selected ? 'Задачи участника, которых он сам в этот период не трогал' : 'Сначала выберите участника'}
+                title={selected ? 'Задачи, где участник за период ничего не делал' : 'Сначала выберите участника'}
                 className={summaryToggleClass(Boolean(selected) && indirect, !selected)}
                 onClick={() => setIndirect((on) => !on)}
               >
@@ -1917,11 +1917,11 @@ function SummaryHours(props: {
 const SUMMARY_BADGE_GRAY = '#64748b';
 
 function summaryToggleClass(on: boolean, disabled: boolean): string {
-  const base = 'inline-flex h-5 shrink-0 items-center gap-1 rounded border px-1.5 text-[10px] font-medium leading-none';
-  if (disabled) return `${base} cursor-default border-slate-200 bg-slate-50 text-slate-300`;
+  const base = 'inline-flex h-6 shrink-0 items-center gap-1 rounded-md border px-2 text-[11px] font-medium shadow-sm';
+  if (disabled) return `${base} cursor-default border-slate-200 bg-slate-100 text-slate-300 shadow-none`;
   return on
-    ? `${base} border-slate-700 bg-white text-slate-900`
-    : `${base} border-slate-300 bg-white text-slate-400 hover:text-slate-800`;
+    ? `${base} border-slate-800 bg-slate-800 text-white hover:bg-slate-700`
+    : `${base} border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-100`;
 }
 
 function summaryBoardBadges(

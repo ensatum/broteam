@@ -19,9 +19,9 @@ function chunk(type: string, data: Buffer): Buffer {
 }
 
 const GLYPHS = [
-  ['######', '##..##', '##..##', '#####.', '##..##', '##..##', '######'],
-  ['######', '##..##', '##..##', '#####.', '##.#..', '##..#.', '##...#'],
-  ['######', '##..##', '##..##', '##..##', '##..##', '##..##', '######'],
+  ['#####', '##..#', '##..#', '##..#', '####.', '##..#', '##..#', '##..#', '##..#', '##..#', '##..#', '#####'],
+  ['#####', '##..#', '##..#', '##..#', '####.', '##.#.', '##..#', '##..#', '##..#', '##..#', '##..#', '##..#'],
+  ['#####', '##..#', '##..#', '##..#', '##..#', '##..#', '##..#', '##..#', '##..#', '##..#', '##..#', '#####'],
 ];
 
 function paint(alert: boolean): Buffer {
@@ -35,26 +35,26 @@ function paint(alert: boolean): Buffer {
     raw[index + 2] = b;
     raw[index + 3] = a;
   };
-  const glyphW = 6;
-  const gap = 1;
-  const ox = 1;
-  const oy = 14;
+  const glyphW = 5;
+  const gap = 0;
+  const ox = 2;
+  const oy = 9;
   GLYPHS.forEach((glyph, index) => {
     const left = ox + index * (glyphW + gap);
     glyph.forEach((row, y) => {
       for (let x = 0; x < row.length; x += 1) {
-        if (row[x] === '#') set(left + x, oy + y, 25, 25, 25, 255);
+        if (row[x] === '#') set(left + x, oy + y, 20, 20, 20, 255);
       }
     });
   });
   if (alert) {
-    const cx = 16;
-    const cy = 5;
-    for (let y = cy - 4; y <= cy + 4; y += 1) {
-      for (let x = cx - 4; x <= cx + 4; x += 1) {
+    const cx = 17;
+    const cy = 7;
+    for (let y = cy - 3; y <= cy + 3; y += 1) {
+      for (let x = cx - 3; x <= cx + 3; x += 1) {
         const dx = x - cx;
         const dy = y - cy;
-        if (dx * dx + dy * dy <= 13) set(x, y, 245, 180, 20, 255);
+        if (dx * dx + dy * dy <= 10) set(x, y, 245, 180, 20, 255);
       }
     }
   }
