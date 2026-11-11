@@ -2060,10 +2060,16 @@ function isPlanFor(column: BoardColumnConfig | undefined, row: SummaryRow, perso
   return false;
 }
 
+function standsWith(column: BoardColumnConfig, row: SummaryRow, person: Developer): boolean {
+  if (column.ownerRole === 'developer') return personHit(person, row.assignee);
+  if (column.ownerRole === 'qa') return personHit(person, row.qa);
+  return false;
+}
+
 function cardKind(row: SummaryRow, person: Developer | null, columns: BoardColumnConfig[]): CardKind | null {
   const column = columnOf(row, columns);
   if (!person) return hadActivity(row) ? 'activity' : 'plan';
-  if (column?.ownerRole && column.ownerRole === person.role) return 'success';
+  if (column?.ownerRole && column.ownerRole === person.role && standsWith(column, row, person)) return 'success';
   if ((row.changedByIds || []).includes(person.id)) return 'personal';
   if (hadActivity(row) && personOnRow(row, person)) return 'indirect';
   if (!hadActivity(row) && isPlanFor(column, row, person)) return 'plan';
