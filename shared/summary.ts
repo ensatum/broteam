@@ -21,7 +21,9 @@ export type SummaryBuildRequest = {
   queueKey: string;
   participant: Developer | null;
   period: SummaryPeriod;
-  columns: Array<Pick<BoardColumnConfig, 'statusKey' | 'alias' | 'statusDisplay' | 'columnName' | 'duty' | 'boardLocalId'>>;
+  columns: Array<
+    Pick<BoardColumnConfig, 'statusKey' | 'alias' | 'statusDisplay' | 'columnName' | 'duty' | 'ownerRole' | 'boardLocalId'>
+  >;
   boards?: SummaryBoardRef[];
 };
 
@@ -95,6 +97,8 @@ export type SummaryRow = {
   touchedIds?: number[];
   /** Summary users who authored a changelog event inside the period. */
   changedByIds?: number[];
+  /** A changelog event or issue update falls inside the selected window. */
+  activeInPeriod?: boolean;
   boardLocalId?: number | null;
   boardLabel?: string;
   boardColor?: string;

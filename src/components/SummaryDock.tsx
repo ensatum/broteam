@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import type { BoardColumnConfig, BoardMatrix, Developer, SavedBoard, TrackerIssue } from '@shared/types';
+import type { BoardColumnConfig, Developer, SavedBoard } from '@shared/types';
 import { PARTICIPANT_ROLES } from '@shared/types';
 import { applyMarkdownHotkey, handleRichHotkey, hotkeyId, htmlToMarkdown } from '../draftFormat';
 import { renderMarkdown } from '../markdown';
@@ -25,16 +25,16 @@ import {
   EditIcon,
   EyeIcon,
   CastIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
   CoffeeIcon,
   HashIcon,
   IconActionButton,
   NoteClipboardButton,
   TargetIcon,
   RefreshIcon,
+  UserIcon,
   UsersIcon,
   XIcon,
+  ZapIcon,
 } from './Icons';
 import { CopyIssueButton } from './IssuePanel';
 import { LoadBar } from './LoadBar';
@@ -113,11 +113,10 @@ export default function SummaryDock(props: {
   const [query, setQuery] = useState('');
   const [personOpen, setPersonOpen] = useState(false);
   const [sort, setSort] = useState<SummarySort>(loadSummarySort);
-  const [goals, setGoals] = useState(true);
+  const [plans, setPlans] = useState(true);
   const [indirect, setIndirect] = useState(false);
-  const [goalsOpen, setGoalsOpen] = useState(false);
-  const [goalRows, setGoalRows] = useState<SummaryGoal[]>([]);
-  const [goalsBusy, setGoalsBusy] = useState(false);
+  const [personal, setPersonal] = useState(true);
+  const [activity, setActivity] = useState(true);
   const personRef = useRef<HTMLDivElement>(null);
   const selected = roster.find((person) => person.id === props.personId) || null;
 
@@ -170,41 +169,16 @@ export default function SummaryDock(props: {
   const [boardFilter, setBoardFilter] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const audienceRows = useMemo(() => {
-    if (selected == null) return namedRows;
+    const people = props.participants.filter(
+      (person) => !person.hidden && (person.role === 'developer' || person.role === 'qa'),
+    );
     return namedRows
-      .filter((row) => {
-        if (!personOnRow(row, selected)) return false;
-        if (indirect) return true;
-        return (row.changedByIds || []).includes(selected.id);
-      })
-      .map((row) => focusSummaryRow(row, selected));
-  }, [namedRows, selected, indirect]);
-  const summaryKeys = useMemo(() => new Set(namedRows.map((row) => row.key)), [namedRows]);
-  useEffect(() => {
-    if (!goals || !selected || (selected.role !== 'developer' && selected.role !== 'qa')) {
-      setGoalRows([]);
-      setGoalsBusy(false);
-      return;
-    }
-    let cancel = false;
-    setGoalsBusy(true);
-    const boards = props.boards.filter((board) => board.enabled);
-    void Promise.all(boards.map((board) => window.api.getLastBoard(board.id).catch(() => null))).then((matrices) => {
-      if (cancel) return;
-      setGoalRows(collectGoals(matrices, props.boards, props.columns, selected, summaryKeys));
-      setGoalsBusy(false);
-    });
-    return () => {
-      cancel = true;
-    };
-  }, [goals, selected, props.boards, props.columns, summaryKeys]);
-  const planMarks = useMemo(
-    () => (goals && selected ? goalRows.map((row) => ({ boardLocalId: row.boardLocalId, statusKey: row.statusKey })) : []),
-    [goals, selected, goalRows],
-  );
+      .filter((row) => cardVisible(row, selected, props.columns, people, { personal, indirect, plans, activity }))
+      .map((row) => (selected ? focusSummaryRow(row, selected) : row));
+  }, [namedRows, selected, props.columns, props.participants, personal, indirect, plans, activity]);
   const boardBadges = useMemo(
-    () => summaryBoardBadges(audienceRows, props.boards, planMarks),
-    [audienceRows, props.boards, planMarks],
+    () => summaryBoardBadges(audienceRows, props.boards),
+    [audienceRows, props.boards],
   );
   const statusColumns = useMemo(
     () =>
@@ -216,15 +190,9 @@ export default function SummaryDock(props: {
     [props.columns, boardFilter],
   );
   const statusBadges = useMemo(
-    () => (boardFilter == null ? [] : summaryStatusBadges(audienceRows, boardFilter, statusColumns, planMarks)),
-    [audienceRows, boardFilter, statusColumns, planMarks],
+    () => (boardFilter == null ? [] : summaryStatusBadges(audienceRows, boardFilter, statusColumns)),
+    [audienceRows, boardFilter, statusColumns],
   );
-  const visibleGoals = useMemo(() => {
-    let list = goalRows;
-    if (boardFilter != null) list = list.filter((row) => row.boardLocalId === boardFilter);
-    if (statusFilter) list = list.filter((row) => row.statusKey === statusFilter);
-    return list;
-  }, [goalRows, boardFilter, statusFilter]);
   useEffect(() => {
     if (boardFilter != null && !boardBadges.some((badge) => badge.id === boardFilter)) {
       setBoardFilter(null);
@@ -272,6 +240,7 @@ export default function SummaryDock(props: {
           statusDisplay: column.statusDisplay,
           columnName: column.columnName,
           duty: column.duty,
+          ownerRole: column.ownerRole,
           boardLocalId: column.boardLocalId,
         })),
     };
@@ -518,8 +487,7 @@ export default function SummaryDock(props: {
           className="ml-auto h-6 w-[30%] shrink-0 rounded border border-slate-300 bg-white px-2 text-xs font-normal text-slate-800"
         />
       </div>
-      {(boardBadges.length > 0 || selected) && (
-        <div className="flex shrink-0 flex-col gap-1 border-b border-slate-200 px-2 py-1">
+      <div className="flex shrink-0 flex-col gap-1 border-b border-slate-200 px-2 py-1">
           <div className="flex items-center gap-1">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
             {boardBadges.map((badge) => (
@@ -542,29 +510,47 @@ export default function SummaryDock(props: {
             ))}
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-1">
+              {selected ? (
+                <>
+                  <button
+                    type="button"
+                    aria-pressed={personal}
+                    title="Задачи, где участник сам действовал в периоде"
+                    className={summaryToggleClass(personal, false)}
+                    onClick={() => setPersonal((on) => !on)}
+                  >
+                    <UserIcon className="h-3 w-3" />
+                    Лично
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={indirect}
+                    title="Задачи, где участник за период ничего не делал"
+                    className={summaryToggleClass(indirect, false)}
+                    onClick={() => setIndirect((on) => !on)}
+                  >
+                    <CoffeeIcon className="h-3 w-3" />
+                    Косвенно
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  aria-pressed={activity}
+                  title="Задачи, по которым была активность за период"
+                  className={summaryToggleClass(activity, false)}
+                  onClick={() => setActivity((on) => !on)}
+                >
+                  <ZapIcon className="h-3 w-3" />
+                  Активность
+                </button>
+              )}
               <button
                 type="button"
-                aria-pressed={Boolean(selected) && indirect}
-                disabled={!selected}
-                title={selected ? 'Задачи, где участник за период ничего не делал' : 'Сначала выберите участника'}
-                className={summaryToggleClass(Boolean(selected) && indirect, !selected)}
-                onClick={() => setIndirect((on) => !on)}
-              >
-                <CoffeeIcon className="h-3 w-3" />
-                Косвенно
-              </button>
-              <button
-                type="button"
-                aria-pressed={Boolean(selected) && goals}
-                disabled={!selected}
-                title={selected ? 'Задачи, которые ждут участника' : 'Сначала выберите участника'}
-                className={summaryToggleClass(Boolean(selected) && goals, !selected)}
-                onClick={() => {
-                  setGoals((on) => {
-                    if (!on) setGoalsOpen(false);
-                    return !on;
-                  });
-                }}
+                aria-pressed={plans}
+                title="Задачи в колонках с тегом, без активности за период"
+                className={summaryToggleClass(plans, false)}
+                onClick={() => setPlans((on) => !on)}
               >
                 <TargetIcon className="h-3 w-3" />
                 Планы
@@ -586,18 +572,7 @@ export default function SummaryDock(props: {
             </div>
           )}
         </div>
-      )}
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2 text-xs [&>*]:shrink-0">
-        {selected && goals && (
-          <GoalBlock
-            open={goalsOpen}
-            busy={goalsBusy}
-            rows={visibleGoals}
-            onToggle={() => setGoalsOpen((open) => !open)}
-            onOpenBoard={props.onOpenBoard}
-          />
-        )}
-        {selected && goals && <div className="border-t border-slate-300" />}
         {formedAt && (
           <div className="text-[11px] text-slate-500">
             Сформирована {formatStamp(formedAt)}
@@ -631,7 +606,7 @@ export default function SummaryDock(props: {
               row={row}
               open={open}
               color={color}
-              frame={summaryFrame(row, selected)}
+              frame={summaryFrame(row, selected, props.columns)}
               authored={Boolean(selected && sameName(row.author, personName))}
               personId={selected?.id ?? null}
               personRole={selected?.role ?? null}
@@ -1041,11 +1016,13 @@ function saveSummarySort(sort: SummarySort) {
   localStorage.setItem(SUMMARY_SORT_KEY, JSON.stringify(sort));
 }
 
-type SummaryFrame = 'plain' | 'gold';
+type SummaryFrame = 'plain' | 'gold' | 'primary' | 'success';
 
 const FRAME_CLASS: Record<SummaryFrame, string> = {
   plain: 'border-slate-200',
   gold: 'border-amber-400',
+  primary: 'border-sky-600',
+  success: 'border-emerald-600',
 };
 
 function SummaryCard(props: {
@@ -1616,9 +1593,11 @@ function splitRole(list: string[] | undefined, current: string): { current: stri
   return { current: actual, past: names.filter((name) => name !== actual) };
 }
 
-function summaryFrame(row: SummaryRow, person: Developer | null): SummaryFrame {
-  if (!person) return 'plain';
-  if ((row.changedByIds || []).includes(person.id)) return 'gold';
+function summaryFrame(row: SummaryRow, person: Developer | null, columns: BoardColumnConfig[]): SummaryFrame {
+  const kind = cardKind(row, person, columns);
+  if (kind === 'success') return 'success';
+  if (kind === 'personal') return 'primary';
+  if (kind === 'plan') return 'gold';
   return 'plain';
 }
 
@@ -2037,152 +2016,10 @@ function StatusFilterBadge(props: {
   );
 }
 
-type SummaryGoal = {
-  key: string;
-  summary: string;
-  url: string;
-  status: string;
-  color: string;
-  boardLocalId: number;
-  boardLabel: string;
-  boardColor: string;
-  group: 'development' | 'review' | 'testing';
-  statusKey: string;
-};
-
-const GOAL_LABEL: Record<SummaryGoal['group'], string> = {
-  development: 'Разработка',
-  review: 'Ревью',
-  testing: 'Тесты',
-};
-
 function personHit(person: Developer, value: string | null | undefined): boolean {
   const name = (value || '').trim().toLowerCase();
   if (!name) return false;
   return [person.displayName, person.login].some((item) => item.trim().toLowerCase() === name);
-}
-
-function collectGoals(
-  matrices: Array<BoardMatrix | null>,
-  boards: SavedBoard[],
-  columns: BoardColumnConfig[],
-  person: Developer,
-  skip: Set<string>,
-): SummaryGoal[] {
-  const out: SummaryGoal[] = [];
-  const seen = new Set<string>();
-  for (const matrix of matrices) {
-    if (!matrix?.sourceBoardLocalId) continue;
-    const board = boards.find((item) => item.id === matrix.sourceBoardLocalId);
-    if (!board) continue;
-    const boardColumns = columns.filter(
-      (column) => column.enabled && column.boardLocalId === matrix.sourceBoardLocalId,
-    );
-    for (const row of matrix.developers) {
-      for (const issues of Object.values(row.issuesByColumn)) {
-        for (const issue of issues) addGoal(out, seen, skip, issue, board, boardColumns, person);
-      }
-    }
-  }
-  const order = { development: 0, review: 1, testing: 0 };
-  return out.sort((a, b) => order[a.group] - order[b.group] || a.key.localeCompare(b.key));
-}
-
-function addGoal(
-  out: SummaryGoal[],
-  seen: Set<string>,
-  skip: Set<string>,
-  issue: TrackerIssue,
-  board: SavedBoard,
-  columns: BoardColumnConfig[],
-  person: Developer,
-) {
-  if (seen.has(issue.key) || skip.has(issue.key) || issue.statusType === 'done') return;
-  const column = columns.find((item) => item.statusKey === issue.statusKey);
-  if (!column) return;
-  let group: SummaryGoal['group'] | null = null;
-  if (person.role === 'qa' && column.duty === 'testing' && personHit(person, issue.qaDisplay)) group = 'testing';
-  if (person.role === 'developer' && column.duty === 'review' && personHit(person, issue.reviewerDisplay)) group = 'review';
-  if (person.role === 'developer' && column.duty === 'development' && personHit(person, issue.assigneeDisplay)) {
-    group = 'development';
-  }
-  if (!group) return;
-  seen.add(issue.key);
-  out.push({
-    key: issue.key,
-    summary: issue.summary,
-    url: issue.url,
-    status: issue.statusDisplay || column.alias || column.statusDisplay,
-    color: (column.color || '').trim() || SUMMARY_BADGE_GRAY,
-    boardLocalId: board.id,
-    boardLabel: (board.alias || '').trim() || board.name,
-    boardColor: (board.color || '').trim() || '#64748b',
-    group,
-    statusKey: issue.statusKey,
-  });
-}
-
-function GoalBlock(props: {
-  open: boolean;
-  busy: boolean;
-  rows: SummaryGoal[];
-  onToggle: () => void;
-  onOpenBoard: (boardLocalId: number) => void;
-}) {
-  const groups = (['development', 'review', 'testing'] as const).filter((group) =>
-    props.rows.some((row) => row.group === group),
-  );
-  return (
-    <div className="rounded border border-slate-200 bg-slate-50">
-      <button
-        type="button"
-        className="flex w-full items-center gap-1 px-2 py-1 text-left text-[11px] font-medium text-slate-700"
-        onClick={props.onToggle}
-      >
-        {props.open ? <ChevronDownIcon className="h-3 w-3 shrink-0" /> : <ChevronRightIcon className="h-3 w-3 shrink-0" />}
-        <span>Планы</span>
-        <span className="tabular-nums text-slate-400">{props.busy ? '…' : props.rows.length}</span>
-      </button>
-      {props.open && (
-        <div className="space-y-1 border-t border-slate-200 px-2 py-1">
-          {!props.busy && props.rows.length === 0 && (
-            <div className="text-[11px] text-slate-400">Нет задач, которые ждут этого участника вне сводки</div>
-          )}
-          {groups.map((group) => (
-            <div key={group}>
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{GOAL_LABEL[group]}</div>
-              {props.rows
-                .filter((row) => row.group === group)
-                .map((row) => (
-                  <div key={row.key} className="flex items-center gap-1 py-0.5">
-                    <button
-                      type="button"
-                      className="inline-flex h-4 shrink-0 items-center rounded-none border border-l-[3px] border-slate-300 bg-white px-1 text-[10px] font-medium leading-none text-slate-700"
-                      style={{ borderLeftColor: row.boardColor }}
-                      onClick={() => props.onOpenBoard(row.boardLocalId)}
-                    >
-                      {row.boardLabel}
-                    </button>
-                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: row.color }} title={row.status} />
-                    <a
-                      href={row.url}
-                      className="shrink-0 font-medium text-sky-700 hover:underline"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        void window.api.openExternal(row.url);
-                      }}
-                    >
-                      {row.key}
-                    </a>
-                    <span className="min-w-0 truncate text-slate-700">{row.summary}</span>
-                  </div>
-                ))}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 function personOnRow(row: SummaryRow, person: Developer): boolean {
@@ -2198,4 +2035,56 @@ function personOnRow(row: SummaryRow, person: Developer): boolean {
     ...(row.qas || []),
   ];
   return names.some((name) => keys.includes((name || '').trim()));
+}
+
+type CardKind = 'success' | 'personal' | 'indirect' | 'plan' | 'activity';
+
+function hadActivity(row: SummaryRow): boolean {
+  return row.activeInPeriod !== false;
+}
+
+function columnOf(row: SummaryRow, columns: BoardColumnConfig[]): BoardColumnConfig | undefined {
+  return columns.find(
+    (column) =>
+      column.enabled &&
+      column.statusKey === (row.statusKey || '') &&
+      (row.boardLocalId == null || column.boardLocalId === row.boardLocalId),
+  );
+}
+
+function isPlanFor(column: BoardColumnConfig | undefined, row: SummaryRow, person: Developer): boolean {
+  if (!column) return false;
+  if (person.role === 'qa' && column.duty === 'testing' && personHit(person, row.qa)) return true;
+  if (person.role === 'developer' && column.duty === 'review' && personHit(person, row.reviewer)) return true;
+  if (person.role === 'developer' && column.duty === 'development' && personHit(person, row.assignee)) return true;
+  return false;
+}
+
+function cardKind(row: SummaryRow, person: Developer | null, columns: BoardColumnConfig[]): CardKind | null {
+  const column = columnOf(row, columns);
+  if (!person) return hadActivity(row) ? 'activity' : 'plan';
+  if (column?.ownerRole && column.ownerRole === person.role) return 'success';
+  if ((row.changedByIds || []).includes(person.id)) return 'personal';
+  if (hadActivity(row) && personOnRow(row, person)) return 'indirect';
+  if (!hadActivity(row) && isPlanFor(column, row, person)) return 'plan';
+  return null;
+}
+
+function cardVisible(
+  row: SummaryRow,
+  person: Developer | null,
+  columns: BoardColumnConfig[],
+  people: Developer[],
+  flags: { personal: boolean; indirect: boolean; plans: boolean; activity: boolean },
+): boolean {
+  if (!person) {
+    if (hadActivity(row)) return flags.activity;
+    return flags.plans && people.some((item) => isPlanFor(columnOf(row, columns), row, item));
+  }
+  const kind = cardKind(row, person, columns);
+  if (kind === 'success') return true;
+  if (kind === 'personal') return flags.personal;
+  if (kind === 'indirect') return flags.indirect;
+  if (kind === 'plan') return flags.plans;
+  return false;
 }

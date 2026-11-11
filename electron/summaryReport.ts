@@ -44,11 +44,25 @@ export async function buildSummaryReport(
       queueKey: '',
       sprintIds: [],
       logins: [],
-      membership: 'sprint',
+      membership: 'board',
       unresolvedOnly: false,
     });
     const issues = await client.findIssues(`${base} AND ${bounds.query}`);
     for (const issue of issues) rememberIssue(found, issue, board, boards);
+    const statuses = watchedStatuses(request, board.boardLocalId);
+    if (statuses.length) {
+      const standing = buildIssuesQuery({
+        boardId: board.trackerBoardId,
+        queueKey: '',
+        sprintIds: [],
+        logins: [],
+        membership: 'board',
+        unresolvedOnly: true,
+      });
+      const quoted = statuses.map((key) => `"${key.replace(/"/g, '')}"`).join(', ');
+      const parked = await client.findIssues(`${standing} AND Status: ${quoted}`);
+      for (const issue of parked) rememberIssue(found, issue, board, boards);
+    }
   }
   const collected = [...found.values()];
   const rows: SummaryRow[] = [];
@@ -288,6 +302,37 @@ function issueQueue(key: string): string {
 function sourceBoard(key: string, foundOn: SummaryBoardRef, boards: SummaryBoardRef[]): SummaryBoardRef {
   const queue = issueQueue(key);
   return boards.find((board) => board.queueKey.toLowerCase() === queue) || foundOn;
+}
+
+function watchedStatuses(request: SummaryBuildRequest, boardLocalId: number): string[] {
+  const keys = request.columns
+    .filter((column) => column.boardLocalId === boardLocalId && columnKeepsIssue(column))
+    .map((column) => column.statusKey);
+  return [...new Set(keys)];
+}
+
+function watchedStatus(
+  request: SummaryBuildRequest,
+  origin: SummaryBoardRef | undefined,
+  statusKey: string,
+): boolean {
+  if (!statusKey) return false;
+  return request.columns.some(
+    (column) =>
+      column.statusKey === statusKey &&
+      (!origin || !column.boardLocalId || column.boardLocalId === origin.boardLocalId) &&
+      columnKeepsIssue(column),
+  );
+}
+
+function columnKeepsIssue(column: SummaryBuildRequest['columns'][number]): boolean {
+  return (
+    column.duty === 'development' ||
+    column.duty === 'review' ||
+    column.duty === 'testing' ||
+    column.ownerRole === 'developer' ||
+    column.ownerRole === 'qa'
+  );
 }
 
 function rememberIssue(
@@ -839,7 +884,7 @@ function interpretIssue(
       }
     }
   }
-  if (!touchedInPeriod) return null;
+  if (!movedInPeriod && !watchedStatus(request, origin, issue.statusKey)) return null;
   if (!finalStatusAt && statusTypes.get(issue.statusKey) === 'done') finalStatusAt = issue.statusStartTime;
   if (!takenAt && isProgressStatus(issue.statusKey, issue.statusDisplay, statusTypes.get(issue.statusKey))) {
     takenAt = issue.statusStartTime;
@@ -920,6 +965,7 @@ function interpretIssue(
     lastById,
     touchedIds: [...touched],
     changedByIds: [...changedBy],
+    activeInPeriod: movedInPeriod,
     boardLocalId: origin?.boardLocalId ?? null,
     boardLabel: (origin?.alias || '').trim() || origin?.name || '',
     boardColor: origin?.color || '',

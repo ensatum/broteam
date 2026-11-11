@@ -296,6 +296,7 @@ export default function App() {
               statusDisplay: column.statusDisplay,
               columnName: column.columnName,
               duty: column.duty,
+              ownerRole: column.ownerRole,
               boardLocalId: column.boardLocalId,
             })),
         });

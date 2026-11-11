@@ -478,6 +478,7 @@ export default function SettingsPage(props: Props) {
             alias: shortAlias(status.display || col.name),
             color: COLUMN_COLORS[colorIdx % COLUMN_COLORS.length],
             duty: '',
+            ownerRole: '',
             enabled: true,
             sortOrder: mapped.length,
             boardLocalId: localId,
@@ -517,11 +518,18 @@ export default function SettingsPage(props: Props) {
             !edited ||
             (edited.alias === column.alias &&
               edited.color === column.color &&
-              (edited.duty || '') === (column.duty || ''))
+              (edited.duty || '') === (column.duty || '') &&
+              (edited.ownerRole || '') === (column.ownerRole || ''))
           ) {
             return column;
           }
-          return { ...column, alias: edited.alias, color: edited.color, duty: edited.duty };
+          return {
+            ...column,
+            alias: edited.alias,
+            color: edited.color,
+            duty: edited.duty,
+            ownerRole: edited.ownerRole,
+          };
         });
       if (sameColumnStructure(savedForBoard, ordered)) {
         setColDraft((prev) => [
@@ -1094,6 +1102,21 @@ export default function SettingsPage(props: Props) {
                           <option value="review">Ревью</option>
                           <option value="testing">Тесты</option>
                           <option value="ai">ИИ</option>
+                        </select>
+                        <select
+                          className="h-8 w-36 shrink-0 rounded border border-slate-300 bg-white px-1 text-xs text-slate-700"
+                          value={c.ownerRole || ''}
+                          title="Ответственная роль: колонка значит, что задача сейчас в активной работе"
+                          onChange={(e) => {
+                            const ownerRole = e.target.value === 'developer' || e.target.value === 'qa' ? e.target.value : '';
+                            const next = [...colDraft];
+                            next[index] = { ...c, ownerRole };
+                            setColDraft(next);
+                          }}
+                        >
+                          <option value="">Без роли</option>
+                          <option value="developer">Разработчик</option>
+                          <option value="qa">Тестировщик</option>
                         </select>
                         <div className="min-w-0 flex-1 truncate text-slate-600" title={`${c.columnName} / ${c.statusDisplay}`}>
                           {c.columnName} → {c.statusDisplay}{' '}

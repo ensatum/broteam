@@ -11,7 +11,7 @@ import type {
   TrackerConnection,
 } from '../shared/types';
 import { DEFAULT_BOARD, DEFAULT_CONNECTION, DEFAULT_GITHUB, normalizeParticipantRole } from '../shared/types';
-import { normalizeColumnDuty } from '../shared/columnMeta';
+import { normalizeColumnDuty, normalizeColumnOwnerRole } from '../shared/columnMeta';
 import { liveVersion, settingsIncompatible } from '../shared/version';
 
 let db: Database.Database | null = null;
@@ -243,6 +243,9 @@ function migratePeopleAndBoards(database: Database.Database): void {
   const dutyCols = database.prepare(`PRAGMA table_info(board_columns)`).all() as Array<{ name: string }>;
   if (!dutyCols.some((column) => column.name === 'duty')) {
     database.exec(`ALTER TABLE board_columns ADD COLUMN duty TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!dutyCols.some((column) => column.name === 'owner_role')) {
+    database.exec(`ALTER TABLE board_columns ADD COLUMN owner_role TEXT NOT NULL DEFAULT ''`);
   }
 
   const boardCols = database.prepare(`PRAGMA table_info(agile_boards)`).all() as Array<{ name: string }>;
@@ -741,14 +744,19 @@ export function listColumns(): BoardColumnConfig[] {
       `SELECT id, column_id as columnId, column_name as columnName,
               status_key as statusKey, status_display as statusDisplay,
               alias, color, enabled, sort_order as sortOrder,
-              board_local_id as boardLocalId, duty
+              board_local_id as boardLocalId, duty, owner_role as ownerRole
        FROM board_columns ORDER BY sort_order ASC, id ASC`,
     )
     .all()
     .map((row) => {
-      const raw = row as Omit<BoardColumnConfig, 'enabled' | 'duty'> & { enabled: number; duty: string | null };
+      const raw = row as Omit<BoardColumnConfig, 'enabled' | 'duty' | 'ownerRole'> & {
+        enabled: number;
+        duty: string | null;
+        ownerRole: string | null;
+      };
       const duty = normalizeColumnDuty(raw.duty);
-      return { ...raw, duty, enabled: Boolean(raw.enabled), boardLocalId: raw.boardLocalId || 0 };
+      const ownerRole = normalizeColumnOwnerRole(raw.ownerRole);
+      return { ...raw, duty, ownerRole, enabled: Boolean(raw.enabled), boardLocalId: raw.boardLocalId || 0 };
     });
 }
 
@@ -760,11 +768,12 @@ export function replaceColumns(
     database.prepare('DELETE FROM board_columns').run();
     const insert = database.prepare(
       `INSERT INTO board_columns(
-         column_id, column_name, status_key, status_display, alias, color, enabled, sort_order, board_local_id, duty
-       ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         column_id, column_name, status_key, status_display, alias, color, enabled, sort_order, board_local_id, duty, owner_role
+       ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const [index, c] of columns.entries()) {
       const duty = normalizeColumnDuty(c.duty);
+      const ownerRole = normalizeColumnOwnerRole(c.ownerRole);
       insert.run(
         c.columnId,
         c.columnName,
@@ -776,6 +785,7 @@ export function replaceColumns(
         c.sortOrder ?? index,
         c.boardLocalId || 0,
         duty,
+        ownerRole,
       );
     }
   });

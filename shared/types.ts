@@ -47,6 +47,9 @@ export type Developer = {
 /** Optional column duty. Empty means no role tag; the name of the column does not count. */
 export type ColumnDuty = '' | 'review' | 'testing' | 'development' | 'ai';
 
+/** Optional role for which this column means the task is in active work. */
+export type ColumnOwnerRole = '' | 'developer' | 'qa';
+
 export type BoardColumnConfig = {
   id: number;
   columnId: string;
@@ -61,6 +64,8 @@ export type BoardColumnConfig = {
   boardLocalId: number;
   /** Тесты, Ревью or Разработка. Empty leaves the missing-role icon on the name heuristic. */
   duty: ColumnDuty;
+  /** Разработчик or Тестировщик. Empty means the column is not active work for a role. */
+  ownerRole: ColumnOwnerRole;
 };
 
 export type SavedBoard = {

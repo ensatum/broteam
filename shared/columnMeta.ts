@@ -1,7 +1,12 @@
-import type { BoardColumnConfig, ColumnDuty, TrackerIssue } from './types';
+import type { BoardColumnConfig, ColumnDuty, ColumnOwnerRole, TrackerIssue } from './types';
 
 export function normalizeColumnDuty(value: string | null | undefined): ColumnDuty {
   if (value === 'review' || value === 'testing' || value === 'development' || value === 'ai') return value;
+  return '';
+}
+
+export function normalizeColumnOwnerRole(value: string | null | undefined): ColumnOwnerRole {
+  if (value === 'developer' || value === 'qa') return value;
   return '';
 }
 

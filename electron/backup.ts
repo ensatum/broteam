@@ -228,6 +228,7 @@ export function applyBackup(backup: AppBackup, sections: BackupSections): string
             c.duty === 'review' || c.duty === 'testing' || c.duty === 'development' || c.duty === 'ai'
               ? c.duty
               : '',
+          ownerRole: c.ownerRole === 'developer' || c.ownerRole === 'qa' ? c.ownerRole : '',
         })),
       );
       // The previous install kept one board's tasks. Those rows must not stay
