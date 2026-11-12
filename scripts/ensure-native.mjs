@@ -105,5 +105,5 @@ export function assertBinary(file, platform, arch) {
 
 const isCli = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isCli) {
-  installNative(process.argv[2] || 'linux', process.argv[3] || 'x64');
+  installNative(process.argv[2] || 'linux', process.argv[3] || process.arch);
 }

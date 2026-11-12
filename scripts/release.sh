@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Перематывает main на коммит develop, собирает пакеты Linux и macOS в release/
-# и ставит тег Год.Релиз на этот же коммит. Версию, README и код не меняет.
-# Пакеты в git не входят: их прикрепляют к странице релиза отдельно.
+# Если changelog/unreleased.md не пуст, останавливается.
+# Собирает тела коммитов Build с прошлого тега в changelog/год.релиз.md
+# и коммитит это в develop. Номер релиза не увеличивает.
+# Затем перематывает main на этот коммит, собирает пакеты Linux и macOS
+# в release/ и ставит тег Год.Релиз. Пакеты в git не входят.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,16 +30,33 @@ if ! git show-ref --verify --quiet refs/heads/main; then
   exit 1
 fi
 
-version="$(git show develop:package.json | node --input-type=module -e '
-let raw = "";
-process.stdin.on("data", (chunk) => { raw += chunk; });
-process.stdin.on("end", () => process.stdout.write(JSON.parse(raw).version));
-')"
-tag="${version%.*}"
+git checkout develop
+
+version="$(node scripts/version-lib.mjs version)"
+tag="$(node scripts/version-lib.mjs tag)"
 if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null \
   || git ls-remote --exit-code origin "refs/tags/${tag}" >/dev/null; then
   echo "Тег ${tag} уже есть. Сначала сборка в develop поднимет номер релиза." >&2
   exit 1
+fi
+if [[ -n "$(node scripts/changelog.mjs unreleased)" ]]; then
+  echo "changelog/unreleased.md не пуст. Сначала соберите билд: запись должна уйти в коммит сборки." >&2
+  exit 1
+fi
+
+notes="$(node scripts/changelog.mjs release "$tag")"
+git add -- "changelog/${tag}.md"
+if git diff --cached --quiet; then
+  if [[ "$(git log -1 --format=%s)" != "Release ${tag}" ]]; then
+    echo "changelog/${tag}.md не изменился, коммита Release ${tag} нет." >&2
+    exit 1
+  fi
+else
+  msg="Release ${tag}"
+  if [[ -n "$notes" ]]; then
+    msg+=$'\n\n'"$notes"
+  fi
+  git commit -m "$msg"
 fi
 
 git checkout main
@@ -61,8 +80,9 @@ build_target() {
   failed+=("$name")
 }
 
-node scripts/ensure-native.mjs linux || exit 1
-build_target "Linux" npx electron-builder --linux AppImage deb -c.directories.output=release -c.linux.artifactName="BroTeam-${version}-\${arch}.\${ext}"
+arch="$(node -p 'process.arch')"
+node scripts/ensure-native.mjs linux "$arch" || exit 1
+build_target "Linux" npx electron-builder --linux AppImage deb "--${arch}" -c.directories.output=release -c.linux.artifactName="BroTeam-${version}-\${arch}.\${ext}"
 build_target "macOS" node scripts/dist-mac.mjs
 node scripts/prune-artifacts.mjs release 1
 
@@ -74,6 +94,7 @@ if [[ ${#artifacts[@]} -eq 0 ]]; then
 fi
 
 git tag -a "$tag" -m "Release ${tag}"
+git push origin develop
 git push origin HEAD
 git push origin "$tag"
 echo "Тег ${tag} стоит на коммите из develop. Версия ${version}."
