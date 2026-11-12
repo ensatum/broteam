@@ -156,6 +156,17 @@ export default function SummaryDock(props: {
   }, [running]);
 
   useEffect(() => {
+    return window.api.onWorkCleared(() => {
+      runningRef.current = false;
+      setRunning(false);
+      setRows([]);
+      setFormedAt(null);
+      setCoverage(null);
+      setRequests(0);
+    });
+  }, []);
+
+  useEffect(() => {
     if (!personOpen) return;
     const onDoc = (event: MouseEvent) => {
       if (personRef.current?.contains(event.target as Node)) return;

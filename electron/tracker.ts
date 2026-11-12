@@ -8,9 +8,11 @@ import type {
 } from '../shared/types';
 import { collectPersonMatchKeys } from '../shared/personDisplay';
 import { trackRequestEnd, trackRequestStart } from './trackerActivity';
+import { noteRunRequest } from './trackerRuns';
 import {
   bindRequest,
   checkpoint,
+  currentRun,
   isTrackerStopped,
   pauseableWait,
   releaseRequest,
@@ -116,6 +118,7 @@ export class TrackerClient {
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       await checkpoint();
       trackRequestStart();
+      noteRunRequest(currentRun());
       const controller = new AbortController();
       bindRequest(controller);
       const started = Date.now();

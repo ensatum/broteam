@@ -17,6 +17,7 @@ import type {
   LocalDraft,
   DeveloperTodo,
 } from '../shared/types';
+import type { AppUpdateProgress } from '../shared/appUpdate';
 import type { SummaryBuildRequest, SummaryReport, SummaryRow, SummarySlice } from '../shared/summary';
 
 export type BackupSections = {
@@ -147,7 +148,7 @@ export type ElectronApi = {
   notify: (body: string) => Promise<boolean>;
   getAppInfo: () => Promise<{ name: string; version: string; headerVersion: string }>;
   updateAppFromRepo: () => Promise<{ updated: boolean; restarted: boolean; message: string }>;
-  onAppUpdateProgress: (listener: (message: string) => void) => () => void;
+  onAppUpdateProgress: (listener: (progress: AppUpdateProgress) => void) => () => void;
   onTrayShow: (listener: () => void) => () => void;
   sessionLog: (level: 'info' | 'error', message: string, extra?: unknown) => void;
   resetTrackerActivity: () => Promise<{ total: number; inflight: number; sinceRefresh: number; dayTotal: number }>;
@@ -161,6 +162,17 @@ export type ElectronApi = {
   pauseTracker: () => Promise<{ paused: boolean }>;
   resumeTracker: () => Promise<{ paused: boolean }>;
   abortTracker: () => Promise<{ paused: boolean }>;
+  listTrackerRuns: () => Promise<
+    Array<{ id: number; title: string; done: number; total: number; requests: number }>
+  >;
+  cancelTrackerRun: (id: number) => Promise<
+    Array<{ id: number; title: string; done: number; total: number; requests: number }>
+  >;
+  onTrackerRuns: (
+    listener: (runs: Array<{ id: number; title: string; done: number; total: number; requests: number }>) => void,
+  ) => () => void;
+  clearWorkData: () => Promise<{ database: number; settings: number; logs: number }>;
+  onWorkCleared: (listener: () => void) => () => void;
   listIssueChanges: () => Promise<
     Array<{ issueKey: string; boardLocalId: number; text: string; at: string; seen: boolean }>
   >;
@@ -284,7 +296,7 @@ const api: ElectronApi = {
   getAppInfo: () => ipcRenderer.invoke('app:getInfo'),
   updateAppFromRepo: () => ipcRenderer.invoke('app:updateFromRepo'),
   onAppUpdateProgress: (listener) => {
-    const wrapped = (_event: unknown, message: string) => listener(message);
+    const wrapped = (_event: unknown, progress: AppUpdateProgress) => listener(progress);
     ipcRenderer.on('app:updateProgress', wrapped);
     return () => ipcRenderer.removeListener('app:updateProgress', wrapped);
   },
@@ -314,6 +326,22 @@ const api: ElectronApi = {
   pauseTracker: () => ipcRenderer.invoke('tracker:pause'),
   resumeTracker: () => ipcRenderer.invoke('tracker:resume'),
   abortTracker: () => ipcRenderer.invoke('tracker:abort'),
+  listTrackerRuns: () => ipcRenderer.invoke('tracker:runs'),
+  cancelTrackerRun: (id) => ipcRenderer.invoke('tracker:cancelRun', id),
+  onTrackerRuns: (listener) => {
+    const wrapped = (
+      _event: unknown,
+      runs: Array<{ id: number; title: string; done: number; total: number; requests: number }>,
+    ) => listener(runs);
+    ipcRenderer.on('tracker:runs', wrapped);
+    return () => ipcRenderer.removeListener('tracker:runs', wrapped);
+  },
+  clearWorkData: () => ipcRenderer.invoke('data:clearWork'),
+  onWorkCleared: (listener) => {
+    const wrapped = () => listener();
+    ipcRenderer.on('data:cleared', wrapped);
+    return () => ipcRenderer.removeListener('data:cleared', wrapped);
+  },
   listIssueChanges: () => ipcRenderer.invoke('changes:list'),
   dismissIssueChanges: (boardLocalId, issueKeys) =>
     ipcRenderer.invoke('changes:dismiss', boardLocalId, issueKeys),

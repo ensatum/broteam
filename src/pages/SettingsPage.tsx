@@ -10,6 +10,7 @@ import type {
   TrackerConnection,
   TrackerUser,
 } from '@shared/types';
+import type { AppUpdateProgress } from '@shared/appUpdate';
 import { COLUMN_COLORS, DEFAULT_GITHUB, DEVELOPER_TONE_PRESETS, PARTICIPANT_ROLES, normalizeDeveloperTone } from '@shared/types';
 import { sessionLog } from '../sessionLog';
 import ColorField from '../components/ColorField';
@@ -1565,10 +1566,22 @@ function CloseToTraySetting() {
   );
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) {
+    const mb = bytes / (1024 * 1024);
+    const text = mb >= 10 ? mb.toFixed(0) : mb.toFixed(1);
+    return `${text} Mb`;
+  }
+  const kb = bytes > 0 ? Math.max(1, Math.round(bytes / 1024)) : 0;
+  return `${kb} Kb`;
+}
+
 function AppUpdateButton() {
   const [busy, setBusy] = useState(false);
-  const [text, setText] = useState<string | null>(null);
-  useEffect(() => window.api.onAppUpdateProgress(setText), []);
+  const [progress, setProgress] = useState<AppUpdateProgress | null>(null);
+  useEffect(() => window.api.onAppUpdateProgress(setProgress), []);
+  const downloading = progress?.phase === 'download' && progress.total > 0 ? progress : null;
+  const fraction = downloading ? Math.min(100, (downloading.received / downloading.total) * 100) : 0;
   return (
     <>
       <button
@@ -1577,20 +1590,51 @@ function AppUpdateButton() {
         disabled={busy}
         onClick={() => {
           setBusy(true);
-          setText('Проверяем…');
+          setProgress({
+            phase: 'version',
+            message: 'Сверяем установленную версию с репозиторием.',
+            received: 0,
+            total: 0,
+          });
           void window.api
             .updateAppFromRepo()
-            .then((result) => setText(result.message))
+            .then((result) =>
+              setProgress({
+                phase: result.updated ? 'install' : 'version',
+                message: result.message,
+                received: 0,
+                total: 0,
+              }),
+            )
             .catch((error: unknown) => {
               const raw = error instanceof Error ? error.message : String(error);
-              setText(raw.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, ''));
+              setProgress({
+                phase: 'version',
+                message: raw.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, ''),
+                received: 0,
+                total: 0,
+              });
             })
             .finally(() => setBusy(false));
         }}
       >
         {busy ? 'Обновление…' : 'Проверить и обновить'}
       </button>
-      {text && <p className="basis-full text-sm text-slate-700">{text}</p>}
+      {progress && (
+        <div className="basis-full space-y-1.5">
+          <p className="text-sm text-slate-700">{progress.message}</p>
+          {downloading && (
+            <div className="max-w-md space-y-1">
+              <div className="h-2 overflow-hidden rounded-full bg-slate-200" aria-hidden>
+                <div className="h-full rounded-full bg-sky-600" style={{ width: `${fraction}%` }} />
+              </div>
+              <p className="text-xs text-slate-600">
+                {formatBytes(downloading.received)} из {formatBytes(downloading.total)}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }

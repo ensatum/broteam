@@ -29,6 +29,7 @@ import {
   writeBoardRowPrefs,
   readRightTool,
   writeRightTool,
+  clearWorkData,
   saveBoardConfig,
   saveConnection,
   setDeveloperNote,
@@ -98,8 +99,11 @@ import {
   armTracker,
   pauseTracker,
   resumeTracker,
+  setAbortHook,
   subscribeTrackerGate,
+  withRun,
 } from './trackerGate';
+import { cancelAllRuns, cancelRun, finishRun, listTrackerRuns, setRunProgress, startRun, subscribeTrackerRuns } from './trackerRuns';
 import type { SummaryBuildRequest } from '../shared/summary';
 import { exportSummary } from './summaryExport';
 
@@ -601,10 +605,11 @@ function registerIpc(): void {
     armTracker();
     const viewed = getActiveBoardLocalId();
     const target = typeof boardLocalId === 'number' ? boardLocalId : viewed;
+    const runId = startRun('Обновление доски');
     sessionLog('info', 'board:refresh start', { activeId: target });
     if (target != null && target !== viewed) setActiveBoardLocalId(target);
     try {
-      const matrix = await buildLiveMatrix();
+      const matrix = await withRun(runId, () => buildLiveMatrix());
       if (getActiveBoardLocalId() === target) latestMatrix = matrix;
       sessionLog('info', 'board:refresh done', describeMatrix(matrix));
       paintTray();
@@ -613,6 +618,7 @@ function registerIpc(): void {
       sessionLog('error', 'board:refresh failed', error);
       throw error;
     } finally {
+      finishRun(runId);
       if (target != null && getActiveBoardLocalId() === target && viewed != null && viewed !== target) {
         setActiveBoardLocalId(viewed);
       }
@@ -825,6 +831,25 @@ function registerIpc(): void {
       win.webContents.send('tracker:gate', state);
     }
   });
+  subscribeTrackerRuns((runs) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('tracker:runs', runs);
+    }
+  });
+  setAbortHook(cancelAllRuns);
+  ipcMain.handle('tracker:runs', () => listTrackerRuns());
+  ipcMain.handle('tracker:cancelRun', (_e, id: number) => {
+    cancelRun(Number(id));
+    return listTrackerRuns();
+  });
+  ipcMain.handle('data:clearWork', () => {
+    clearWorkData();
+    latestMatrix = null;
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('data:cleared');
+    }
+    return readStorageStats(app.getPath('userData'));
+  });
   ipcMain.handle('tracker:pause', () => pauseTracker());
   ipcMain.handle('tracker:resume', () => resumeTracker());
   ipcMain.handle('tracker:abort', () => abortTracker());
@@ -876,19 +901,32 @@ function registerIpc(): void {
     'summary:refreshIssue',
     async (_e, request: SummaryBuildRequest, issueKey: string, boardLocalId: number) => {
       armTracker();
-      return refreshSummaryIssue(request, issueKey, boardLocalId);
+      const runId = startRun(`Задача ${issueKey}`);
+      try {
+        return await withRun(runId, () => refreshSummaryIssue(request, issueKey, boardLocalId));
+      } finally {
+        finishRun(runId);
+      }
     },
   );
   ipcMain.handle('summary:build', async (event, request: SummaryBuildRequest) => {
     armTracker();
     resetTrackerActivity();
+    const runId = startRun('Сводка');
     const win = BrowserWindow.fromWebContents(event.sender);
-    return buildSummaryReport(request, (progress) => {
-      win?.webContents.send('summary:progress', {
-        ...progress,
-        requests: trackerActivity().total,
-      });
-    });
+    try {
+      return await withRun(runId, () =>
+        buildSummaryReport(request, (progress) => {
+          setRunProgress(runId, progress.index, progress.total);
+          win?.webContents.send('summary:progress', {
+            ...progress,
+            requests: trackerActivity().total,
+          });
+        }),
+      );
+    } finally {
+      finishRun(runId);
+    }
   });
   ipcMain.handle(
     'summary:export',

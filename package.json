@@ -1,9 +1,9 @@
 {
   "name": "bro-team",
-  "version": "2026.9.222",
+  "version": "2026.10.224",
   "broteam": {
-    "release": 9,
-    "build": 222
+    "release": 10,
+    "build": 224
   },
   "description": "BroTeam — доска задач по Yandex Tracker",
   "homepage": "https://github.com/ensatum/broteam",
@@ -30,12 +30,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "better-sqlite3": "^12.4.1",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "better-sqlite3": "^12.4.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.13",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.5.2",
     "@types/react": "^19.1.13",
@@ -54,6 +54,11 @@
   "build": {
     "appId": "pro.a3f.broteam",
     "productName": "BroTeam",
+    "compression": "maximum",
+    "electronLanguages": [
+      "en",
+      "ru"
+    ],
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -61,8 +66,28 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
+      "!dist/**/*.map",
+      "!dist-electron/**/*.map",
       "build/icon.png",
-      "package.json"
+      "package.json",
+      "!node_modules/react/**",
+      "!node_modules/react-dom/**",
+      "!node_modules/scheduler/**",
+      "!node_modules/prebuild-install/**",
+      "!node_modules/detect-libc/**",
+      "!node_modules/expand-template/**",
+      "!node_modules/github-from-package/**",
+      "!node_modules/napi-build-utils/**",
+      "!node_modules/node-abi/**",
+      "!node_modules/mkdirp-classic/**",
+      "!node_modules/simple-get/**",
+      "!node_modules/tar-fs/**",
+      "!node_modules/tar-stream/**",
+      "!node_modules/tunnel-agent/**",
+      "!node_modules/better-sqlite3/deps/**",
+      "!node_modules/better-sqlite3/src/**",
+      "!node_modules/better-sqlite3/binding.gyp",
+      "!node_modules/**/prebuilds/**"
     ],
     "extraResources": [
       {
@@ -74,7 +99,7 @@
     "afterPack": "./scripts/after-pack.mjs",
     "artifactBuildCompleted": "./scripts/check-artifact.mjs",
     "asarUnpack": [
-      "**/node_modules/better-sqlite3/**/*"
+      "**/node_modules/better-sqlite3/build/Release/*.node"
     ],
     "linux": {
       "target": [

@@ -3,8 +3,9 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Readable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import type { AppUpdateProgress } from '../shared/appUpdate';
 import { getGithub } from './db';
 import { isNewerVersion, liveVersion, parseAppVersion, versionLabels } from '../shared/version';
 
@@ -12,6 +13,7 @@ export type AppUpdateResult = {
   updated: boolean;
   restarted: boolean;
   message: string;
+  handoff?: boolean;
 };
 
 const GITHUB_HEADERS = {
@@ -83,10 +85,15 @@ function runningMacApp(): string | null {
   return bundle;
 }
 
+function macCanReplace(bundle: string): boolean {
+  if (bundle.includes('/AppTranslocation/') || bundle.includes('/private/var/folders/')) return false;
+  if (bundle.startsWith('/Volumes/')) return false;
+  return canWrite(path.dirname(bundle));
+}
+
 function macInstallDestination(): string {
   const current = runningMacApp();
-  const translocated = current?.includes('/AppTranslocation/') ?? false;
-  if (current && !translocated && canWrite(path.dirname(current))) return current;
+  if (current && macCanReplace(current)) return current;
   const userApps = path.join(app.getPath('home'), 'Applications');
   fs.mkdirSync(userApps, { recursive: true });
   if (canWrite(userApps)) return path.join(userApps, 'BroTeam.app');
@@ -101,11 +108,16 @@ function findMacApp(dir: string): string | null {
   return null;
 }
 
-function installMacZip(zip: string, report: (message: string) => void): AppUpdateResult {
+function installMacZip(zip: string, report: (progress: AppUpdateProgress) => void): AppUpdateResult {
   if (!runningMacApp()) {
     throw new Error('Автоустановка доступна для собранного приложения, не для запуска из исходников.');
   }
-  report('Устанавливаем и перезапускаем…');
+    const dest = macInstallDestination();
+    const replacing = dest === runningMacApp();
+    const message = replacing
+      ? `Файл скачан в ${zip}. После выхода приложение будет заменено и запущено снова.`
+      : `Файл скачан в ${zip}. Текущую копию заменить нельзя, ставим в ${dest} и запускаем её.`;
+    report({ phase: 'install', message, received: 0, total: 0 });
   const extracted = fs.mkdtempSync(path.join(os.tmpdir(), 'broteam-mac-'));
   try {
     run('ditto', ['-xk', zip, extracted]);
@@ -114,7 +126,6 @@ function installMacZip(zip: string, report: (message: string) => void): AppUpdat
     const stagedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'broteam-next-'));
     const staged = path.join(stagedDir, 'BroTeam.app');
     run('ditto', [unpacked, staged]);
-    const dest = macInstallDestination();
     const script = path.join(os.tmpdir(), `broteam-install-${process.pid}.sh`);
     fs.writeFileSync(
       script,
@@ -152,22 +163,48 @@ rm -f "$0"
     });
     child.unref();
     app.exit(0);
-    return { updated: true, restarted: true, message: 'Приложение перезапускается.' };
+    return { updated: true, restarted: true, message };
   } finally {
     fs.rmSync(extracted, { recursive: true, force: true });
   }
 }
 
-async function installDownloaded(file: string, report: (message: string) => void): Promise<AppUpdateResult> {
+async function installDownloaded(
+  file: string,
+  report: (progress: AppUpdateProgress) => void,
+  hold: { keep: boolean },
+): Promise<AppUpdateResult> {
   const appImage = process.env.APPIMAGE;
   if (process.platform === 'linux' && appImage && file.endsWith('.AppImage')) {
-    report('Устанавливаем и перезапускаем…');
-    fs.copyFileSync(file, appImage);
-    fs.chmodSync(appImage, 0o755);
-    const child = spawn(appImage, [], { detached: true, stdio: 'ignore' });
+    const message = `Файл скачан в ${file}. После выхода он заменит текущий AppImage и приложение запустится снова.`;
+    report({ phase: 'install', message, received: 0, total: 0 });
+    const script = path.join(os.tmpdir(), `broteam-install-${process.pid}.sh`);
+    fs.writeFileSync(
+      script,
+      `#!/bin/bash
+set -euo pipefail
+pid="$1"
+src="$2"
+dest="$3"
+while kill -0 "$pid" 2>/dev/null; do
+  sleep 0.2
+done
+cp -f "$src" "$dest"
+chmod 755 "$dest"
+rm -rf "$(dirname "$src")"
+setsid "$dest" >/dev/null 2>&1 < /dev/null &
+rm -f "$0"
+`,
+      { mode: 0o755 },
+    );
+    const child = spawn('bash', [script, String(process.pid), file, appImage], {
+      detached: true,
+      stdio: 'ignore',
+    });
     child.unref();
+    hold.keep = true;
     app.exit(0);
-    return { updated: true, restarted: true, message: 'Приложение перезапускается.' };
+    return { updated: true, restarted: true, message, handoff: true };
   }
   if (process.platform === 'darwin' && file.endsWith('.zip')) {
     return installMacZip(file, report);
@@ -178,7 +215,7 @@ async function installDownloaded(file: string, report: (message: string) => void
   return {
     updated: true,
     restarted: false,
-    message: `Скачано: ${dest}. Автоперезапуск доступен для установленного AppImage.`,
+    message: `Файл скачан в ${dest}. Автоматическая установка и перезапуск доступны для установленного AppImage.`,
   };
 }
 
@@ -198,8 +235,54 @@ export async function checkGithub(remote: string, branch: string): Promise<void>
   }
 }
 
+type ReleaseAsset = {
+  name: string;
+  size?: number;
+  browser_download_url: string;
+};
+
+async function assetByteSize(asset: ReleaseAsset): Promise<number> {
+  if (asset.size && asset.size > 0) return asset.size;
+  const head = await fetch(asset.browser_download_url, {
+    method: 'HEAD',
+    headers: { 'User-Agent': 'BroTeam' },
+  });
+  const length = Number(head.headers.get('content-length'));
+  return Number.isFinite(length) && length > 0 ? length : 0;
+}
+
+async function downloadToFile(
+  url: string,
+  dest: string,
+  total: number,
+  onBytes: (received: number, total: number) => void,
+): Promise<void> {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'BroTeam', Accept: 'application/octet-stream' },
+  });
+  if (!response.ok || !response.body) throw new Error(`Файл не скачался.`);
+  const headerLength = Number(response.headers.get('content-length'));
+  const expected = headerLength > 0 ? headerLength : total;
+  let received = 0;
+  let reportedAt = 0;
+  const counter = new Transform({
+    transform(chunk, _encoding, callback) {
+      received += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk));
+      const now = Date.now();
+      if (now - reportedAt >= 100) {
+        reportedAt = now;
+        onBytes(received, expected);
+      }
+      callback(null, chunk);
+    },
+  });
+  const body = response.body as unknown as import('node:stream/web').ReadableStream;
+  await pipeline(Readable.fromWeb(body), counter, fs.createWriteStream(dest));
+  onBytes(received, expected || received);
+}
+
 export async function updateAppFromRepository(
-  report: (message: string) => void,
+  report: (progress: AppUpdateProgress) => void,
 ): Promise<AppUpdateResult> {
   const source = getGithub();
   const remote = source.remote.trim();
@@ -209,8 +292,14 @@ export async function updateAppFromRepository(
   const baked = app.getVersion();
   const shown = liveVersion(baked).full;
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'broteam-update-'));
+  const hold = { keep: false };
   try {
-    report('Проверяем…');
+    report({
+      phase: 'version',
+      message: `Сверяем установленную версию ${shown} с репозиторием.`,
+      received: 0,
+      total: 0,
+    });
     const pkgUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(branch)}/package.json`;
     const pkgResponse = await fetch(pkgUrl, { headers: { 'User-Agent': 'BroTeam' } });
     if (pkgResponse.status === 404) throw new Error('В этой ветке нет package.json.');
@@ -220,8 +309,14 @@ export async function updateAppFromRepository(
     if (!latest) {
       return { updated: false, restarted: false, message: `Установлена последняя версия ${shown}.` };
     }
+    report({
+      phase: 'size',
+      message: `В репозитории версия ${latest}, она новее установленной ${shown}. Запрашиваем размер файла обновления.`,
+      received: 0,
+      total: 0,
+    });
     const tag = releaseTag(latest);
-    let release: { assets?: Array<{ name: string; browser_download_url: string }> };
+    let release: { assets?: ReleaseAsset[] };
     try {
       release = await githubJson(
         `https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`,
@@ -240,18 +335,26 @@ export async function updateAppFromRepository(
         message: `Есть версия ${latest}, но файла для этой системы нет.`,
       };
     }
-    report(`Скачиваем ${latest}…`);
+    const total = await assetByteSize(asset);
+    if (!total) throw new Error(`Не удалось узнать размер файла ${asset.name}.`);
     const downloaded = path.join(temp, asset.name);
-    const fileResponse = await fetch(asset.browser_download_url, {
-      headers: { 'User-Agent': 'BroTeam', Accept: 'application/octet-stream' },
+    report({
+      phase: 'download',
+      message: `Скачиваем ${asset.name} в ${temp}.`,
+      received: 0,
+      total,
     });
-    if (!fileResponse.ok || !fileResponse.body) {
-      throw new Error(`Файл ${asset.name} не скачался.`);
-    }
-    const body = fileResponse.body as unknown as import('node:stream/web').ReadableStream;
-    await pipeline(Readable.fromWeb(body), fs.createWriteStream(downloaded));
-    return await installDownloaded(downloaded, report);
+    await downloadToFile(asset.browser_download_url, downloaded, total, (received, size) => {
+      report({
+        phase: 'download',
+        message: `Скачиваем ${asset.name} в ${temp}.`,
+        received,
+        total: size,
+      });
+    });
+    const installed = await installDownloaded(downloaded, report, hold);
+    return installed;
   } finally {
-    fs.rmSync(temp, { recursive: true, force: true });
+    if (!hold.keep) fs.rmSync(temp, { recursive: true, force: true });
   }
 }

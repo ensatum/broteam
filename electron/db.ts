@@ -414,6 +414,39 @@ export function settingsPayloadBytes(): number {
   return row?.bytes || 0;
 }
 
+const WORK_TABLES = [
+  'snapshots',
+  'issue_notes',
+  'developer_notes',
+  'drafts',
+  'issue_bookmarks',
+  'developer_todos',
+  'issue_changes',
+  'summary_notes',
+  'summary_issue_notes',
+  'summary_source',
+  'summary_cache',
+  'issue_note_links',
+];
+
+/** Drops tasks, summaries and notes. Boards, columns, people and their aliases stay. */
+export function clearWorkData(): void {
+  const database = getDb();
+  const existing = new Set(
+    (
+      database.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as Array<{ name: string }>
+    ).map((row) => row.name),
+  );
+  const tx = database.transaction(() => {
+    for (const table of WORK_TABLES) {
+      if (existing.has(table)) database.prepare(`DELETE FROM ${table}`).run();
+    }
+    database.prepare(`DELETE FROM settings WHERE key IN ('lastMatrix', 'lastMatrices')`).run();
+  });
+  tx();
+  database.exec('VACUUM');
+}
+
 export function getConnection(): TrackerConnection {
   const raw = getSetting('connection');
   if (!raw) return { ...DEFAULT_CONNECTION };

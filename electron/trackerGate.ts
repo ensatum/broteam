@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 export class TrackerStopped extends Error {
   constructor() {
     super('Запросы остановлены');
@@ -14,8 +16,24 @@ type GateState = { paused: boolean };
 let paused = false;
 let stopped = false;
 let waiters: Array<() => void> = [];
-const controllers = new Set<AbortController>();
+const controllers = new Map<number, Set<AbortController>>();
+const runOf = new WeakMap<AbortController, number>();
+const stoppedRuns = new Set<number>();
+const runContext = new AsyncLocalStorage<number>();
 const listeners = new Set<(state: GateState) => void>();
+let abortHook: () => void = () => {};
+
+export function setAbortHook(hook: () => void): void {
+  abortHook = hook;
+}
+
+export function currentRun(): number {
+  return runContext.getStore() ?? 0;
+}
+
+export function withRun<T>(id: number, fn: () => Promise<T>): Promise<T> {
+  return runContext.run(id, fn);
+}
 
 export function trackerGate(): GateState {
   return { paused };
@@ -57,10 +75,27 @@ export function resumeTracker(): GateState {
   return trackerGate();
 }
 
+export function stopRun(runId: number): void {
+  if (!runId) return;
+  stoppedRuns.add(runId);
+  const bucket = controllers.get(runId);
+  if (!bucket) return;
+  for (const controller of bucket) controller.abort();
+  bucket.clear();
+}
+
+export function forgetRun(runId: number): void {
+  stoppedRuns.delete(runId);
+  controllers.delete(runId);
+}
+
 export function abortTracker(): GateState {
   stopped = true;
   paused = false;
-  for (const controller of controllers) controller.abort();
+  abortHook();
+  for (const bucket of controllers.values()) {
+    for (const controller of bucket) controller.abort();
+  }
   controllers.clear();
   wake();
   emit();
@@ -68,18 +103,28 @@ export function abortTracker(): GateState {
 }
 
 export function bindRequest(controller: AbortController): void {
-  controllers.add(controller);
+  const runId = currentRun();
+  runOf.set(controller, runId);
+  let bucket = controllers.get(runId);
+  if (!bucket) {
+    bucket = new Set();
+    controllers.set(runId, bucket);
+  }
+  bucket.add(controller);
 }
 
 export function releaseRequest(controller: AbortController): void {
-  controllers.delete(controller);
+  const runId = runOf.get(controller) ?? 0;
+  controllers.get(runId)?.delete(controller);
+  runOf.delete(controller);
 }
 
 export async function checkpoint(): Promise<void> {
-  if (stopped) throw new TrackerStopped();
+  const runId = currentRun();
+  if (stopped || (runId !== 0 && stoppedRuns.has(runId))) throw new TrackerStopped();
   while (paused) {
     await new Promise<void>((resolve) => waiters.push(resolve));
-    if (stopped) throw new TrackerStopped();
+    if (stopped || (runId !== 0 && stoppedRuns.has(runId))) throw new TrackerStopped();
   }
 }
 

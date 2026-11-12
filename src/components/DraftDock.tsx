@@ -143,6 +143,8 @@ export default function DraftDock(props: Props) {
     void reload();
   }, [reload]);
 
+  useEffect(() => window.api.onWorkCleared(() => void reload(true)), [reload]);
+
   useEffect(() => {
     localStorage.setItem(SORT_KEY, newestFirst ? 'desc' : 'asc');
   }, [newestFirst]);

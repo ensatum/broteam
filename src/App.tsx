@@ -28,6 +28,7 @@ import {
   type WorkSchedule,
 } from './autoRefresh';
 import { defaultSummaryPeriod } from '@shared/summary';
+import { changeStillOpen } from '@shared/issueChanges';
 import { invalidateIssueStories } from './issueStoryCache';
 import { revealContentFade, setApiCount, startContentFade } from './contentFade';
 import { sessionLog } from './sessionLog';
@@ -78,7 +79,10 @@ export default function App() {
     boardId: null,
     bell: false,
   });
-  const [apiUsage, setApiUsage] = useState({ sinceRefresh: 0, dayTotal: 0 });
+  const [apiUsage, setApiUsage] = useState({ sinceRefresh: 0, dayTotal: 0, inflight: 0 });
+  const [runs, setRuns] = useState<
+    Array<{ id: number; title: string; done: number; total: number; requests: number }>
+  >([]);
   const [storageStats, setStorageStats] = useState({ database: 0, settings: 0, logs: 0 });
   const [changes, setChanges] = useState<
     Array<{ issueKey: string; boardLocalId: number; text: string; at: string; seen: boolean }>
@@ -157,14 +161,32 @@ export default function App() {
   const markSnapshotDirty = useCallback(() => undefined, []);
 
   useEffect(() => {
-    const apply = (state: { total: number; sinceRefresh?: number; dayTotal?: number }) => {
+    const apply = (state: { total: number; inflight?: number; sinceRefresh?: number; dayTotal?: number }) => {
       setApiCount(state.total);
       setApiRequests(state.total);
-      setApiUsage({ sinceRefresh: state.sinceRefresh ?? 0, dayTotal: state.dayTotal ?? 0 });
+      setApiUsage({
+        sinceRefresh: state.sinceRefresh ?? 0,
+        dayTotal: state.dayTotal ?? 0,
+        inflight: state.inflight ?? 0,
+      });
     };
     void window.api.trackerUsage().then(apply).catch(() => undefined);
     return window.api.onTrackerActivity(apply);
   }, []);
+  useEffect(() => {
+    void window.api.listTrackerRuns().then(setRuns).catch(() => undefined);
+    return window.api.onTrackerRuns(setRuns);
+  }, []);
+  useEffect(
+    () =>
+      window.api.onWorkCleared(() => {
+        setMatrix(null);
+        setChanges([]);
+        invalidateIssueStories();
+        void window.api.storageStats().then(setStorageStats).catch(() => undefined);
+      }),
+    [],
+  );
   useEffect(() => {
     let stop = false;
     const load = () => {
@@ -320,6 +342,29 @@ export default function App() {
       : 'boards';
 
   const activeMatrix = matrix;
+  const openChangeKeys = useMemo(() => {
+    const keys = new Set<string>();
+    const createdAt = new Map<string, string | null>();
+    for (const row of matrix?.developers || []) {
+      for (const issues of Object.values(row.issuesByColumn || {})) {
+        for (const issue of issues || []) {
+          keys.add(issue.key);
+          if (!createdAt.has(issue.key)) createdAt.set(issue.key, issue.createdAt || null);
+        }
+      }
+    }
+    return { boardId: matrix?.sourceBoardLocalId ?? null, keys, createdAt };
+  }, [matrix]);
+
+  function boardHasOpenChange(boardId: number): boolean {
+    const onLoadedBoard = openChangeKeys.boardId === boardId;
+    return changes.some((change) => {
+      if (change.boardLocalId !== boardId) return false;
+      if (onLoadedBoard && !openChangeKeys.keys.has(change.issueKey)) return false;
+      const created = onLoadedBoard ? openChangeKeys.createdAt.get(change.issueKey) : undefined;
+      return changeStillOpen(change, created);
+    });
+  }
 
   const onBoardPage = tab === 'board';
 
@@ -389,20 +434,36 @@ export default function App() {
     })();
   };
 
-  const trayNav = useRef({ boards, changes, switchBoard });
-  trayNav.current = { boards, changes, switchBoard };
+  const trayNav = useRef({ boards, changes, switchBoard, boardHasOpenChange });
+  trayNav.current = { boards, changes, switchBoard, boardHasOpenChange };
   useEffect(() => {
     return window.api.onTrayShow(() => {
       const nav = trayNav.current;
       const target = [...nav.boards]
         .filter((board) => board.enabled)
         .sort((a, b) => a.sortOrder - b.sortOrder)
-        .find((board) => nav.changes.some((change) => change.boardLocalId === board.id && !change.seen));
+        .find((board) => nav.boardHasOpenChange(board.id));
       setTab('board');
       if (target) nav.switchBoard(target.id);
       setTrayCue((prev) => ({ tick: prev.tick + 1, boardId: target?.id ?? null, bell: target != null }));
     });
   }, []);
+
+  async function clearWork() {
+    const agreed = window.confirm(
+      'Удалить список задач, сводки и заметки? Доски, колонки, люди, алиасы, цвета и порядок останутся.',
+    );
+    if (!agreed) return;
+    try {
+      const stats = await window.api.clearWorkData();
+      setStorageStats(stats);
+      setMatrix(null);
+      setChanges([]);
+      invalidateIssueStories();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   return (
     <div className="h-dvh overflow-hidden flex flex-col">
@@ -461,7 +522,7 @@ export default function App() {
                   : active
                     ? 'border border-black bg-black font-semibold text-white'
                     : 'border border-slate-300 text-slate-600 hover:bg-slate-100';
-                const changed = changes.some((change) => change.boardLocalId === item.id && !change.seen);
+                const changed = boardHasOpenChange(item.id);
                 return (
                   <button
                     key={item.id}
@@ -607,14 +668,67 @@ export default function App() {
           />
         )}
       </main>
+      {runs.length > 0 && (
+        <div className="flex max-h-28 shrink-0 flex-col justify-end gap-1 overflow-auto border-t border-slate-200 bg-white px-3 py-1">
+          {runs.map((run) => {
+            const width = run.total > 0 ? Math.min(100, (run.done / run.total) * 100) : 0;
+            return (
+              <div key={run.id} className="flex items-center gap-2">
+                <span className="w-36 shrink-0 truncate text-[11px] text-slate-600" title={run.title}>
+                  {run.title}
+                </span>
+                <div className="relative h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-200">
+                  {run.total > 0 ? (
+                    <div className="h-full bg-sky-600" style={{ width: `${width}%` }} />
+                  ) : (
+                    <div className="bro-save-progress h-full w-1/4 bg-sky-500" />
+                  )}
+                </div>
+                <span className="w-16 shrink-0 text-right text-[11px] tabular-nums text-slate-500">
+                  {run.total > 0 ? `${run.done}/${run.total}` : run.requests}
+                </span>
+                <button
+                  type="button"
+                  title="Остановить"
+                  className="inline-flex h-4 w-4 items-center justify-center rounded-sm text-slate-500 hover:bg-red-100 hover:text-red-700"
+                  onClick={() => void window.api.cancelTrackerRun(run.id)}
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <footer className="flex h-6 shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-3 text-[11px] tabular-nums text-slate-500">
-        <InstantTip text="Запросы с последнего обновления (за сегодня)" place="top">
-          <span>
-            API {apiUsage.sinceRefresh} ({apiUsage.dayTotal})
-          </span>
-        </InstantTip>
+        <span className="inline-flex items-center gap-1">
+          <InstantTip text="Запросы с последнего обновления (за сегодня)" place="top">
+            <span>
+              API {apiUsage.sinceRefresh} ({apiUsage.dayTotal})
+            </span>
+          </InstantTip>
+          <button
+            type="button"
+            title="Остановить запросы"
+            className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm bg-slate-300 text-[8px] leading-none text-slate-700 hover:bg-red-200 hover:text-red-700 disabled:opacity-40"
+            disabled={runs.length === 0 && apiUsage.inflight === 0}
+            onClick={() => void window.api.abortTracker()}
+          >
+            ■
+          </button>
+        </span>
         <span className="flex items-center gap-3">
-          <span>база {formatBytes(storageStats.database)}</span>
+          <span className="inline-flex items-center gap-1">
+            база {formatBytes(storageStats.database)}
+            <button
+              type="button"
+              className="rounded-sm px-1 text-slate-500 hover:bg-red-100 hover:text-red-700"
+              title="Удалить задачи, сводки и заметки. Доски, колонки, алиасы и цвета останутся."
+              onClick={() => void clearWork()}
+            >
+              очистить
+            </button>
+          </span>
           <span>настройки {formatBytes(storageStats.settings)}</span>
           <span>логи {formatBytes(storageStats.logs)}</span>
         </span>

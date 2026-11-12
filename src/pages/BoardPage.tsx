@@ -13,7 +13,7 @@ import { resolveDeveloperRowColor, darkenHex } from '@shared/types';
 import { describeMatrix } from '@shared/matrixShape';
 import { sessionLog } from '../sessionLog';
 import { PENDING_COLUMN, cellMissingBadges, cellTimeWarn, issueIsDone, issueTimeWarn } from '@shared/columnMeta';
-import { staleNewTaskNote } from '@shared/issueChanges';
+import { staleNewTaskNote, changeStillOpen } from '@shared/issueChanges';
 import { invalidateIssueStories } from '../issueStoryCache';
 import IssuePanel from '../components/IssuePanel';
 import SummaryDock from '../components/SummaryDock';
@@ -952,12 +952,23 @@ export default function BoardPage(props: Props) {
     return [...names].sort((a, b) => a.localeCompare(b, 'ru'));
   }, [sourceMatrix]);
   const unseenChangeKeys = useMemo(() => {
+    const createdAt = new Map<string, string | null>();
+    for (const row of sourceMatrix?.developers || []) {
+      for (const issues of Object.values(row.issuesByColumn || {})) {
+        for (const issue of issues || []) {
+          if (!createdAt.has(issue.key)) createdAt.set(issue.key, issue.createdAt || null);
+        }
+      }
+    }
     const keys = new Set<string>();
     for (const change of props.changes) {
-      if (change.boardLocalId === props.activeBoardId && !change.seen) keys.add(change.issueKey);
+      if (change.boardLocalId !== props.activeBoardId) continue;
+      if (sourceMatrix && !createdAt.has(change.issueKey)) continue;
+      if (!changeStillOpen(change, createdAt.get(change.issueKey))) continue;
+      keys.add(change.issueKey);
     }
     return keys;
-  }, [props.changes, props.activeBoardId]);
+  }, [props.changes, props.activeBoardId, sourceMatrix]);
   useEffect(() => {
     if (boardScope === 'changes' && unseenChangeKeys.size === 0) setBoardScope('total');
   }, [boardScope, unseenChangeKeys]);

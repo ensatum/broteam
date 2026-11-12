@@ -18,6 +18,15 @@ export function staleNewTaskNote(text: string, createdAt: string | null | undefi
   return Date.now() - created > 36 * 60 * 60 * 1000;
 }
 
+/** A change the board still shows: not acknowledged, and not a stale "new task". */
+export function changeStillOpen(
+  change: { text: string; at: string; seen: boolean },
+  createdAt?: string | null,
+): boolean {
+  if (change.seen) return false;
+  return !staleNewTaskNote(change.text, createdAt ?? change.at);
+}
+
 function actorName(issue: TrackerIssue): string {
   return (issue.updatedByDisplay || '').trim();
 }
