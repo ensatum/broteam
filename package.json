@@ -1,9 +1,9 @@
 {
   "name": "bro-team",
-  "version": "2026.11.228",
+  "version": "2026.12.229",
   "broteam": {
-    "release": 11,
-    "build": 228
+    "release": 12,
+    "build": 229
   },
   "description": "BroTeam — доска задач по Yandex Tracker",
   "homepage": "https://github.com/ensatum/broteam",

@@ -24,6 +24,35 @@ function withTemp(run) {
   }
 }
 
+function zipEntries(file) {
+  const listing = execFileSync('unzip', ['-l', file], { encoding: 'utf8', timeout: 60000 });
+  const entries = [];
+  for (const line of listing.split('\n')) {
+    const match = line.match(/^\s*(\d+)\s+\S+\s+\S+\s+(.+)$/);
+    if (!match) continue;
+    entries.push({ size: Number(match[1]), name: match[2] });
+  }
+  return entries;
+}
+
+/** Linux 7-Zip stores each framework symlink as a full file. The shipped zip must not. */
+export function assertMacFrameworkOnce(file) {
+  const frameworks = zipEntries(file).filter((entry) => entry.name.endsWith('Electron Framework'));
+  const bodies = frameworks.filter((entry) => entry.size > 1_000_000);
+  const link = frameworks.some(
+    (entry) => entry.size < 1000 && entry.name.endsWith('Electron Framework.framework/Electron Framework'),
+  );
+  const once = bodies.length === 1 && bodies[0].name.includes('/Versions/A/Electron Framework');
+  if (!once || !link) {
+    throw new Error(`${file}: Electron Framework должен лежать один раз, остальные пути — ссылки на него`);
+  }
+}
+
+export function assertReleaseArtifact(file, platform, arch) {
+  inspect(file, platform, arch);
+  if (platform === 'darwin' && file.endsWith('.zip')) assertMacFrameworkOnce(file);
+}
+
 function inspect(file, platform, arch) {
   if (file.endsWith('.AppImage')) {
     withTemp((dir) => {
