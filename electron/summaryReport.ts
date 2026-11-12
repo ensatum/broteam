@@ -65,6 +65,7 @@ export async function buildSummaryReport(
     }
   }
   const collected = [...found.values()];
+  if (collected.length > 0) onProgress({ row: null, index: 0, total: collected.length });
   const rows: SummaryRow[] = [];
   const stored: SummaryIssue[] = [];
   const eventsByKey: Record<string, TrackerChangelogEvent[]> = {};

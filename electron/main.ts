@@ -616,7 +616,9 @@ function registerIpc(): void {
     armTracker();
     const viewed = getActiveBoardLocalId();
     const target = typeof boardLocalId === 'number' ? boardLocalId : viewed;
-    const runId = startRun('Обновление доски');
+    const saved = typeof target === 'number' ? listSavedBoards().find((item) => item.id === target) : undefined;
+    const label = (saved?.alias || '').trim() || saved?.name || '';
+    const runId = startRun(label ? `Обновление досок · ${label}` : 'Обновление досок');
     sessionLog('info', 'board:refresh start', { activeId: target });
     if (target != null && target !== viewed) setActiveBoardLocalId(target);
     try {
@@ -923,7 +925,7 @@ function registerIpc(): void {
   ipcMain.handle('summary:build', async (event, request: SummaryBuildRequest) => {
     armTracker();
     resetTrackerActivity();
-    const runId = startRun('Сводка');
+    const runId = startRun('Формирование сводки');
     const win = BrowserWindow.fromWebContents(event.sender);
     try {
       return await withRun(runId, () =>

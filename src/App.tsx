@@ -9,7 +9,7 @@ import type {
 } from '@shared/types';
 import { DEFAULT_BOARD, DEFAULT_CONNECTION } from '@shared/types';
 import type { BoardHeaderModel } from './pages/BoardPage';
-import { MenuIcon, RefreshIcon, ToggleLeftIcon, ToggleRightIcon } from './components/Icons';
+import { MenuIcon, RefreshIcon, ToggleLeftIcon, ToggleRightIcon, TrashIcon } from './components/Icons';
 import { InstantTip } from './components/InstantTip';
 import {
   autoSaveStamp,
@@ -48,7 +48,9 @@ export default function App() {
   const [editExit, setEditExit] = useState(0);
   const [settingsSection, setSettingsSection] = useState<'app' | 'integrations' | 'boards'>('app');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [runsOpen, setRunsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const runsRef = useRef<HTMLDivElement>(null);
   const [autoRefresh, setAutoRefresh] = useState(loadAutoRefresh);
   const [autoMinutes, setAutoMinutes] = useState(loadAutoRefreshMinutes);
   const [autoSaveTime, setAutoSaveTime] = useState(loadAutoSaveTime);
@@ -86,6 +88,16 @@ export default function App() {
   const [runs, setRuns] = useState<
     Array<{ id: number; title: string; done: number; total: number; requests: number }>
   >([]);
+  const runShare = useMemo(() => {
+    let done = 0;
+    let total = 0;
+    for (const run of runs) {
+      if (run.total <= 0) continue;
+      done += run.done;
+      total += run.total;
+    }
+    return { done, total };
+  }, [runs]);
   const [storageStats, setStorageStats] = useState({ database: 0, settings: 0, logs: 0 });
   const [changes, setChanges] = useState<
     Array<{ issueKey: string; boardLocalId: number; text: string; at: string; seen: boolean }>
@@ -148,6 +160,20 @@ export default function App() {
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!runsOpen) return;
+    const onDoc = (event: MouseEvent) => {
+      if (runsRef.current?.contains(event.target as Node)) return;
+      setRunsOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [runsOpen]);
+
+  useEffect(() => {
+    if (runs.length === 0) setRunsOpen(false);
+  }, [runs.length]);
 
   const handleMatrixChange = useCallback((next: BoardMatrix) => {
     setMatrix(next);
@@ -682,38 +708,6 @@ export default function App() {
         )}
         </Suspense>
       </main>
-      {runs.length > 0 && (
-        <div className="flex max-h-28 shrink-0 flex-col justify-end gap-1 overflow-auto border-t border-slate-200 bg-white px-3 py-1">
-          {runs.map((run) => {
-            const width = run.total > 0 ? Math.min(100, (run.done / run.total) * 100) : 0;
-            return (
-              <div key={run.id} className="flex items-center gap-2">
-                <span className="w-36 shrink-0 truncate text-[11px] text-slate-600" title={run.title}>
-                  {run.title}
-                </span>
-                <div className="relative h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-200">
-                  {run.total > 0 ? (
-                    <div className="h-full bg-sky-600" style={{ width: `${width}%` }} />
-                  ) : (
-                    <div className="bro-save-progress h-full w-1/4 bg-sky-500" />
-                  )}
-                </div>
-                <span className="w-16 shrink-0 text-right text-[11px] tabular-nums text-slate-500">
-                  {run.total > 0 ? `${run.done}/${run.total}` : run.requests}
-                </span>
-                <button
-                  type="button"
-                  title="Остановить"
-                  className="inline-flex h-4 w-4 items-center justify-center rounded-sm text-slate-500 hover:bg-red-100 hover:text-red-700"
-                  onClick={() => void window.api.cancelTrackerRun(run.id)}
-                >
-                  ×
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
       <footer className="flex h-6 shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-3 text-[11px] tabular-nums text-slate-500">
         <span className="inline-flex items-center gap-1">
           <InstantTip text="Запросы с последнего обновления (за сегодня)" place="top">
@@ -730,24 +724,81 @@ export default function App() {
           >
             ■
           </button>
+          {runs.length > 0 && (
+            <div ref={runsRef} className="relative flex items-center">
+              <button
+                type="button"
+                aria-pressed={runsOpen}
+                aria-label="Ход запросов"
+                className="flex h-6 w-[100px] cursor-pointer items-center"
+                onClick={() => setRunsOpen((open) => !open)}
+              >
+                <RunMeter done={runShare.done} total={runShare.total} className="h-1.5 w-full" />
+              </button>
+              {runsOpen && (
+                <div className="absolute bottom-full left-0 z-[9999] mb-1 max-h-40 w-80 overflow-auto rounded-md border border-slate-200 bg-white py-1 shadow-xl">
+                  {runs.map((run) => (
+                    <div key={run.id} className="flex items-center gap-2 px-2 py-1">
+                      <span className="min-w-0 flex-1 truncate text-[11px] text-slate-700" title={run.title}>
+                        {run.title}
+                      </span>
+                      <RunMeter done={run.done} total={run.total} className="h-1.5 w-[72px] shrink-0" />
+                      <span className="w-11 shrink-0 text-right text-[11px] tabular-nums text-slate-500">
+                        {run.total > 0 ? `${run.done}/${run.total}` : '…'}
+                      </span>
+                      <InstantTip text="Остановить" place="top">
+                        <button
+                          type="button"
+                          aria-label={`Остановить: ${run.title}`}
+                          className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm bg-slate-300 text-[8px] leading-none text-slate-700 hover:bg-red-200 hover:text-red-700"
+                          onClick={() => void window.api.cancelTrackerRun(run.id)}
+                        >
+                          ■
+                        </button>
+                      </InstantTip>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </span>
         <span className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1">
-            база {formatBytes(storageStats.database)}
-            <button
-              type="button"
-              className="rounded-sm px-1 text-slate-500 hover:bg-red-100 hover:text-red-700"
-              title="Удалить задачи, сводки и заметки. Доски, колонки, алиасы и цвета останутся."
-              onClick={() => void clearWork()}
+            <InstantTip
+              text="Удалить задачи, сводки и заметки. Доски, колонки, алиасы и цвета останутся."
+              place="top"
             >
-              очистить
-            </button>
+              <button
+                type="button"
+                aria-label="Очистить базу"
+                className="inline-flex h-3.5 w-3.5 items-center justify-center text-slate-400 hover:text-red-700"
+                onClick={() => void clearWork()}
+              >
+                <TrashIcon className="h-3 w-3" />
+              </button>
+            </InstantTip>
+            база {formatBytes(storageStats.database)}
           </span>
           <span>настройки {formatBytes(storageStats.settings)}</span>
           <span>логи {formatBytes(storageStats.logs)}</span>
         </span>
       </footer>
     </div>
+  );
+}
+
+function RunMeter(props: { done: number; total: number; className: string }) {
+  const known = props.total > 0;
+  const width = known ? Math.min(100, (props.done / props.total) * 100) : 0;
+  return (
+    <span className={`relative block overflow-hidden rounded-full bg-slate-300 ${props.className}`}>
+      {known ? (
+        <span className="block h-full bg-sky-600" style={{ width: `${width}%` }} />
+      ) : (
+        <span className="bro-save-progress block h-full w-1/4 bg-sky-500" />
+      )}
+    </span>
   );
 }
 
