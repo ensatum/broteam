@@ -549,7 +549,7 @@ export default function SummaryDock(props: {
                   type="button"
                   aria-pressed={activity}
                   title="Задачи, по которым была активность за период"
-                  className={summaryToggleClass(activity, false)}
+                  className={summaryToggleClass(activity, false, 'primary')}
                   onClick={() => setActivity((on) => !on)}
                 >
                   <ZapIcon className="h-3 w-3" />
@@ -560,7 +560,7 @@ export default function SummaryDock(props: {
                 type="button"
                 aria-pressed={plans}
                 title="Задачи в колонках с тегом, без активности за период"
-                className={summaryToggleClass(plans, false)}
+                className={summaryToggleClass(plans, false, 'primary')}
                 onClick={() => setPlans((on) => !on)}
               >
                 <TargetIcon className="h-3 w-3" />
@@ -1907,12 +1907,12 @@ function SummaryHours(props: {
 
 const SUMMARY_BADGE_GRAY = '#64748b';
 
-function summaryToggleClass(on: boolean, disabled: boolean): string {
+function summaryToggleClass(on: boolean, disabled: boolean, tone: 'default' | 'primary' = 'default'): string {
   const base = 'inline-flex h-6 shrink-0 items-center gap-1 rounded-md border px-2 text-[11px] font-medium shadow-sm';
   if (disabled) return `${base} cursor-default border-slate-200 bg-slate-100 text-slate-300 shadow-none`;
-  return on
-    ? `${base} border-slate-800 bg-slate-800 text-white hover:bg-slate-700`
-    : `${base} border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-100`;
+  if (!on) return `${base} border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-100`;
+  if (tone === 'primary') return `${base} border-sky-600 bg-sky-600 text-white hover:border-sky-700 hover:bg-sky-700`;
+  return `${base} border-slate-800 bg-slate-800 text-white hover:bg-slate-700`;
 }
 
 function summaryBoardBadges(

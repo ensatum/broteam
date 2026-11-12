@@ -24,29 +24,44 @@ const GLYPHS = [
   ['#####', '##..#', '##..#', '##..#', '##..#', '##..#', '##..#', '##..#', '##..#', '##..#', '##..#', '#####'],
 ];
 
+const SIZE = 22;
+const RADIUS = 5;
+const WARNING = { r: 251, g: 191, b: 36 };
+
+function coverage(x: number, y: number): number {
+  const px = x + 0.5;
+  const py = y + 0.5;
+  const dx = px < RADIUS ? RADIUS - px : px > SIZE - RADIUS ? px - (SIZE - RADIUS) : 0;
+  const dy = py < RADIUS ? RADIUS - py : py > SIZE - RADIUS ? py - (SIZE - RADIUS) : 0;
+  if (dx === 0 && dy === 0) return 1;
+  return Math.max(0, Math.min(1, RADIUS + 0.5 - Math.hypot(dx, dy)));
+}
+
 function paint(alert: boolean): Buffer {
-  const size = 22;
-  const raw = Buffer.alloc((size * 4 + 1) * size);
+  const raw = Buffer.alloc((SIZE * 4 + 1) * SIZE);
   const set = (x: number, y: number, r: number, g: number, b: number, a: number) => {
-    if (x < 0 || y < 0 || x >= size || y >= size) return;
-    const index = y * (size * 4 + 1) + 1 + x * 4;
+    if (x < 0 || y < 0 || x >= SIZE || y >= SIZE) return;
+    const index = y * (SIZE * 4 + 1) + 1 + x * 4;
     raw[index] = r;
     raw[index + 1] = g;
     raw[index + 2] = b;
     raw[index + 3] = a;
   };
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) set(x, y, 176, 180, 186, 255);
+  for (let y = 0; y < SIZE; y += 1) {
+    for (let x = 0; x < SIZE; x += 1) {
+      const alpha = Math.round(coverage(x, y) * 255);
+      if (alpha > 0) set(x, y, 255, 255, 255, alpha);
+    }
   }
   const glyphW = 5;
   const gap = 1;
   const ox = 1;
-  const oy = 9;
+  const oy = 6;
   GLYPHS.forEach((glyph, index) => {
     const left = ox + index * (glyphW + gap);
     glyph.forEach((row, y) => {
       for (let x = 0; x < row.length; x += 1) {
-        if (row[x] === '#') set(left + x, oy + y, 20, 20, 20, 255);
+        if (row[x] === '#' && coverage(left + x, oy + y) >= 1) set(left + x, oy + y, 20, 20, 20, 255);
       }
     });
   });
@@ -57,7 +72,7 @@ function paint(alert: boolean): Buffer {
       for (let x = cx - 3; x <= cx + 3; x += 1) {
         const dx = x - cx;
         const dy = y - cy;
-        if (dx * dx + dy * dy <= 10) set(x, y, 220, 38, 38, 255);
+        if (dx * dx + dy * dy <= 10 && coverage(x, y) >= 1) set(x, y, WARNING.r, WARNING.g, WARNING.b, 255);
       }
     }
   }
@@ -65,7 +80,7 @@ function paint(alert: boolean): Buffer {
 }
 
 export function trayPng(alert: boolean): Buffer {
-  const size = 22;
+  const size = SIZE;
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(size, 0);
   ihdr.writeUInt32BE(size, 4);
