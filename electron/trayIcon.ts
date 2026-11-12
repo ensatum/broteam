@@ -57,7 +57,7 @@ function paint(alert: boolean): Buffer {
       for (let x = cx - 3; x <= cx + 3; x += 1) {
         const dx = x - cx;
         const dy = y - cy;
-        if (dx * dx + dy * dy <= 10) set(x, y, 245, 180, 20, 255);
+        if (dx * dx + dy * dy <= 10) set(x, y, 220, 38, 38, 255);
       }
     }
   }

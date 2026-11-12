@@ -1,0 +1,41 @@
+---
+description: Писать строки изменений в changelog/unreleased.md; сборка и релиз забирают их в коммиты и файл релиза
+alwaysApply: true
+---
+
+# Список изменений
+
+Номер версии строками не управляется. Он по-прежнему `год.релиз.сборка`.
+
+Пока идёт правка, дописывать запись в `changelog/unreleased.md`. Название и тело записи — на английском, в Conventional Commits. В скобках область этой программы:
+
+`feat(board):`, `fix(update):`, `refactor(summary):`, `perf(db):`, `docs(settings):`, `test(board):`, `build(build):`, `chore(tracker):`.
+
+Области: `board`, `summary`, `notes`, `update`, `db`, `tray`, `settings`, `tracker`, `build`. Номер задачи в квадратных скобках не добавлять.
+
+```
+feat(board): drop the stale new-task dot from the board tab
+
+The amber dot stayed after the yellow notice was dismissed.
+```
+
+Тело под названием необязательно. Записи разделять пустой строкой. Запись нужна, когда меняется поведение, данные или сборка. Не писать её для формата, комментария и правила Cursor. Второй список руками не вести.
+
+`scripts/build.sh` коммитит на `develop`:
+
+```
+Build 2026.10.226
+
+feat(board): drop the stale new-task dot from the board tab
+```
+
+Тело — содержимое `changelog/unreleased.md`. Пустой файл оставляет тело пустым, сборка не останавливается. Тот же коммит очищает файл. В общий длинный журнал строки не переносить.
+
+`scripts/release.sh` до переключения на `main`, не увеличивая номер релиза:
+
+- останавливается, если `changelog/unreleased.md` не пуст;
+- собирает тела коммитов `Build` с прошлого тега;
+- создаёт новый `changelog/2026.10.md` и не правит файлы прошлых релизов;
+- коммитит на `develop` заголовок `Release 2026.10` и это тело.
+
+Дальше релиз как прежде: перемотка `main`, пакеты, тег `год.релиз`.
