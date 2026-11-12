@@ -146,6 +146,7 @@ export type ElectronApi = {
   deleteSnapshot: (id: number) => Promise<boolean>;
   openExternal: (url: string) => Promise<boolean>;
   notify: (body: string) => Promise<boolean>;
+  notifyShellReady: () => void;
   getAppInfo: () => Promise<{ name: string; version: string; headerVersion: string }>;
   updateAppFromRepo: () => Promise<{ updated: boolean; restarted: boolean; message: string }>;
   onAppUpdateProgress: (listener: (progress: AppUpdateProgress) => void) => () => void;
@@ -293,6 +294,7 @@ const api: ElectronApi = {
   deleteSnapshot: (id) => ipcRenderer.invoke('snapshots:delete', id),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   notify: (body) => ipcRenderer.invoke('app:notify', body),
+  notifyShellReady: () => ipcRenderer.send('app:shellReady'),
   getAppInfo: () => ipcRenderer.invoke('app:getInfo'),
   updateAppFromRepo: () => ipcRenderer.invoke('app:updateFromRepo'),
   onAppUpdateProgress: (listener) => {

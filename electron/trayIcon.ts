@@ -35,6 +35,9 @@ function paint(alert: boolean): Buffer {
     raw[index + 2] = b;
     raw[index + 3] = a;
   };
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) set(x, y, 176, 180, 186, 255);
+  }
   const glyphW = 5;
   const gap = 1;
   const ox = 1;

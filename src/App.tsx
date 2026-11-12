@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   BoardColumnConfig,
   BoardConfig,
@@ -8,8 +8,7 @@ import type {
   TrackerConnection,
 } from '@shared/types';
 import { DEFAULT_BOARD, DEFAULT_CONNECTION } from '@shared/types';
-import SettingsPage from './pages/SettingsPage';
-import BoardPage, { type BoardHeaderModel } from './pages/BoardPage';
+import type { BoardHeaderModel } from './pages/BoardPage';
 import { MenuIcon, RefreshIcon, ToggleLeftIcon, ToggleRightIcon } from './components/Icons';
 import { InstantTip } from './components/InstantTip';
 import {
@@ -33,6 +32,9 @@ import { invalidateIssueStories } from './issueStoryCache';
 import { revealContentFade, setApiCount, startContentFade } from './contentFade';
 import { sessionLog } from './sessionLog';
 import { describeMatrix } from '@shared/matrixShape';
+
+const BoardPage = lazy(() => import('./pages/BoardPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 
 type Tab = 'board' | 'settings';
 
@@ -73,6 +75,7 @@ export default function App() {
   const [refreshingBoardId, setRefreshingBoardId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [bootDone, setBootDone] = useState(false);
   const [apiRequests, setApiRequests] = useState(0);
   const [trayCue, setTrayCue] = useState<{ tick: number; boardId: number | null; bell: boolean }>({
     tick: 0,
@@ -119,6 +122,14 @@ export default function App() {
   useEffect(() => {
     void loadSettings().catch((e: Error) => setError(e.message));
   }, [loadSettings]);
+
+  useEffect(() => {
+    window.api.notifyShellReady();
+  }, []);
+
+  useEffect(() => {
+    if (ready && tab === 'settings') setBootDone(true);
+  }, [ready, tab]);
 
   useEffect(() => {
     const persist = () => {
@@ -271,7 +282,7 @@ export default function App() {
   }, [boards, refreshingBoardId]);
 
   useEffect(() => {
-    if (!ready || !autoRefresh || refreshingBoardId != null) return;
+    if (!ready || !bootDone || !autoRefresh || refreshingBoardId != null) return;
     const fetched = matrix?.fetchedAt ? Date.parse(matrix.fetchedAt) : Number.NaN;
     const anchor = lastRefreshAt ?? (Number.isNaN(fetched) ? null : fetched);
     const wait = refreshDelayMs(new Date(), autoMinutes, workSchedule, anchor);
@@ -280,10 +291,10 @@ export default function App() {
       void refreshBoard();
     }, wait);
     return () => window.clearTimeout(timer);
-  }, [ready, autoRefresh, autoMinutes, workSchedule, lastRefreshAt, matrix?.fetchedAt, refreshingBoardId, refreshBoard]);
+  }, [ready, bootDone, autoRefresh, autoMinutes, workSchedule, lastRefreshAt, matrix?.fetchedAt, refreshingBoardId, refreshBoard]);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !bootDone) return;
     let cancelled = false;
     const tick = async () => {
       if (cancelled || refreshLock.current || refreshingBoardId != null) return;
@@ -333,7 +344,7 @@ export default function App() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [ready, autoSaveTime, boards, columns, activeBoardId, refreshingBoardId]);
+  }, [ready, bootDone, autoSaveTime, boards, columns, activeBoardId, refreshingBoardId]);
 
   const setupKind = !connection.token
     ? 'integration'
@@ -602,8 +613,9 @@ export default function App() {
           onBoardPage ? 'overflow-hidden' : 'overflow-auto p-4'
         }`}
       >
+        <Suspense fallback={<BoardShell />}>
         {!ready ? (
-          <div className="text-slate-500">Загрузка…</div>
+          <BoardShell />
         ) : tab === 'settings' ? (
           <SettingsPage
             connection={connection}
@@ -661,12 +673,14 @@ export default function App() {
             changes={changes}
             apiRequests={apiRequests}
             trayCue={trayCue}
+            onBootstrapped={() => setBootDone(true)}
             onDismissChanges={(keys) => {
               if (activeBoardId == null || !keys.length) return;
               void window.api.dismissIssueChanges(activeBoardId, keys).then(setChanges);
             }}
           />
         )}
+        </Suspense>
       </main>
       {runs.length > 0 && (
         <div className="flex max-h-28 shrink-0 flex-col justify-end gap-1 overflow-auto border-t border-slate-200 bg-white px-3 py-1">
@@ -745,6 +759,16 @@ function formatBytes(bytes: number): string {
   }
   const kb = bytes > 0 ? Math.max(1, Math.round(bytes / 1024)) : 0;
   return `${kb} Kb`;
+}
+
+function BoardShell() {
+  return (
+    <div className="flex min-h-0 flex-1">
+      <div className="w-11 shrink-0 border-r border-slate-200 bg-slate-50" />
+      <div className="min-w-0 flex-1 bg-white" />
+      <div className="w-11 shrink-0 border-l border-slate-200 bg-slate-50" />
+    </div>
+  );
 }
 
 function headerIconClass(pressed: boolean, tone: 'default' | 'danger' = 'default'): string {

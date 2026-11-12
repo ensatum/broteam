@@ -106,12 +106,14 @@ import {
 import { cancelAllRuns, cancelRun, finishRun, listTrackerRuns, setRunProgress, startRun, subscribeTrackerRuns } from './trackerRuns';
 import type { SummaryBuildRequest } from '../shared/summary';
 import { exportSummary } from './summaryExport';
+import { openStartupSplash, type StartupSplash } from './startupSplash';
 
 let mainWindow: BrowserWindow | null = null;
 let latestMatrix: BoardMatrix | null = null;
 let tray: Tray | null = null;
 let allowQuit = false;
 let instanceServer: net.Server | null = null;
+let startupSplash: StartupSplash | null = null;
 
 function resolveAppIcon(): string | undefined {
   const candidates = [
@@ -148,6 +150,7 @@ function createWindow(): void {
     minWidth: 1100,
     minHeight: 700,
     title: windowTitle,
+    backgroundColor: '#f8fafc',
     ...(iconImage ? { icon: iconImage } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -453,6 +456,14 @@ function getClient(): TrackerClient {
 }
 
 function registerIpc(): void {
+  ipcMain.on('app:shellReady', () => {
+    startupSplash?.close();
+    startupSplash = null;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
   ipcMain.handle('app:getInfo', () => {
     const versions = liveVersion(app.getVersion());
     return {
@@ -1033,24 +1044,28 @@ function resolveUserData(appData: string): string {
 }
 
 app.whenReady().then(async () => {
-  // Default Electron File/Edit/View/Help menu is unused here — hide it.
   Menu.setApplicationMenu(null);
+  startupSplash = openStartupSplash();
+  startupSplash.step('Открываем базу');
   app.setName('BroTeam');
   app.setPath('userData', resolveUserData(app.getPath('appData')));
   initDb(app.getPath('userData'), app.getVersion());
   initApiUsage();
   initSessionLog(app.getPath('userData'));
+  startupSplash.step('Проверяем, не запущена ли копия');
   const version = liveVersion(app.getVersion()).full;
   const claimed = await claimInstance(version).catch(() => true);
   if (!claimed) {
+    startupSplash.close();
+    startupSplash = null;
     app.quit();
     return;
   }
-  latestMatrix = getLastMatrix<BoardMatrix>();
-  sessionLog('info', 'startup matrix', describeMatrix(latestMatrix));
+  startupSplash.step('Открываем окно');
   registerIpc();
   createWindow();
   paintTray();
+  startupSplash.step('Рисуем панели');
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

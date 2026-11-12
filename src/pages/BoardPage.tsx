@@ -493,6 +493,7 @@ type Props = {
   onDismissChanges: (keys: string[]) => void;
   apiRequests: number;
   trayCue: { tick: number; boardId: number | null; bell: boolean };
+  onBootstrapped?: () => void;
 };
 
 export type BoardHeaderModel = {
@@ -526,6 +527,21 @@ export default function BoardPage(props: Props) {
   const [selection, setSelection] = useState<CellSelection | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(() => loadBoardLayout().filtersOpen);
   const [issuesOpen, setIssuesOpen] = useState(() => loadBoardLayout().issuesOpen);
+  const [paintStage, setPaintStage] = useState<'rails' | 'table' | 'list' | 'summary'>('rails');
+  const bootCb = useRef(props.onBootstrapped);
+  bootCb.current = props.onBootstrapped;
+  useEffect(() => {
+    let stage: 'rails' | 'table' | 'list' | 'summary' = 'rails';
+    let timer = 0;
+    const advance = () => {
+      stage = stage === 'rails' ? 'table' : stage === 'table' ? 'list' : 'summary';
+      setPaintStage(stage);
+      if (stage !== 'summary') timer = window.setTimeout(advance, 48);
+      else timer = window.setTimeout(() => bootCb.current?.(), 48);
+    };
+    timer = window.setTimeout(advance, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
   const [rightTool, setRightToolState] = useState<RightTool>(loadRightTool);
   const rightToolTouched = useRef(false);
   const summaryOpen = rightTool === 'summary';
@@ -2723,7 +2739,7 @@ export default function BoardPage(props: Props) {
     });
   }
 
-  const summaryPanel = (
+  const summaryPanel = paintStage === 'summary' ? (
     <SummaryDock
       boardLocalId={props.activeBoardId}
       trackerBoardId={props.boards.find((item) => item.id === props.activeBoardId)?.trackerBoardId ?? null}
@@ -2761,7 +2777,7 @@ export default function BoardPage(props: Props) {
         setHighlightBoardId(null);
       }}
     />
-  );
+  ) : null;
 
   if (!matrix || !sourceMatrix) {
     return (
@@ -3086,7 +3102,7 @@ export default function BoardPage(props: Props) {
   ];
   /** Name col: compact + ellipsis (no wrap). */
   const nameColW = 'w-[9.75rem] min-w-[9.75rem]';
-  const tasksDock = (
+  const tasksDock = paintStage === 'list' || paintStage === 'summary' ? (
     <TasksDock
       selection={selection}
       issues={listedIssues}
@@ -3182,7 +3198,7 @@ export default function BoardPage(props: Props) {
       onChanged={() => void reloadTodosIntoMatrix()}
       onError={props.onError}
     />
-  );
+  ) : null;
 
   const refreshOnThisBoard =
     props.refreshingBoardId != null && props.refreshingBoardId === props.activeBoardId;
@@ -3654,11 +3670,11 @@ export default function BoardPage(props: Props) {
               </button>
             </div>
           )}
-          {tableMode === 'hidden' ? (
-            refreshOnThisBoard ? <div className="relative min-h-0 flex-1">{refreshVeil}</div> : null
+          {paintStage === 'rails' || tableMode === 'hidden' ? (
+            paintStage !== 'rails' && refreshOnThisBoard ? <div className="relative min-h-0 flex-1">{refreshVeil}</div> : <div className="min-h-0 flex-1 bg-white" />
           ) : (
           <div
-            className="flex min-h-0 flex-col overflow-hidden"
+            className="bro-boot-in flex min-h-0 flex-col overflow-hidden"
             style={issuesOpen ? { flex: `${tableFraction} 1 0%` } : { flex: '1 1 auto' }}
           >
           <div className="relative h-full min-h-0">
@@ -4154,7 +4170,7 @@ export default function BoardPage(props: Props) {
           </div>
           </div>
           )}
-          {issuesOpen && tableMode !== 'hidden' && (
+          {issuesOpen && paintStage !== 'rails' && paintStage !== 'table' && tableMode !== 'hidden' && (
             <div
               className="relative z-20 flex h-2.5 shrink-0 cursor-row-resize flex-col justify-between bg-white py-px"
               title="Тяните, чтобы изменить высоту списка"
@@ -4167,7 +4183,7 @@ export default function BoardPage(props: Props) {
               <div className="h-px bg-slate-300" />
             </div>
           )}
-          {issuesOpen && (
+          {issuesOpen && paintStage !== 'rails' && paintStage !== 'table' && (
                 <div
                   className="relative flex min-h-0 flex-col"
                   style={
@@ -4178,7 +4194,7 @@ export default function BoardPage(props: Props) {
                 >
                   <div
                     ref={(node) => attachFadeHost('list', node)}
-                    className="bro-fade-host flex min-h-0 flex-1 flex-col"
+                    className="bro-fade-host bro-boot-in flex min-h-0 flex-1 flex-col"
                   >
                     {tasksDock}
                   </div>
