@@ -27,7 +27,7 @@ type RequestOptions = {
   retries?: number;
   /** Abort the attempt so a stuck Tracker call cannot hang the UI. */
   timeoutMs?: number;
-  meta?: { totalPages?: number };
+  meta?: { totalPages?: number; nextCursor?: string | null };
 };
 
 const BOARD_LOOKUP_TIMEOUT_MS = 12_000;
@@ -150,6 +150,7 @@ export class TrackerClient {
           if (options.meta) {
             const pages = Number(response.headers.get('x-total-pages'));
             if (Number.isFinite(pages) && pages > 0) options.meta.totalPages = pages;
+            options.meta.nextCursor = nextLinkId(response.headers.get('link'));
           }
           if (response.status === 204) return undefined as T;
           return (await response.json()) as T;
@@ -536,8 +537,34 @@ export class TrackerClient {
     };
   }
 
+  /**
+   * Oldest page first. The comments method ignores `page` and continues after `id`.
+   * A full page still carries `Link: rel="next"`; the page after the last one is empty.
+   */
   async listIssueComments(issueId: string): Promise<TrackerComment[]> {
-    return this.paged<TrackerComment>(`/v2/issues/${encodeURIComponent(issueId)}/comments`, 20);
+    const path = `/v3/issues/${encodeURIComponent(issueId)}/comments`;
+    const perPage = 50;
+    const items: TrackerComment[] = [];
+    const seen = new Set<string>();
+    let cursor: string | undefined;
+    for (let page = 0; page < 40; page += 1) {
+      const meta: { nextCursor?: string | null } = {};
+      const batch =
+        (await this.request<TrackerComment[]>(path, {
+          query: { perPage, id: cursor },
+          retries: 5,
+          meta,
+        })) || [];
+      if (batch.length === 0) break;
+      items.push(...batch);
+      const tail = batch.length === perPage ? batch[batch.length - 1]?.id : undefined;
+      const next = meta.nextCursor || (tail != null ? String(tail) : '');
+      if (!next || seen.has(next)) break;
+      seen.add(next);
+      cursor = next;
+      await pauseableWait(120);
+    }
+    return items;
   }
 
   async getTransitions(issueId: string): Promise<
@@ -708,6 +735,22 @@ function newestComment(comments: TrackerComment[]): TrackerComment | null {
     }
   }
   return last;
+}
+
+function nextLinkId(header: string | null): string | null {
+  if (!header) return null;
+  for (const part of header.split(',')) {
+    const urlMatch = part.match(/<([^>]+)>/);
+    const relMatch = part.match(/;\s*rel="?([^";]+)"?/i);
+    if (!urlMatch || !relMatch || relMatch[1].toLowerCase() !== 'next') continue;
+    try {
+      const id = new URL(urlMatch[1], 'https://api.tracker.yandex.net').searchParams.get('id');
+      if (id) return id;
+    } catch {
+      continue;
+    }
+  }
+  return null;
 }
 
 function changelogPath(issueKey: string): string {
