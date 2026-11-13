@@ -12,10 +12,12 @@ import type {
 import { TrackerClient, buildIssuesQuery, isReactionComment, type TrackerChangelogEvent, type TrackerComment } from './tracker';
 import { trackerActivity } from './trackerActivity';
 import {
+  clearSummaryReports,
   getConnection,
   getSummaryCache,
   getSummarySource,
   listDevelopers,
+  listSummarySourceBounds,
   saveSummaryCache,
   saveSummarySource,
   type StoredSummaryCache,
@@ -30,6 +32,7 @@ const CHRONOLOGY_FIELDS = ['status', 'assignee', 'qaEngineer', 'kodRevu'] as con
 export async function buildSummaryReport(
   request: SummaryBuildRequest,
   onProgress: (progress: { row: SummaryRow | null; index: number; total: number }) => void,
+  stillCurrent: () => boolean = () => true,
 ): Promise<SummaryReport> {
   const formedAt = new Date().toISOString();
   const connection = getConnection();
@@ -103,7 +106,7 @@ export async function buildSummaryReport(
       if (i < collected.length - 1) await pauseableWait(280);
     }
   } catch (error) {
-    if (isTrackerStopped(error)) {
+    if (isTrackerStopped(error) && stillCurrent()) {
       persistCollected(request, formedAt, bounds, statusTypes, stored, eventsByKey, chronologyByKey, originByKey, true);
     }
     throw error;
@@ -291,6 +294,25 @@ function sliceSummaryCache(stored: StoredSummaryCache, request: SummaryBuildRequ
     coverageTo: stored.toIso,
     complete,
   };
+}
+
+/** A new formation that crosses the stored period replaces that summary entirely. */
+export function discardOverlappingSummary(period: SummaryPeriod): void {
+  const bounds = periodWindow(period);
+  const overlaps = listSummarySourceBounds().some((row) =>
+    rangesOverlap(bounds.fromIso, bounds.toIso, row.fromIso, row.toIso),
+  );
+  if (!overlaps) return;
+  clearSummaryReports();
+}
+
+function rangesOverlap(aFrom: string, aTo: string, bFrom: string, bTo: string): boolean {
+  const a0 = Date.parse(aFrom);
+  const a1 = Date.parse(aTo);
+  const b0 = Date.parse(bFrom);
+  const b1 = Date.parse(bTo);
+  if (![a0, a1, b0, b1].every((value) => Number.isFinite(value))) return false;
+  return a0 <= b1 && b0 <= a1;
 }
 
 function periodWindow(period: SummaryPeriod): { fromIso: string; toIso: string; query: string } {

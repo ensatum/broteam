@@ -40,6 +40,17 @@ export function resetTrackerActivity(): TrackerActivity {
   return trackerActivity();
 }
 
+/** Footer counters: requests since the last board refresh, and the total for today. */
+export function resetApiCounters(): TrackerActivity {
+  sinceRefresh = 0;
+  const today = localDay();
+  dayStamp = today;
+  dayTotal = 0;
+  writeApiDayCount(today, 0);
+  emit();
+  return trackerActivity();
+}
+
 /** Next Tracker calls belong to a new "refresh all boards", including that refresh itself. */
 export function beginBoardRefreshUsage(): TrackerActivity {
   sinceRefresh = 0;

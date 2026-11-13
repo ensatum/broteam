@@ -153,6 +153,7 @@ export type ElectronApi = {
   onTrayShow: (listener: () => void) => () => void;
   sessionLog: (level: 'info' | 'error', message: string, extra?: unknown) => void;
   resetTrackerActivity: () => Promise<{ total: number; inflight: number; sinceRefresh: number; dayTotal: number }>;
+  resetApiCounters: () => Promise<{ total: number; inflight: number; sinceRefresh: number; dayTotal: number }>;
   beginBoardRefresh: () => Promise<{ total: number; inflight: number; sinceRefresh: number; dayTotal: number }>;
   trackerUsage: () => Promise<{ total: number; inflight: number; sinceRefresh: number; dayTotal: number }>;
   storageStats: () => Promise<{ database: number; settings: number; logs: number }>;
@@ -196,14 +197,20 @@ export type ElectronApi = {
   ) => Promise<boolean>;
   listSummaryCache: (boardLocalId: number) => Promise<{ people: number[]; shared: boolean }>;
   openSummary: (request: SummaryBuildRequest) => Promise<SummarySlice | null>;
-  buildSummary: (request: SummaryBuildRequest) => Promise<SummaryReport>;
+  buildSummary: (request: SummaryBuildRequest) => Promise<SummaryReport | null>;
   refreshSummaryIssue: (
     request: SummaryBuildRequest,
     issueKey: string,
     boardLocalId: number,
   ) => Promise<SummaryRow | null>;
   onSummaryProgress: (
-    listener: (progress: { row: SummaryRow | null; index: number; total: number; requests: number }) => void,
+    listener: (progress: {
+      row: SummaryRow | null;
+      index: number;
+      total: number;
+      requests: number;
+      epoch?: number;
+    }) => void,
   ) => () => void;
   getConsole: () => Promise<{
     api: Array<{ at: string; method: string; path: string; status: number; ms: number; detail: string }>;
@@ -309,6 +316,7 @@ const api: ElectronApi = {
   },
   sessionLog: (level, message, extra) => ipcRenderer.send('log:write', level, message, extra),
   resetTrackerActivity: () => ipcRenderer.invoke('tracker:resetActivity'),
+  resetApiCounters: () => ipcRenderer.invoke('tracker:resetCounters'),
   beginBoardRefresh: () => ipcRenderer.invoke('tracker:beginBoardRefresh'),
   trackerUsage: () => ipcRenderer.invoke('tracker:usage'),
   storageStats: () => ipcRenderer.invoke('app:storageStats'),
@@ -361,7 +369,7 @@ const api: ElectronApi = {
   onSummaryProgress: (listener) => {
     const wrapped = (
       _event: unknown,
-      progress: { row: SummaryRow | null; index: number; total: number; requests: number },
+      progress: { row: SummaryRow | null; index: number; total: number; requests: number; epoch?: number },
     ) => listener(progress);
     ipcRenderer.on('summary:progress', wrapped);
     return () => ipcRenderer.removeListener('summary:progress', wrapped);

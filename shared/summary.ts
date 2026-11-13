@@ -25,6 +25,10 @@ export type SummaryBuildRequest = {
     Pick<BoardColumnConfig, 'statusKey' | 'alias' | 'statusDisplay' | 'columnName' | 'duty' | 'ownerRole' | 'boardLocalId'>
   >;
   boards?: SummaryBoardRef[];
+  /** User pressed Сформировать: cancel the previous formation. */
+  fresh?: boolean;
+  /** Window generation so a cancelled formation cannot paint the spinner. */
+  epoch?: number;
 };
 
 export type SummarySlice = {

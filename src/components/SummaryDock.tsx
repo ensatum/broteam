@@ -105,6 +105,7 @@ export default function SummaryDock(props: {
   const [coverage, setCoverage] = useState<{ from: string; to: string; complete: boolean } | null>(null);
   const viewGen = useRef(0);
   const runningRef = useRef(false);
+  const epochRef = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [reportNote, setReportNote] = useState('');
@@ -138,6 +139,7 @@ export default function SummaryDock(props: {
   useEffect(() => {
     if (!running) return;
     return window.api.onSummaryProgress((progress) => {
+      if (progress.epoch !== epochRef.current) return;
       if (progress.row) {
         const row = progress.row;
         setRows((prev) => (prev.some((item) => item.key === row.key) ? prev : [...prev, row]));
@@ -287,6 +289,8 @@ export default function SummaryDock(props: {
   async function build(period: SummaryPeriod = props.period) {
     const request = summaryRequest(period);
     if (!request) return;
+    const epoch = epochRef.current + 1;
+    epochRef.current = epoch;
     runningRef.current = true;
     viewGen.current += 1;
     setRunning(true);
@@ -298,7 +302,8 @@ export default function SummaryDock(props: {
     setRequests(0);
     setFormedAt(new Date().toISOString());
     try {
-      const report = await window.api.buildSummary(request);
+      const report = await window.api.buildSummary({ ...request, fresh: true, epoch });
+      if (epoch !== epochRef.current || !report) return;
       setRows(report.rows);
       setFormedAt(report.formedAt);
       setRequests(report.requests);
@@ -306,6 +311,7 @@ export default function SummaryDock(props: {
       setCoverage({ from: bounds.from, to: bounds.to, complete: true });
       props.onCached?.();
     } catch (err) {
+      if (epoch !== epochRef.current) return;
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes('Запросы остановлены')) {
         const bounds = periodBounds(period);
@@ -315,6 +321,7 @@ export default function SummaryDock(props: {
         setError(message);
       }
     } finally {
+      if (epoch !== epochRef.current) return;
       runningRef.current = false;
       setRunning(false);
     }

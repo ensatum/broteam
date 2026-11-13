@@ -104,6 +104,7 @@ export default function App() {
   >([]);
   const boardSwitch = useRef(0);
   const refreshLock = useRef(false);
+  const summarySaveLock = useRef(false);
 
   const loadSettings = useCallback(async () => {
     const [conn, boardCfg, devs, cols, savedBoards, activeId, last] = await Promise.all([
@@ -321,9 +322,8 @@ export default function App() {
 
   useEffect(() => {
     if (!ready || !bootDone) return;
-    let cancelled = false;
     const tick = async () => {
-      if (cancelled || refreshLock.current || refreshingBoardId != null) return;
+      if (summarySaveLock.current || refreshLock.current || refreshingBoardId != null) return;
       const now = new Date();
       const clock = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       if (clock < autoSaveTime) return;
@@ -332,9 +332,10 @@ export default function App() {
       if (loadAutoSaveStamp() === stamp) return;
       const enabled = boards.filter((item) => item.enabled && item.id > 0);
       if (!enabled.length) return;
+      summarySaveLock.current = true;
       try {
         const anchor = enabled.find((item) => item.id === activeBoardId) || enabled[0];
-        await window.api.buildSummary({
+        const report = await window.api.buildSummary({
           boardLocalId: anchor.id,
           trackerBoardId: anchor.trackerBoardId,
           queueKey: anchor.queueKey,
@@ -359,17 +360,21 @@ export default function App() {
               boardLocalId: column.boardLocalId,
             })),
         });
-        saveAutoSaveStamp(stamp);
+        if (report) saveAutoSaveStamp(stamp);
       } catch (e) {
-        sessionLog('error', 'auto-save', { error: e instanceof Error ? e.message : String(e) });
+        const message = e instanceof Error ? e.message : String(e);
+        if (message.includes('Запросы остановлены')) {
+          saveAutoSaveStamp(stamp);
+          return;
+        }
+        sessionLog('error', 'auto-save', { error: message });
+      } finally {
+        summarySaveLock.current = false;
       }
     };
     void tick();
     const timer = window.setInterval(() => void tick(), 30_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
+    return () => window.clearInterval(timer);
   }, [ready, bootDone, autoSaveTime, boards, columns, activeBoardId, refreshingBoardId]);
 
   const setupKind = !connection.token
@@ -710,6 +715,16 @@ export default function App() {
       </main>
       <footer className="flex h-6 shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-3 text-[11px] tabular-nums text-slate-500">
         <span className="inline-flex items-center gap-1">
+          <InstantTip text="Обнулить счётчики запросов" place="top">
+            <button
+              type="button"
+              aria-label="Обнулить счётчики запросов"
+              className="inline-flex h-3.5 w-3.5 items-center justify-center text-slate-400 hover:text-red-700"
+              onClick={() => void window.api.resetApiCounters()}
+            >
+              <TrashIcon className="h-3 w-3" />
+            </button>
+          </InstantTip>
           <InstantTip text="Запросы с последнего обновления (за сегодня)" place="top">
             <span>
               API {apiUsage.sinceRefresh} ({apiUsage.dayTotal})

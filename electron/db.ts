@@ -1452,6 +1452,21 @@ export function getSummarySource(boardLocalId: number): StoredSummaryCache | nul
   return row || null;
 }
 
+export function listSummarySourceBounds(): Array<{ fromIso: string; toIso: string }> {
+  return getDb()
+    .prepare(`SELECT from_iso as fromIso, to_iso as toIso FROM summary_source`)
+    .all() as Array<{ fromIso: string; toIso: string }>;
+}
+
+/** Drops collected summaries. Notes on the summary stay. */
+export function clearSummaryReports(): void {
+  const database = getDb();
+  database.transaction(() => {
+    database.prepare('DELETE FROM summary_source').run();
+    database.prepare('DELETE FROM summary_cache').run();
+  })();
+}
+
 export function saveSummarySource(boardLocalId: number, cache: StoredSummaryCache): void {
   getDb()
     .prepare(

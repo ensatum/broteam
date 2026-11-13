@@ -79,9 +79,11 @@ export function stopRun(runId: number): void {
   if (!runId) return;
   stoppedRuns.add(runId);
   const bucket = controllers.get(runId);
-  if (!bucket) return;
-  for (const controller of bucket) controller.abort();
-  bucket.clear();
+  if (bucket) {
+    for (const controller of bucket) controller.abort();
+    bucket.clear();
+  }
+  wake();
 }
 
 export function forgetRun(runId: number): void {

@@ -86,13 +86,14 @@ import { initSessionLog, sessionLog, sessionLogPath } from './sessionLog';
 import {
   beginBoardRefreshUsage,
   initApiUsage,
+  resetApiCounters,
   resetTrackerActivity,
   subscribeTrackerActivity,
   trackerActivity,
 } from './trackerActivity';
 import { readStorageStats } from './storageStats';
 import { consoleHistory } from './consoleFeed';
-import { buildSummaryReport, refreshSummaryIssue, sliceStoredSummary } from './summaryReport';
+import { buildSummaryReport, discardOverlappingSummary, refreshSummaryIssue, sliceStoredSummary } from './summaryReport';
 import { trayPng } from './trayIcon';
 import {
   abortTracker,
@@ -114,6 +115,14 @@ let tray: Tray | null = null;
 let allowQuit = false;
 let instanceServer: net.Server | null = null;
 let startupSplash: StartupSplash | null = null;
+let summaryRunId = 0;
+
+function cancelSummaryRun(): void {
+  const id = summaryRunId;
+  if (!id) return;
+  summaryRunId = 0;
+  cancelRun(id);
+}
 
 function resolveAppIcon(): string | undefined {
   const candidates = [
@@ -867,6 +876,7 @@ function registerIpc(): void {
   ipcMain.handle('tracker:resume', () => resumeTracker());
   ipcMain.handle('tracker:abort', () => abortTracker());
   ipcMain.handle('tracker:resetActivity', () => resetTrackerActivity());
+  ipcMain.handle('tracker:resetCounters', () => resetApiCounters());
   ipcMain.handle('tracker:beginBoardRefresh', () => beginBoardRefreshUsage());
   ipcMain.handle('tracker:usage', () => trackerActivity());
   ipcMain.handle('app:storageStats', () => readStorageStats(app.getPath('userData')));
@@ -923,21 +933,32 @@ function registerIpc(): void {
     },
   );
   ipcMain.handle('summary:build', async (event, request: SummaryBuildRequest) => {
+    if (!request.fresh && summaryRunId) return null;
+    if (request.fresh) cancelSummaryRun();
+    if (request.fresh) discardOverlappingSummary(request.period);
     armTracker();
     resetTrackerActivity();
     const runId = startRun('Формирование сводки');
+    summaryRunId = runId;
     const win = BrowserWindow.fromWebContents(event.sender);
     try {
       return await withRun(runId, () =>
-        buildSummaryReport(request, (progress) => {
-          setRunProgress(runId, progress.index, progress.total);
-          win?.webContents.send('summary:progress', {
-            ...progress,
-            requests: trackerActivity().total,
-          });
-        }),
+        buildSummaryReport(
+          request,
+          (progress) => {
+            if (summaryRunId !== runId) return;
+            setRunProgress(runId, progress.index, progress.total);
+            win?.webContents.send('summary:progress', {
+              ...progress,
+              requests: trackerActivity().total,
+              epoch: request.epoch,
+            });
+          },
+          () => summaryRunId === runId,
+        ),
       );
     } finally {
+      if (summaryRunId === runId) summaryRunId = 0;
       finishRun(runId);
     }
   });
