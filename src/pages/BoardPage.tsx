@@ -2335,6 +2335,15 @@ export default function BoardPage(props: Props) {
     );
   }
 
+  const castPersonWatch = useRef({ on: false, id: null as number | null });
+  useEffect(() => {
+    const prev = castPersonWatch.current;
+    castPersonWatch.current = { on: castOn, id: castPersonId };
+    if (!prev.on || !castOn) return;
+    if (prev.id == null || castPersonId == null || prev.id === castPersonId) return;
+    selectAllTasks();
+  }, [castOn, castPersonId]);
+
   function chooseBoardScope(scope: BoardScope) {
     showWorkBusy();
     window.setTimeout(() => {
