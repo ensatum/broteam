@@ -437,11 +437,26 @@ body.bro-drag-col * {
 .markdown-body .yfm-note-warning { border-color: #fcd34d; background: #fffbeb; }
 .markdown-body .yfm-note-alert { border-color: #fca5a5; background: #fef2f2; }
 .markdown-body .yfm-note > :first-child,
-.markdown-body .yfm-cut > :first-child { margin-top: 0; }
+.markdown-body .yfm-cut > :first-child,
+.markdown-body .yfm-block > :first-child { margin-top: 0; }
 .markdown-body .yfm-note > :last-child,
-.markdown-body .yfm-cut > :last-child { margin-bottom: 0; }
+.markdown-body .yfm-cut > :last-child,
+.markdown-body .yfm-block > :last-child { margin-bottom: 0; }
 .markdown-body .yfm-cut { margin: 0.35rem 0; }
 .markdown-body .yfm-cut summary { cursor: pointer; font-weight: 600; }
+.markdown-body .yfm-block { margin: 0.35rem 0; border-radius: 0.25rem; }
+.markdown-body .yfm-block-pad-s { padding: 0.35rem 0.5rem; }
+.markdown-body .yfm-block-pad-m { padding: 0.55rem 0.7rem; }
+.markdown-body .yfm-block-pad-l { padding: 0.75rem 0.9rem; }
+.markdown-body .yfm-block-border-dashed { border-style: dashed; }
+.markdown-body .yfm-block-border-solid { border-style: solid; }
+.markdown-body .yfm-block-size-s { border-width: 1px; }
+.markdown-body .yfm-block-size-m { border-width: 2px; }
+.markdown-body .yfm-block-size-l { border-width: 3px; }
+.markdown-body .yfm-block-info { border-color: #38bdf8; }
+.markdown-body .yfm-block-tip { border-color: #34d399; }
+.markdown-body .yfm-block-warning { border-color: #f59e0b; }
+.markdown-body .yfm-block-alert { border-color: #f87171; }
 
 .bro-cell-mini .bro-badges-roomy,
 .bro-cell-mini .bro-badges-tight {

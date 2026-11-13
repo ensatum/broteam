@@ -76,8 +76,10 @@ function renderListLevel(items: ListItem[], index: { i: number }, base: number):
 
 const NOTE_OPEN = /^\{%\s*note(?:\s+(info|tip|warning|alert))?(?:\s+"([^"]*)"|\s+'([^']*)')?\s*%}\s*$/i;
 const CUT_OPEN = /^\{%\s*cut(?:\s+"([^"]*)"|\s+'([^']*)')?\s*%}\s*$/i;
+const BLOCK_OPEN = /^\{%\s*block\b([^%]*)%}\s*$/i;
 const NOTE_CLOSE = /^\{%\s*endnote\s*%}\s*$/i;
 const CUT_CLOSE = /^\{%\s*endcut\s*%}\s*$/i;
+const BLOCK_CLOSE = /^\{%\s*endblock\s*%}\s*$/i;
 
 function splitCells(line: string): string[] {
   let text = line.trim();
@@ -116,15 +118,36 @@ function renderTable(lines: string[], index: { i: number }): string {
   return `<table>${head}<tbody>${body}</tbody></table>`;
 }
 
-function takeBlock(lines: string[], start: number, close: RegExp): { body: string; next: number } {
+function takeBlock(lines: string[], start: number, close: RegExp, open?: RegExp): { body: string; next: number } {
   const buf: string[] = [];
+  let depth = 1;
   let i = start;
-  while (i < lines.length && !close.test(lines[i].trim())) {
+  while (i < lines.length) {
+    const trimmed = lines[i].trim();
+    if (open?.test(trimmed)) depth += 1;
+    else if (close.test(trimmed)) {
+      depth -= 1;
+      if (depth === 0) return { body: buf.join('\n'), next: i + 1 };
+    }
     buf.push(lines[i]);
     i += 1;
   }
-  if (i < lines.length) i += 1;
   return { body: buf.join('\n'), next: i };
+}
+
+function blockClass(raw: string): string {
+  const attrs: Record<string, string> = {};
+  for (const match of raw.matchAll(/([a-z]+)\s*=\s*([a-z0-9-]+)/gi)) attrs[match[1].toLowerCase()] = match[2].toLowerCase();
+  const classes = ['yfm-block'];
+  const pad = attrs.padding;
+  if (pad === 's' || pad === 'm' || pad === 'l') classes.push(`yfm-block-pad-${pad}`);
+  const border = attrs.border;
+  if (border === 'dashed' || border === 'solid') classes.push(`yfm-block-border-${border}`);
+  const size = attrs.bordersize;
+  if (size === 's' || size === 'm' || size === 'l') classes.push(`yfm-block-size-${size}`);
+  const color = attrs.bordercolor;
+  if (color === 'info' || color === 'tip' || color === 'warning' || color === 'alert') classes.push(`yfm-block-${color}`);
+  return classes.join(' ');
 }
 
 const NOTE_TONE: Record<string, string> = {
@@ -149,6 +172,13 @@ export function renderMarkdown(source: string): string {
       const title = note[2] || note[3] || '';
       const heading = title ? `<div class="yfm-note-title">${inline(title)}</div>` : '';
       out.push(`<aside class="yfm-note ${tone}">${heading}${renderMarkdown(block.body)}</aside>`);
+      i = block.next;
+      continue;
+    }
+    const frame = BLOCK_OPEN.exec(trimmed);
+    if (frame) {
+      const block = takeBlock(lines, i + 1, BLOCK_CLOSE, BLOCK_OPEN);
+      out.push(`<div class="${blockClass(frame[1] || '')}">${renderMarkdown(block.body)}</div>`);
       i = block.next;
       continue;
     }
