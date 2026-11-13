@@ -6,9 +6,9 @@
 
 ## Скачать
 
-Linux: AppImage и deb. macOS: zip для Intel и Apple Silicon, без подписи Apple. На Mac при первом запуске — ПКМ → Открыть.
+Linux: AppImage и deb. macOS: zip для Intel и Apple Silicon, без подписи Apple. На Mac при первом запуске — ПКМ → Открыть. Windows: zip для x64, без подписи. Windows SmartScreen предупредит, запуск — через «Подробнее».
 
-Последний релиз: [github.com/ensatum/broteam/releases/latest](https://github.com/ensatum/broteam/releases/latest). Там лежат пакеты Linux и macOS.
+Последний релиз: [github.com/ensatum/broteam/releases/latest](https://github.com/ensatum/broteam/releases/latest). Там лежат пакеты Linux, macOS и Windows.
 
 ## Зачем
 
@@ -69,6 +69,7 @@ BroTeam держит эти ответы в одном окне и не треб
 
 - Linux: `~/.config/bro-team/`
 - macOS: `~/Library/Application Support/bro-team/`
+- Windows: `%APPDATA%\bro-team`
 
 Если своей базы ещё нет, при первом запуске подхватывается каталог старой установки: `tracker-standup`, `BroTeam` или `BroTracker`.
 
@@ -95,10 +96,10 @@ npm run dev
 
 ## Сборка
 
-Релиз собирается под Linux и macOS. Linux — AppImage и deb, macOS — zip для Intel и Apple Silicon. Каталог пакетов — `release/`.
+Релиз собирается под Linux, macOS и Windows. Linux — AppImage и deb, macOS — zip для Intel и Apple Silicon, Windows — zip для x64. Каталог пакетов — `release/`. Из корня репозитория те же шаги вызывает `make`: `make help` печатает команды.
 
 `npm run release` останавливается, если после последней сборки есть ещё не собранные коммиты задачи. Иначе собирает их заголовки из коммитов сборки с прошлого тега в новый файл `changelog/год.релиз.md`, коммитит его в `develop` как `chore(release): год.релиз`, перематывает `main` на этот коммит, собирает пакеты и ставит тег. Номер версии и этот файл при релизе не меняются. Пакеты в git не входят: их прикрепляют к странице релиза. Ссылка выше открывает последний опубликованный релиз.
 
 `npm run build:dev` собирает в `develop` и не забирает незакоммиченные правки. Если тег текущего номера уже есть, увеличиваются релиз и сборка. Если прошлая публикация была сборкой, растёт только сборка. Коммит называется `build: compile release artifacts for год.релиз.сборка`. В теле — заголовки коммитов задачи с прошлой сборки. Их прогноз лежит в `changelog/unreleased.md` и этим коммитом очищается.
 
-Локальная сборка без релиза: `npm run dist:linux`, `npm run dist:mac`. В пакет попадает бинарь только той системы, для которой он собран.
+Локальная сборка без релиза: `npm run dist:linux`, `npm run dist:mac`, `npm run dist:win`. В пакет попадает бинарь только той системы, для которой он собран.

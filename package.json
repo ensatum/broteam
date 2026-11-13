@@ -24,7 +24,7 @@
     "release": "bash scripts/release.sh",
     "build:dev": "bash scripts/build.sh",
     "dist:mac": "node scripts/dist-mac.mjs && node scripts/prune-artifacts.mjs release 1",
-    "dist:win": "npm run build && electron-builder --win nsis && node scripts/prune-artifacts.mjs release 1",
+    "dist:win": "node scripts/dist-win.mjs && node scripts/prune-artifacts.mjs release 1",
     "prune:releases": "node scripts/prune-artifacts.mjs release 1",
     "prune:builds": "node scripts/prune-artifacts.mjs builds 3",
     "typecheck": "tsc --noEmit",
@@ -136,7 +136,7 @@
     },
     "win": {
       "target": [
-        "nsis"
+        "zip"
       ],
       "icon": "build/icon.png"
     }

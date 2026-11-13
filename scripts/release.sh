@@ -2,7 +2,7 @@
 # Если прогноз changelog/unreleased.md не пуст, останавливается.
 # Собирает пункты коммитов сборки с прошлого тега в changelog/год.релиз.md
 # и коммитит это в develop. Номер релиза не увеличивает.
-# Затем перематывает main на этот коммит, собирает пакеты Linux и macOS
+# Затем перематывает main на этот коммит, собирает пакеты Linux, macOS и Windows
 # в release/ и ставит тег Год.Релиз. Пакеты в git не входят.
 set -euo pipefail
 
@@ -85,10 +85,11 @@ arch="$(node -p 'process.arch')"
 node scripts/ensure-native.mjs linux "$arch" || exit 1
 build_target "Linux" npx electron-builder --linux AppImage deb "--${arch}" -c.directories.output=release -c.linux.artifactName="BroTeam-${version}-\${arch}.\${ext}"
 build_target "macOS" node scripts/dist-mac.mjs
+build_target "Windows" node scripts/dist-win.mjs
 node scripts/prune-artifacts.mjs release 1
 
 shopt -s nullglob
-artifacts=(release/*.AppImage release/*.deb release/*-mac.zip)
+artifacts=(release/*.AppImage release/*.deb release/*-mac.zip release/*-win.zip)
 if [[ ${#artifacts[@]} -eq 0 ]]; then
   echo "Ни один пакет не собран." >&2
   exit 1

@@ -45,11 +45,11 @@ function artifactMatches(name: string, version: string): boolean {
   if (!versionLabels(version).some((label) => name.includes(label))) return false;
   if (process.platform === 'linux') return name.endsWith('.AppImage');
   if (process.platform === 'darwin') {
-    if (!name.endsWith('.zip')) return false;
+    if (!name.endsWith('.zip') || !name.includes('-mac')) return false;
     if (process.arch === 'arm64') return name.includes('arm64');
     return !name.includes('arm64');
   }
-  if (process.platform === 'win32') return name.endsWith('.exe');
+  if (process.platform === 'win32') return name.endsWith('.zip') && name.includes('-win');
   return false;
 }
 
@@ -215,7 +215,11 @@ rm -f "$0"
   return {
     updated: true,
     restarted: false,
-    message: `Файл скачан в ${dest}. Автоматическая установка и перезапуск доступны для установленного AppImage.`,
+    message: `Файл скачан в ${dest}. ${
+      process.platform === 'linux'
+        ? 'Автоматическая установка и перезапуск доступны для установленного AppImage.'
+        : 'Дальше замените программу этим файлом вручную.'
+    }`,
   };
 }
 
