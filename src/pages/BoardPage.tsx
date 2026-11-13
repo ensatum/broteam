@@ -51,6 +51,7 @@ import {
   XIcon,
   MoveIcon,
   UsersIcon,
+  RefreshIcon,
 } from '../components/Icons';
 import DraftDock from '../components/DraftDock';
 import {
@@ -475,6 +476,7 @@ type Props = {
   columnHeadersNoWrap?: boolean;
   setupKind: 'integration' | 'boards' | null;
   onRefresh: () => void;
+  onRefreshBoard: () => void;
   refreshingBoardId?: number | null;
   editExit?: number;
   onMatrixChange: (m: BoardMatrix) => void;
@@ -3579,7 +3581,18 @@ export default function BoardPage(props: Props) {
               )}
             </div>
             </div>
-            <div />
+            <InstantTip text={props.refreshingBoardId != null ? 'Обновление доски…' : 'Обновить эту доску'}>
+              <button
+                type="button"
+                disabled={props.refreshingBoardId != null || readOnly}
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:shadow-sm disabled:cursor-default disabled:text-slate-300 disabled:hover:border-transparent disabled:hover:bg-transparent disabled:hover:shadow-none"
+                onClick={() => props.onRefreshBoard()}
+              >
+                <RefreshIcon
+                  className={`h-3.5 w-3.5 ${props.refreshingBoardId === props.activeBoardId ? 'animate-spin' : ''}`}
+                />
+              </button>
+            </InstantTip>
             <div className="flex min-w-0 items-center justify-end gap-1">
               {boardScope === 'changes' && boardChanges.length > 0 && (
                 <InstantTip text="Пропустить изменения" className="inline-flex h-5 items-center">

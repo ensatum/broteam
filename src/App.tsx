@@ -243,8 +243,8 @@ export default function App() {
   const viewRef = useRef(activeBoardId);
   viewRef.current = shownBoardId ?? activeBoardId;
 
-  const refreshBoard = useCallback(async () => {
-    if (refreshLock.current || refreshingBoardId != null) return;
+  const refreshBoards = useCallback(async (queue: SavedBoard[], snapshot: boolean) => {
+    if (refreshLock.current || refreshingBoardId != null || !queue.length) return;
     refreshLock.current = true;
     await window.api.resetTrackerActivity();
     await window.api.beginBoardRefresh();
@@ -252,7 +252,6 @@ export default function App() {
     const refreshButton = document.querySelector<HTMLButtonElement>('[data-refresh]');
     refreshButton?.setAttribute('disabled', '');
     refreshButton?.querySelector('svg')?.classList.add('animate-spin');
-    const queue = boards.filter((item) => item.enabled);
     setError(null);
     let stopped = false;
     const failures: string[] = [];
@@ -281,10 +280,12 @@ export default function App() {
       const listed = await window.api.listIssueChanges();
       setLastRefreshAt(Date.now());
       setChanges(listed);
-      try {
-        await window.api.createSnapshot(todayIso(), true);
-      } catch (e) {
-        sessionLog('error', 'auto-snapshot', { error: e instanceof Error ? e.message : String(e) });
+      if (snapshot) {
+        try {
+          await window.api.createSnapshot(todayIso(), true);
+        } catch (e) {
+          sessionLog('error', 'auto-snapshot', { error: e instanceof Error ? e.message : String(e) });
+        }
       }
     } catch (e) {
       stopped = e instanceof Error && e.message.includes('Запросы остановлены');
@@ -306,7 +307,18 @@ export default function App() {
       setRefreshingBoardId(null);
       setLoading(false);
     }
-  }, [boards, refreshingBoardId]);
+  }, [refreshingBoardId]);
+
+  const refreshBoard = useCallback(() => {
+    return refreshBoards(boards.filter((item) => item.enabled), true);
+  }, [boards, refreshBoards]);
+
+  const refreshCurrentBoard = useCallback(() => {
+    const id = viewRef.current;
+    const item = boards.find((board) => board.id === id);
+    if (!item) return;
+    return refreshBoards([item], false);
+  }, [boards, refreshBoards]);
 
   useEffect(() => {
     if (!ready || !bootDone || !autoRefresh || refreshingBoardId != null) return;
@@ -684,6 +696,7 @@ export default function App() {
             columnHeadersNoWrap={board.columnHeadersNoWrap}
             setupKind={setupKind}
             onRefresh={() => void refreshBoard()}
+            onRefreshBoard={() => void refreshCurrentBoard()}
             refreshingBoardId={refreshingBoardId}
             editExit={editExit}
             onMatrixChange={handleMatrixChange}
