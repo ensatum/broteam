@@ -622,6 +622,44 @@ export class TrackerClient {
     return uniqueChangelog(items);
   }
 
+  /**
+   * Every change of one field, oldest page first.
+   * A missing or rejected field is an empty history, not a failed summary.
+   */
+  async getFieldChangelog(issueKey: string, field: string): Promise<TrackerChangelogEvent[]> {
+    const path = changelogPath(issueKey);
+    const meta: { totalPages?: number } = {};
+    const query = { perPage: 50, page: 1, field };
+    let first: TrackerChangelogEvent[] = [];
+    try {
+      first =
+        (await this.request<TrackerChangelogEvent[]>(path, {
+          query,
+          retries: 5,
+          meta,
+        })) || [];
+    } catch (error) {
+      if (isTrackerStopped(error)) throw error;
+      const message = error instanceof Error ? error.message : '';
+      if (/^Tracker API (400|404|422)\b/.test(message)) return [];
+      throw error;
+    }
+    const total = meta.totalPages && meta.totalPages > 0 ? meta.totalPages : first.length < 50 ? 1 : 20;
+    const items = [...first];
+    const last = Math.min(total, 20);
+    for (let page = 2; page <= last; page += 1) {
+      const batch =
+        (await this.request<TrackerChangelogEvent[]>(path, {
+          query: { perPage: 50, page, field },
+          retries: 5,
+        })) || [];
+      items.push(...batch);
+      if (batch.length < 50) break;
+      await pauseableWait(120);
+    }
+    return uniqueChangelog(items);
+  }
+
   private async paged<T>(path: string, cap: number): Promise<T[]> {
     const meta: { totalPages?: number } = {};
     const first = await this.request<T[]>(path, { query: { perPage: 50, page: 1 }, retries: 5, meta });

@@ -24,6 +24,8 @@ import { resolvePersonDisplayName } from '../shared/personDisplay';
 import { isTrackerStopped, pauseableWait } from './trackerGate';
 
 const TESTING_KEYS = new Set(['testing', 'readyForTest', 'testirovanieNaDev']);
+/** Status chronology plus the people who hold a task during each status. */
+const CHRONOLOGY_FIELDS = ['status', 'assignee', 'qaEngineer', 'kodRevu'] as const;
 
 export async function buildSummaryReport(
   request: SummaryBuildRequest,
@@ -69,6 +71,7 @@ export async function buildSummaryReport(
   const rows: SummaryRow[] = [];
   const stored: SummaryIssue[] = [];
   const eventsByKey: Record<string, TrackerChangelogEvent[]> = {};
+  const chronologyByKey: Record<string, TrackerChangelogEvent[]> = {};
   const originByKey = new Map<string, SummaryBoardRef>();
   try {
     for (let i = 0; i < collected.length; i += 1) {
@@ -76,8 +79,10 @@ export async function buildSummaryReport(
       let row: SummaryRow | null = null;
       try {
         const events = (await changelogForPeriod(client, issue.key, bounds.fromIso)).map(slimEvent);
+        const chronology = await chronologyForIssue(client, issue.key);
         stored.push(snapshotIssue(issue));
         eventsByKey[issue.key] = events;
+        chronologyByKey[issue.key] = chronology;
         originByKey.set(issue.key, board);
         row = interpretIssue(
           issue,
@@ -88,6 +93,7 @@ export async function buildSummaryReport(
           bounds.toIso,
           developers,
           board,
+          chronology,
         );
         if (row) rows.push(row);
       } catch (error) {
@@ -98,12 +104,12 @@ export async function buildSummaryReport(
     }
   } catch (error) {
     if (isTrackerStopped(error)) {
-      persistCollected(request, formedAt, bounds, statusTypes, stored, eventsByKey, originByKey, true);
+      persistCollected(request, formedAt, bounds, statusTypes, stored, eventsByKey, chronologyByKey, originByKey, true);
     }
     throw error;
   }
   rows.sort((a, b) => (b.receivedAt || '').localeCompare(a.receivedAt || ''));
-  persistCollected(request, formedAt, bounds, statusTypes, stored, eventsByKey, originByKey, false);
+  persistCollected(request, formedAt, bounds, statusTypes, stored, eventsByKey, chronologyByKey, originByKey, false);
   return {
     formedAt,
     period: request.period,
@@ -129,6 +135,7 @@ export async function refreshSummaryIssue(
   const sinceIso =
     stored?.fromIso && Date.parse(stored.fromIso) < Date.parse(bounds.fromIso) ? stored.fromIso : bounds.fromIso;
   const events = (await changelogForPeriod(client, issueKey, sinceIso)).map(slimEvent);
+  const chronology = await chronologyForIssue(client, issueKey);
   const comments = await client.listIssueComments(issueKey);
   const payload: SummaryCachePayload = stored
     ? (JSON.parse(stored.payload) as SummaryCachePayload)
@@ -152,6 +159,8 @@ export async function refreshSummaryIssue(
   if (index >= 0) payload.issues[index] = snap;
   else payload.issues.push(snap);
   payload.events[issueKey] = events;
+  payload.chronology = payload.chronology || {};
+  payload.chronology[issueKey] = chronology;
   if (!payload.statusTypes?.length) payload.statusTypes = [...statusTypes.entries()];
   saveSummarySource(boardLocalId, {
     formedAt: stored?.formedAt || new Date().toISOString(),
@@ -170,6 +179,7 @@ export async function refreshSummaryIssue(
     stored?.toIso || bounds.toIso,
     developers,
     origin,
+    chronology,
   );
   if (!row) return null;
   return applyCommentMarks(row, comments, developers);
@@ -179,6 +189,35 @@ async function changelogForPeriod(client: TrackerClient, issueKey: string, fromI
   const sinceMs = Date.parse(fromIso);
   if (!Number.isFinite(sinceMs)) return client.getChangelog(issueKey);
   return client.getChangelogSince(issueKey, sinceMs);
+}
+
+async function chronologyForIssue(client: TrackerClient, issueKey: string): Promise<TrackerChangelogEvent[]> {
+  const groups: TrackerChangelogEvent[][] = [];
+  for (let i = 0; i < CHRONOLOGY_FIELDS.length; i += 1) {
+    if (i > 0) await pauseableWait(120);
+    groups.push(await client.getFieldChangelog(issueKey, CHRONOLOGY_FIELDS[i]));
+  }
+  return mergeChangelog(groups).map(slimEvent);
+}
+
+function mergeChangelog(groups: TrackerChangelogEvent[][]): TrackerChangelogEvent[] {
+  const merged = new Map<string, TrackerChangelogEvent>();
+  for (const event of groups.flat()) {
+    const key = event.id || `${event.updatedAt || ''}|${event.type || ''}|${(event.fields || []).map((field) => fieldId(field.field)).join(',')}`;
+    const prev = merged.get(key);
+    if (!prev) {
+      merged.set(key, { ...event, fields: [...(event.fields || [])] });
+      continue;
+    }
+    const seen = new Set((prev.fields || []).map((field) => fieldId(field.field)));
+    for (const field of event.fields || []) {
+      const id = fieldId(field.field);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      prev.fields = [...(prev.fields || []), field];
+    }
+  }
+  return [...merged.values()];
 }
 
 function applyCommentMarks(row: SummaryRow, comments: TrackerComment[], developers: Developer[]): SummaryRow {
@@ -230,6 +269,8 @@ function sliceSummaryCache(stored: StoredSummaryCache, request: SummaryBuildRequ
       bounds.fromIso,
       bounds.toIso,
       developers,
+      undefined,
+      payload.chronology?.[issue.key],
     );
     if (row) rows.push(row);
   }
@@ -371,16 +412,21 @@ function persistCollected(
   statusTypes: Map<string, string>,
   issues: SummaryIssue[],
   events: Record<string, TrackerChangelogEvent[]>,
+  chronology: Record<string, TrackerChangelogEvent[]>,
   originByKey: Map<string, SummaryBoardRef>,
   partial: boolean,
 ): void {
-  const groups = new Map<number, { issues: SummaryIssue[]; events: Record<string, TrackerChangelogEvent[]> }>();
+  const groups = new Map<
+    number,
+    { issues: SummaryIssue[]; events: Record<string, TrackerChangelogEvent[]>; chronology: Record<string, TrackerChangelogEvent[]> }
+  >();
   for (const issue of issues) {
     const boardId = originByKey.get(issue.key)?.boardLocalId;
     if (boardId == null) continue;
-    const group = groups.get(boardId) || { issues: [], events: {} };
+    const group = groups.get(boardId) || { issues: [], events: {}, chronology: {} };
     group.issues.push(issue);
     if (events[issue.key]) group.events[issue.key] = events[issue.key];
+    if (chronology[issue.key]) group.chronology[issue.key] = chronology[issue.key];
     groups.set(boardId, group);
   }
   for (const [boardLocalId, group] of groups) {
@@ -391,6 +437,7 @@ function persistCollected(
       statusTypes,
       group.issues,
       group.events,
+      group.chronology,
       partial,
     );
   }
@@ -398,7 +445,10 @@ function persistCollected(
 
 function sliceBoards(boards: SummaryBoardRef[], request: SummaryBuildRequest): SummarySlice | null {
   const developers = listDevelopers();
-  const merged = new Map<string, { issue: SummaryIssue; events: TrackerChangelogEvent[]; board: SummaryBoardRef }>();
+  const merged = new Map<
+    string,
+    { issue: SummaryIssue; events: TrackerChangelogEvent[]; chronology?: TrackerChangelogEvent[]; board: SummaryBoardRef }
+  >();
   const placed = new Map<string, { issue: SummaryIssue; board: SummaryBoardRef }>();
   let formedAt = '';
   let requests = 0;
@@ -427,10 +477,17 @@ function sliceBoards(boards: SummaryBoardRef[], request: SummaryBuildRequest): S
       if (!kept) continue;
       const prev = merged.get(issue.key);
       const eventsHere = payload.events[issue.key];
+      const chronologyHere = payload.chronology?.[issue.key];
       const fromSource = kept.board.boardLocalId === board.boardLocalId;
       const events =
         fromSource && eventsHere ? eventsHere : !prev?.events?.length && eventsHere ? eventsHere : prev?.events || eventsHere || [];
-      merged.set(issue.key, { issue: kept.issue, board: kept.board, events });
+      const chronology =
+        fromSource && chronologyHere
+          ? chronologyHere
+          : !prev?.chronology?.length && chronologyHere
+            ? chronologyHere
+            : prev?.chronology || chronologyHere;
+      merged.set(issue.key, { issue: kept.issue, board: kept.board, events, chronology });
     }
   }
   if (!any) return null;
@@ -446,6 +503,7 @@ function sliceBoards(boards: SummaryBoardRef[], request: SummaryBuildRequest): S
       bounds.toIso,
       developers,
       item.board,
+      item.chronology,
     );
     if (row) rows.push(row);
   }
@@ -501,6 +559,8 @@ type SummaryIssue = {
 type SummaryCachePayload = {
   issues: SummaryIssue[];
   events: Record<string, TrackerChangelogEvent[]>;
+  /** Full status and holder history. Absent on summaries built before this was stored. */
+  chronology?: Record<string, TrackerChangelogEvent[]>;
   statusTypes: Array<[string, string]>;
   partial?: boolean;
 };
@@ -530,12 +590,14 @@ function persistCache(
   statusTypes: Map<string, string>,
   issues: SummaryIssue[],
   events: Record<string, TrackerChangelogEvent[]>,
+  chronology: Record<string, TrackerChangelogEvent[]>,
   partial: boolean,
 ): void {
   if (request.boardLocalId == null || !issues.length) return;
   const payload: SummaryCachePayload = {
     issues,
     events,
+    chronology,
     statusTypes: [...statusTypes.entries()],
     partial,
   };
@@ -612,6 +674,144 @@ function slimValue(value: unknown): unknown {
   return null;
 }
 
+type StatusSpan = {
+  key: string;
+  display: string;
+  from: number;
+  to: number;
+  assigneeIds: number[];
+  qaIds: number[];
+  reviewerIds: number[];
+};
+
+function collectStatusSpans(
+  issue: SummaryIssue,
+  events: TrackerChangelogEvent[],
+  audience: Developer[],
+  holds: (person: Developer, value: unknown) => boolean,
+): StatusSpan[] {
+  const ordered = [...events].sort((a, b) => stamp(a.updatedAt) - stamp(b.updatedAt));
+  const idsHolding = (value: unknown) => audience.filter((person) => holds(person, value)).map((person) => person.id);
+  const statusSpans: StatusSpan[] = [];
+  let assigneeIds: number[] = [];
+  let qaIds: number[] = [];
+  let reviewerIds: number[] = [];
+  let sawAssignee = false;
+  let sawQa = false;
+  let sawReviewer = false;
+  let statusKey = '';
+  let statusDisplay = '';
+  let spanStart = issue.createdAt ? Date.parse(issue.createdAt) : Number.NaN;
+  const firstStatus = ordered
+    .flatMap((event) => event.fields || [])
+    .find((field) => roleOf(field.field) === 'status');
+  if (!firstStatus && issue.statusKey) {
+    statusKey = issue.statusKey;
+    statusDisplay = issue.statusDisplay || '';
+    const statusStart = stamp(issue.statusStartTime || undefined);
+    if (Number.isFinite(statusStart)) spanStart = statusStart;
+  } else if (firstStatus) {
+    const bornKey = valueKey(firstStatus.from) || valueDisplay(firstStatus.from);
+    if (bornKey) {
+      statusKey = bornKey;
+      statusDisplay = valueDisplay(firstStatus.from) || bornKey;
+    }
+  }
+  const fillHolders = (kind: 'assignee' | 'qa' | 'reviewer', ids: number[]) => {
+    for (const span of statusSpans) {
+      if (kind === 'assignee' && !span.assigneeIds.length) span.assigneeIds = [...ids];
+      if (kind === 'qa' && !span.qaIds.length) span.qaIds = [...ids];
+      if (kind === 'reviewer' && !span.reviewerIds.length) span.reviewerIds = [...ids];
+    }
+  };
+  const closeSpan = (nextAt: number) => {
+    if (!statusKey || !Number.isFinite(spanStart) || !Number.isFinite(nextAt) || nextAt < spanStart) return;
+    statusSpans.push({
+      key: statusKey,
+      display: statusDisplay,
+      from: spanStart,
+      to: nextAt,
+      assigneeIds: [...assigneeIds],
+      qaIds: [...qaIds],
+      reviewerIds: [...reviewerIds],
+    });
+  };
+  const retarget = (at: number) => {
+    if (statusKey && Number.isFinite(spanStart) && at > spanStart) {
+      closeSpan(at);
+      spanStart = at;
+    }
+  };
+  const takeRole = (role: 'assignee' | 'qa' | 'reviewer', fromIds: number[], toIds: number[], at: number) => {
+    if (role === 'assignee') {
+      if (!sawAssignee) {
+        assigneeIds = fromIds;
+        fillHolders('assignee', fromIds);
+        sawAssignee = true;
+      }
+      retarget(at);
+      assigneeIds = toIds;
+      return;
+    }
+    if (role === 'qa') {
+      if (!sawQa) {
+        qaIds = fromIds;
+        fillHolders('qa', fromIds);
+        sawQa = true;
+      }
+      retarget(at);
+      qaIds = toIds;
+      return;
+    }
+    if (!sawReviewer) {
+      reviewerIds = fromIds;
+      fillHolders('reviewer', fromIds);
+      sawReviewer = true;
+    }
+    retarget(at);
+    reviewerIds = toIds;
+  };
+  for (const event of ordered) {
+    const at = stamp(event.updatedAt);
+    for (const field of event.fields || []) {
+      const role = roleOf(field.field);
+      if (role === 'status') {
+        closeSpan(at);
+        statusKey = valueKey(field.to) || statusKey;
+        statusDisplay = valueDisplay(field.to) || statusDisplay;
+        spanStart = at;
+      } else if (role === 'assignee' || role === 'qa' || role === 'reviewer') {
+        takeRole(role, idsHolding(field.from), idsHolding(field.to), at);
+      }
+    }
+  }
+  if (!sawAssignee) {
+    assigneeIds = idsHolding(issue.assigneeDisplay);
+    fillHolders('assignee', assigneeIds);
+  }
+  if (!sawQa) {
+    qaIds = idsHolding(issue.qaDisplay);
+    fillHolders('qa', qaIds);
+  }
+  if (!sawReviewer) {
+    reviewerIds = idsHolding(issue.reviewerDisplay);
+    fillHolders('reviewer', reviewerIds);
+  }
+  const end = Date.now();
+  if (statusKey && Number.isFinite(spanStart)) {
+    statusSpans.push({
+      key: statusKey,
+      display: statusDisplay || issue.statusDisplay,
+      from: spanStart,
+      to: end,
+      assigneeIds: [...assigneeIds],
+      qaIds: [...qaIds],
+      reviewerIds: [...reviewerIds],
+    });
+  }
+  return statusSpans;
+}
+
 function interpretIssue(
   issue: SummaryIssue,
   events: TrackerChangelogEvent[],
@@ -621,6 +821,7 @@ function interpretIssue(
   toIso: string,
   developers: Developer[] = [],
   origin?: SummaryBoardRef,
+  chronology?: TrackerChangelogEvent[],
 ): SummaryRow | null {
   const focus = request.participant;
   const audience = (
@@ -654,30 +855,6 @@ function interpretIssue(
   const last: Record<'assignee' | 'qa' | 'reviewer', string> = { assignee: '', qa: '', reviewer: '' };
   let wasAssignee = false;
   let wasReviewer = false;
-  const statusSpans: Array<{
-    key: string;
-    display: string;
-    from: number;
-    to: number;
-    assigneeIds: number[];
-    qaIds: number[];
-    reviewerIds: number[];
-  }> = [];
-  let assigneeIds: number[] = [];
-  let qaIds: number[] = [];
-  let reviewerIds: number[] = [];
-  let sawAssignee = false;
-  let sawQa = false;
-  let sawReviewer = false;
-  const idsHolding = (value: unknown) => audience.filter((person) => holds(person, value)).map((person) => person.id);
-  const fillHolders = (kind: 'assignee' | 'qa' | 'reviewer', ids: number[]) => {
-    for (const span of statusSpans) {
-      if (kind === 'assignee' && !span.assigneeIds.length) span.assigneeIds = [...ids];
-      if (kind === 'qa' && !span.qaIds.length) span.qaIds = [...ids];
-      if (kind === 'reviewer' && !span.reviewerIds.length) span.reviewerIds = [...ids];
-    }
-  };
-  let spanStart = issue.createdAt ? Date.parse(issue.createdAt) : Number.NaN;
   const comments: number[] = [];
   let commentTotal = 0;
   const commentsById: Record<string, number> = {};
@@ -723,61 +900,16 @@ function interpretIssue(
         changedBy.add(item.id);
       }
     }
-    const closeSpan = (nextAt: number) => {
-      if (!statusKey || !Number.isFinite(spanStart) || !Number.isFinite(nextAt) || nextAt < spanStart) return;
-      statusSpans.push({
-        key: statusKey,
-        display: statusDisplay,
-        from: spanStart,
-        to: nextAt,
-        assigneeIds: [...assigneeIds],
-        qaIds: [...qaIds],
-        reviewerIds: [...reviewerIds],
-      });
-    };
-    const retarget = (at: number) => {
-      if (statusKey && Number.isFinite(spanStart) && at > spanStart) {
-        closeSpan(at);
-        spanStart = at;
-      }
-    };
     for (const field of event.fields || []) {
       const role = roleOf(field.field);
       if (role === 'status') {
-        if (!statusKey) {
-          const bornKey = valueKey(field.from) || valueDisplay(field.from);
-          const bornAt = issue.createdAt ? Date.parse(issue.createdAt) : Number.NaN;
-          if (bornKey && Number.isFinite(bornAt) && Number.isFinite(at) && at > bornAt) {
-            statusSpans.push({
-              key: bornKey,
-              display: valueDisplay(field.from) || bornKey,
-              from: bornAt,
-              to: at,
-              assigneeIds: [...assigneeIds],
-              qaIds: [...qaIds],
-              reviewerIds: [...reviewerIds],
-            });
-          }
-        }
-        closeSpan(at);
         statusKey = valueKey(field.to) || statusKey;
         statusDisplay = valueDisplay(field.to) || statusDisplay;
         statusAt = event.updatedAt || statusAt;
-        spanStart = at;
         const type = statusTypes.get(statusKey);
         if (type === 'done') finalStatusAt = event.updatedAt || finalStatusAt;
         if (!takenAt && isProgressStatus(statusKey, statusDisplay, type)) takenAt = event.updatedAt || null;
       } else if (role === 'assignee') {
-        const fromIds = idsHolding(field.from);
-        const toIds = idsHolding(field.to);
-        if (!sawAssignee) {
-          assigneeIds = fromIds;
-          fillHolders('assignee', fromIds);
-          sawAssignee = true;
-        }
-        retarget(at);
-        assigneeIds = toIds;
-        sawAssignee = true;
         assignee = personLabel(valueDisplay(field.to));
         noteRole('assignee', assignee);
         const assigned = audience.filter((item) => holds(item, field.to) || holds(item, field.from));
@@ -795,31 +927,8 @@ function interpretIssue(
         }
       } else if (role === 'qa' || role === 'reviewer') {
         const label = personLabel(valueDisplay(field.to));
-        if (role === 'qa') {
-          const fromIds = idsHolding(field.from);
-          const toIds = idsHolding(field.to);
-          if (!sawQa) {
-            qaIds = fromIds;
-            fillHolders('qa', fromIds);
-            sawQa = true;
-          }
-          retarget(at);
-          qaIds = toIds;
-          sawQa = true;
-          qa = label;
-        } else {
-          const fromIds = idsHolding(field.from);
-          const toIds = idsHolding(field.to);
-          if (!sawReviewer) {
-            reviewerIds = fromIds;
-            fillHolders('reviewer', fromIds);
-            sawReviewer = true;
-          }
-          retarget(at);
-          reviewerIds = toIds;
-          sawReviewer = true;
-          reviewer = label;
-        }
+        if (role === 'qa') qa = label;
+        else reviewer = label;
         noteRole(role, label);
         const involved = audience.filter((item) => holds(item, field.to) || holds(item, field.from));
         if (at >= fromMs && at <= toMs) {
@@ -906,41 +1015,13 @@ function interpretIssue(
   noteRole('qa', personLabel(issue.qaDisplay || qa));
   noteRole('reviewer', personLabel(issue.reviewerDisplay || reviewer));
   noteSprint(issue.sprintName || '');
-  if (!statusKey && issue.statusKey) {
-    statusKey = issue.statusKey;
-    statusDisplay = issue.statusDisplay || statusDisplay;
-    if (!Number.isFinite(spanStart)) {
-      const statusStart = stamp(issue.statusStartTime || undefined);
-      spanStart = Number.isFinite(statusStart) ? statusStart : stamp(issue.createdAt || undefined) || Date.now();
-    }
-  }
-  const doneNow = statusTypes.get(statusKey) === 'done' || statusTypes.get(issue.statusKey) === 'done';
-  const doneMs = finalStatusAt ? Date.parse(finalStatusAt) : Number.NaN;
-  const end = doneNow && Number.isFinite(doneMs) ? doneMs : Date.now();
-  if (!sawAssignee) {
-    assigneeIds = idsHolding(issue.assigneeDisplay);
-    fillHolders('assignee', assigneeIds);
-  }
-  if (!sawQa) {
-    qaIds = idsHolding(issue.qaDisplay);
-    fillHolders('qa', qaIds);
-  }
-  if (!sawReviewer) {
-    reviewerIds = idsHolding(issue.reviewerDisplay);
-    fillHolders('reviewer', reviewerIds);
-  }
-  if (statusKey && Number.isFinite(spanStart)) {
-    statusSpans.push({
-      key: statusKey,
-      display: statusDisplay || issue.statusDisplay,
-      from: spanStart,
-      to: end,
-      assigneeIds: [...assigneeIds],
-      qaIds: [...qaIds],
-      reviewerIds: [...reviewerIds],
-    });
-  }
-  const columns = sumColumns(statusSpans, request.columns, origin?.boardLocalId, idsHolding(issue.authorDisplay));
+  const spanEvents = chronology?.length ? chronology : ordered;
+  const columns = sumColumns(
+    collectStatusSpans(issue, spanEvents, audience, holds),
+    request.columns,
+    origin?.boardLocalId,
+    audience.filter((person) => holds(person, issue.authorDisplay)).map((person) => person.id),
+  );
   const name = focus?.displayName.trim() || '';
   const shuffles: SummaryShuffle[] = [];
   if (focus) {
