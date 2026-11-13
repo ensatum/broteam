@@ -88,9 +88,10 @@ export type SummaryRow = {
   lastCommentAt: string | null;
   /** Latest changelog or issue update time. */
   lastActivityAt?: string | null;
-  /** Latest described changelog event on the task. */
+  /** Latest described changelog event on the task, whoever made it. */
   lastActionAt?: string | null;
   lastActionText?: string;
+  lastActionBy?: string;
   /** Latest described changelog event per summary user id. */
   lastById?: Record<string, { at: string; text: string }>;
   /** Summary users who touched the task inside the period. */

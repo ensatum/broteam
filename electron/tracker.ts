@@ -570,17 +570,56 @@ export class TrackerClient {
   }
 
   async getChangelog(issueKey: string): Promise<TrackerChangelogEvent[]> {
-    const events = await this.paged<TrackerChangelogEvent>(
-      `/v2/issues/${encodeURIComponent(issueKey)}/changelog`,
-      30,
-    );
-    const seen = new Set<string>();
-    return events.filter((event) => {
-      const key = `${event.id || ''}|${event.updatedAt || ''}|${event.type || ''}|${event.comments?.added?.length || 0}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
+    const events = await this.paged<TrackerChangelogEvent>(changelogPath(issueKey), 30);
+    return uniqueChangelog(events);
+  }
+
+  /** Newest pages first. Stops once a page contains an event older than `sinceMs`. */
+  async getChangelogSince(issueKey: string, sinceMs: number): Promise<TrackerChangelogEvent[]> {
+    const path = changelogPath(issueKey);
+    const meta: { totalPages?: number } = {};
+    const first = await this.request<TrackerChangelogEvent[]>(path, {
+      query: { perPage: 50, page: 1 },
+      retries: 5,
+      meta,
     });
+    const page1 = first || [];
+    const total = meta.totalPages && meta.totalPages > 0 ? meta.totalPages : page1.length < 50 ? 1 : 30;
+    const items: TrackerChangelogEvent[] = [];
+    const consume = (batch: TrackerChangelogEvent[]) => {
+      items.push(...batch);
+      return batch.some((event) => {
+        const at = Date.parse(event.updatedAt || '');
+        return Number.isFinite(at) && at < sinceMs;
+      });
+    };
+    if (changelogOrder(page1) === 'oldest-first' && total > 1) {
+      for (let page = total; page >= 1; page -= 1) {
+        const batch =
+          page === 1
+            ? page1
+            : (await this.request<TrackerChangelogEvent[]>(path, {
+                query: { perPage: 50, page },
+                retries: 5,
+              })) || [];
+        if (consume(batch)) break;
+        if (page > 1) await pauseableWait(120);
+      }
+    } else {
+      const crossed = consume(page1);
+      if (!crossed && page1.length === 50) {
+        for (let page = 2; page <= total; page += 1) {
+          const batch =
+            (await this.request<TrackerChangelogEvent[]>(path, {
+              query: { perPage: 50, page },
+              retries: 5,
+            })) || [];
+          if (consume(batch) || batch.length < 50) break;
+          await pauseableWait(120);
+        }
+      }
+    }
+    return uniqueChangelog(items);
   }
 
   private async paged<T>(path: string, cap: number): Promise<T[]> {
@@ -631,6 +670,30 @@ function newestComment(comments: TrackerComment[]): TrackerComment | null {
     }
   }
   return last;
+}
+
+function changelogPath(issueKey: string): string {
+  return `/v2/issues/${encodeURIComponent(issueKey)}/changelog`;
+}
+
+function uniqueChangelog(events: TrackerChangelogEvent[]): TrackerChangelogEvent[] {
+  const seen = new Set<string>();
+  return events.filter((event) => {
+    const key = `${event.id || ''}|${event.updatedAt || ''}|${event.type || ''}|${event.comments?.added?.length || 0}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function changelogOrder(events: TrackerChangelogEvent[]): 'newest-first' | 'oldest-first' | 'unknown' {
+  const times = events
+    .map((event) => Date.parse(event.updatedAt || ''))
+    .filter((value) => Number.isFinite(value));
+  if (times.length < 2) return 'unknown';
+  if (times[0] > times[times.length - 1]) return 'newest-first';
+  if (times[0] < times[times.length - 1]) return 'oldest-first';
+  return 'unknown';
 }
 
 export type TrackerChangelogEvent = {

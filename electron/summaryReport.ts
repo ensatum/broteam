@@ -75,7 +75,7 @@ export async function buildSummaryReport(
       const { issue, board } = collected[i];
       let row: SummaryRow | null = null;
       try {
-        const events = (await client.getChangelog(issue.key)).map(slimEvent);
+        const events = (await changelogForPeriod(client, issue.key, bounds.fromIso)).map(slimEvent);
         stored.push(snapshotIssue(issue));
         eventsByKey[issue.key] = events;
         originByKey.set(issue.key, board);
@@ -124,10 +124,12 @@ export async function refreshSummaryIssue(
   const developers = listDevelopers();
   const statusTypes = await client.listStatusTypeMap().catch(() => new Map<string, string>());
   const issue = await client.getIssue(issueKey);
-  const events = (await client.getChangelog(issueKey)).map(slimEvent);
-  const comments = await client.listIssueComments(issueKey);
   const stored = getSummarySource(boardLocalId);
   const bounds = periodWindow(request.period);
+  const sinceIso =
+    stored?.fromIso && Date.parse(stored.fromIso) < Date.parse(bounds.fromIso) ? stored.fromIso : bounds.fromIso;
+  const events = (await changelogForPeriod(client, issueKey, sinceIso)).map(slimEvent);
+  const comments = await client.listIssueComments(issueKey);
   const payload: SummaryCachePayload = stored
     ? (JSON.parse(stored.payload) as SummaryCachePayload)
     : { issues: [], events: {}, statusTypes: [...statusTypes.entries()] };
@@ -173,10 +175,17 @@ export async function refreshSummaryIssue(
   return applyCommentMarks(row, comments, developers);
 }
 
+async function changelogForPeriod(client: TrackerClient, issueKey: string, fromIso: string) {
+  const sinceMs = Date.parse(fromIso);
+  if (!Number.isFinite(sinceMs)) return client.getChangelog(issueKey);
+  return client.getChangelogSince(issueKey, sinceMs);
+}
+
 function applyCommentMarks(row: SummaryRow, comments: TrackerComment[], developers: Developer[]): SummaryRow {
   const lastById = { ...(row.lastById || {}) };
   let lastActionAt = row.lastActionAt;
   let lastActionText = row.lastActionText;
+  let lastActionBy = row.lastActionBy || '';
   for (const comment of comments) {
     if (isReactionComment(comment.text, comment.type)) continue;
     const at = Date.parse(comment.createdAt || '');
@@ -190,9 +199,10 @@ function applyCommentMarks(row: SummaryRow, comments: TrackerComment[], develope
     if (!lastActionAt || at >= stamp(lastActionAt)) {
       lastActionAt = comment.createdAt;
       lastActionText = 'Комментарий';
+      lastActionBy = customPersonName(comment.createdBy?.display || '', developers);
     }
   }
-  return { ...row, lastById, lastActionAt, lastActionText };
+  return { ...row, lastById, lastActionAt, lastActionText, lastActionBy };
 }
 
 export function sliceStoredSummary(request: SummaryBuildRequest): SummarySlice | null {
@@ -673,6 +683,7 @@ function interpretIssue(
   const commentsById: Record<string, number> = {};
   let lastActionAt: string | null = null;
   let lastActionText = '';
+  let lastActionBy = '';
   const lastById: Record<string, { at: string; text: string }> = {};
   let finalStatusAt: string | null = null;
   let lastActivityAt = issue.updatedAt || issue.createdAt || null;
@@ -846,6 +857,7 @@ function interpretIssue(
       if (!lastActionAt || at >= stamp(lastActionAt)) {
         lastActionAt = event.updatedAt;
         lastActionText = actionText;
+        lastActionBy = eventActor(event, personLabel);
       }
       const actors = commented ? commentPeople : matchedNow;
       for (const item of actors) {
@@ -897,7 +909,10 @@ function interpretIssue(
   if (!statusKey && issue.statusKey) {
     statusKey = issue.statusKey;
     statusDisplay = issue.statusDisplay || statusDisplay;
-    if (!Number.isFinite(spanStart)) spanStart = stamp(issue.createdAt || undefined) || Date.now();
+    if (!Number.isFinite(spanStart)) {
+      const statusStart = stamp(issue.statusStartTime || undefined);
+      spanStart = Number.isFinite(statusStart) ? statusStart : stamp(issue.createdAt || undefined) || Date.now();
+    }
   }
   const doneNow = statusTypes.get(statusKey) === 'done' || statusTypes.get(issue.statusKey) === 'done';
   const doneMs = finalStatusAt ? Date.parse(finalStatusAt) : Number.NaN;
@@ -963,6 +978,7 @@ function interpretIssue(
     lastActivityAt,
     lastActionAt,
     lastActionText,
+    lastActionBy,
     lastById,
     touchedIds: [...touched],
     changedByIds: [...changedBy],
@@ -976,6 +992,13 @@ function interpretIssue(
     emphasizeWork: role === 'developer' && wasAssignee,
     emphasizeReview: role === 'developer' && wasReviewer,
   };
+}
+
+function eventActor(event: TrackerChangelogEvent, personLabel: (raw: string) => string): string {
+  const commentBy = (event.comments?.added || []).map((item) => item.createdBy?.display || '').find(Boolean) || '';
+  const raw = (commentBy || event.updatedBy?.display || '').trim();
+  if (!raw) return '';
+  return personLabel(raw) || raw;
 }
 
 function describeSummaryAction(

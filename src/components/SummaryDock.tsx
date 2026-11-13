@@ -18,20 +18,20 @@ import {
 import { resolvePersonDisplayName } from '@shared/personDisplay';
 import { summarySearchParts, textHit } from '@shared/issueSearch';
 import {
+  ArrowDownIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
+  ArrowUpIcon,
   CalendarIcon,
   CheckSquareIcon,
   EditIcon,
   EyeIcon,
   CastIcon,
-  CoffeeIcon,
   HashIcon,
   IconActionButton,
   NoteClipboardButton,
   TargetIcon,
   RefreshIcon,
-  UserIcon,
   UsersIcon,
   XIcon,
   ZapIcon,
@@ -75,7 +75,6 @@ const RANGE_PRESETS: Array<{
   { id: '7d', label: '7 дней', range: () => ({ ...spanDays(7), fromTime: '00:00', toTime: '23:59' }) },
   { id: '1m', label: '1 месяц', range: () => ({ ...spanMonths(1), fromTime: '00:00', toTime: '23:59' }) },
   { id: '2m', label: '2 месяца', range: () => ({ ...spanMonths(2), fromTime: '00:00', toTime: '23:59' }) },
-  { id: '3m', label: '3 месяца', range: () => ({ ...spanMonths(3), fromTime: '00:00', toTime: '23:59' }) },
 ];
 
 export default function SummaryDock(props: {
@@ -114,9 +113,8 @@ export default function SummaryDock(props: {
   const [personOpen, setPersonOpen] = useState(false);
   const [sort, setSort] = useState<SummarySort>(loadSummarySort);
   const [plans, setPlans] = useState(true);
-  const [indirect, setIndirect] = useState(false);
-  const [personal, setPersonal] = useState(true);
   const [activity, setActivity] = useState(true);
+  const [peopleOrder, setPeopleOrder] = useState<number[]>(loadSummaryPeopleOrder);
   const personRef = useRef<HTMLDivElement>(null);
   const selected = roster.find((person) => person.id === props.personId) || null;
 
@@ -176,7 +174,11 @@ export default function SummaryDock(props: {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [personOpen]);
 
-  const namedRows = useMemo(() => rows.map((row) => remapSummaryRow(row, props.participants)), [rows, props.participants]);
+  const namedRows = useMemo(
+    () => dedupeSummaryRows(rows.map((row) => remapSummaryRow(row, props.participants)), props.boards),
+    [rows, props.participants, props.boards],
+  );
+  const orderedPeople = useMemo(() => orderSummaryPeople(people, peopleOrder), [people, peopleOrder]);
   const [boardFilter, setBoardFilter] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const audienceRows = useMemo(() => {
@@ -184,9 +186,9 @@ export default function SummaryDock(props: {
       (person) => !person.hidden && (person.role === 'developer' || person.role === 'qa'),
     );
     return namedRows
-      .filter((row) => cardVisible(row, selected, props.columns, people, { personal, indirect, plans, activity }))
+      .filter((row) => cardVisible(row, selected, props.columns, people, { plans, activity }))
       .map((row) => (selected ? focusSummaryRow(row, selected) : row));
-  }, [namedRows, selected, props.columns, props.participants, personal, indirect, plans, activity]);
+  }, [namedRows, selected, props.columns, props.participants, plans, activity]);
   const boardBadges = useMemo(
     () => summaryBoardBadges(audienceRows, props.boards),
     [audienceRows, props.boards],
@@ -334,6 +336,14 @@ export default function SummaryDock(props: {
   const [refreshingKey, setRefreshingKey] = useState<string | null>(null);
   const personName = (selected?.displayName || selected?.login || '').trim();
 
+  function moveSummaryPerson(id: number, delta: number) {
+    setPeopleOrder((current) => {
+      const next = reorderSummaryPerson(orderedPeople, current, id, delta);
+      saveSummaryPeopleOrder(next);
+      return next;
+    });
+  }
+
   async function refreshRow(row: SummaryRow) {
     const boardLocalId = row.boardLocalId ?? props.boardLocalId;
     const request = summaryRequest();
@@ -437,7 +447,7 @@ export default function SummaryDock(props: {
             </button>
           )}
           {personOpen && (
-            <div className="absolute left-0 top-7 z-20 max-h-72 w-64 overflow-y-auto rounded border border-slate-300 bg-white py-1 shadow-lg">
+            <div className="absolute left-0 top-7 z-20 max-h-72 w-72 overflow-y-auto rounded border border-slate-300 bg-white py-1 shadow-lg">
               <button
                 type="button"
                 className={`block w-full truncate px-2 py-1 text-left text-xs hover:bg-slate-50 ${
@@ -451,30 +461,54 @@ export default function SummaryDock(props: {
                 Все
               </button>
               {PARTICIPANT_ROLES.map((role) => {
-                const group = people.filter((person) => person.role === role.id);
+                const group = orderedPeople.filter((person) => person.role === role.id);
                 if (!group.length) return null;
                 return (
                   <div key={role.id}>
                     <div className="px-2 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                       {role.label}
                     </div>
-                    {group.map((person) => {
-                      const count = namedRows.filter((row) => personOnRow(row, person)).length;
+                    {group.map((person, index) => {
+                      const count = namedRows.filter((row) =>
+                        cardVisible(row, person, props.columns, orderedPeople, { plans: true, activity: true }),
+                      ).length;
                       return (
-                        <button
+                        <div
                           key={person.id}
-                          type="button"
-                          className={`flex w-full items-center gap-2 px-2 py-1 text-left text-xs hover:bg-slate-50 ${
+                          className={`flex w-full items-center gap-1 px-2 py-1 text-xs hover:bg-slate-50 ${
                             person.id === props.personId ? 'bg-slate-100 font-medium' : ''
                           }`}
-                          onClick={() => {
-                            props.onPersonId(person.id);
-                            setPersonOpen(false);
-                          }}
                         >
-                          <span className="min-w-0 flex-1 truncate">{person.displayName || person.login}</span>
-                          <span className="shrink-0 tabular-nums text-[10px] text-slate-400">{count}</span>
-                        </button>
+                          <button
+                            type="button"
+                            className="min-w-0 flex-1 truncate text-left"
+                            onClick={() => {
+                              props.onPersonId(person.id);
+                              setPersonOpen(false);
+                            }}
+                          >
+                            {person.displayName || person.login}
+                          </button>
+                          <button
+                            type="button"
+                            title="Выше"
+                            disabled={index === 0}
+                            className="inline-flex h-4 w-4 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:text-slate-200 disabled:hover:bg-transparent"
+                            onClick={() => moveSummaryPerson(person.id, -1)}
+                          >
+                            <ArrowUpIcon className="h-3 w-3" />
+                          </button>
+                          <button
+                            type="button"
+                            title="Ниже"
+                            disabled={index === group.length - 1}
+                            className="inline-flex h-4 w-4 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:text-slate-200 disabled:hover:bg-transparent"
+                            onClick={() => moveSummaryPerson(person.id, 1)}
+                          >
+                            <ArrowDownIcon className="h-3 w-3" />
+                          </button>
+                          <span className="w-5 shrink-0 text-right tabular-nums text-[10px] text-slate-400">{count}</span>
+                        </div>
                       );
                     })}
                   </div>
@@ -486,6 +520,7 @@ export default function SummaryDock(props: {
         <span className="mx-1 h-4 w-px shrink-0 bg-slate-300" aria-hidden />
         <PeriodField
           period={props.period}
+          coverage={coverage}
           onChange={props.onPeriod}
           onFetch={(period) => void build(period)}
           disabled={running || props.boardLocalId == null}
@@ -521,45 +556,28 @@ export default function SummaryDock(props: {
             ))}
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-1">
-              {selected ? (
-                <>
-                  <button
-                    type="button"
-                    aria-pressed={personal}
-                    title="Задачи, где участник сам действовал в периоде"
-                    className={summaryToggleClass(personal, false)}
-                    onClick={() => setPersonal((on) => !on)}
-                  >
-                    <UserIcon className="h-3 w-3" />
-                    Лично
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={indirect}
-                    title="Задачи, где участник за период ничего не делал"
-                    className={summaryToggleClass(indirect, false)}
-                    onClick={() => setIndirect((on) => !on)}
-                  >
-                    <CoffeeIcon className="h-3 w-3" />
-                    Косвенно
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  aria-pressed={activity}
-                  title="Задачи, по которым была активность за период"
-                  className={summaryToggleClass(activity, false, 'primary')}
-                  onClick={() => setActivity((on) => !on)}
-                >
-                  <ZapIcon className="h-3 w-3" />
-                  Активность
-                </button>
-              )}
+              <button
+                type="button"
+                aria-pressed={activity}
+                title={
+                  selected
+                    ? 'Задачи, где участник сам действовал в периоде'
+                    : 'Задачи, по которым была активность за период'
+                }
+                className={summaryToggleClass(activity, false, 'primary')}
+                onClick={() => setActivity((on) => !on)}
+              >
+                <ZapIcon className="h-3 w-3" />
+                Активность
+              </button>
               <button
                 type="button"
                 aria-pressed={plans}
-                title="Задачи в колонках с тегом, без активности за период"
+                title={
+                  selected
+                    ? 'Задачи участника в колонках с тегом, без его действий за период'
+                    : 'Задачи в колонках с тегом, без активности за период'
+                }
                 className={summaryToggleClass(plans, false, 'primary')}
                 onClick={() => setPlans((on) => !on)}
               >
@@ -708,6 +726,7 @@ function todayIso(): string {
 
 function PeriodField(props: {
   period: SummaryPeriod;
+  coverage: { from: string; to: string; complete: boolean } | null;
   onChange: (period: SummaryPeriod) => void;
   onFetch: (period: SummaryPeriod) => void;
   disabled?: boolean;
@@ -741,15 +760,15 @@ function PeriodField(props: {
   }, [open]);
 
   return (
-    <div ref={rootRef} className="flex shrink-0 items-center gap-1">
-      <span className="shrink-0 text-[11px] font-normal text-slate-600">{label}</span>
+    <div ref={rootRef} className="flex shrink-0 items-center">
       <button
         ref={buttonRef}
         type="button"
         title={label}
-        className="inline-flex h-6 w-6 items-center justify-center rounded text-slate-600 hover:bg-white"
+        className="inline-flex h-6 items-center gap-1 rounded px-1 text-[11px] font-normal text-slate-600 hover:bg-white"
         onClick={() => setOpen((value) => !value)}
       >
+        <span className="whitespace-nowrap">{label}</span>
         <CalendarIcon className="h-3.5 w-3.5" />
       </button>
       {open && anchor && (
@@ -757,13 +776,16 @@ function PeriodField(props: {
           panelRef={panelRef}
           anchor={anchor}
           period={props.period}
+          coverage={props.coverage}
           disabled={props.disabled}
-          onChange={(period, close) => {
+          onView={(period) => {
             props.onChange(period);
-            if (close) {
-              setOpen(false);
-              props.onFetch(period);
-            }
+            setOpen(false);
+          }}
+          onFetch={(period) => {
+            props.onChange(period);
+            setOpen(false);
+            props.onFetch(period);
           }}
         />
       )}
@@ -775,8 +797,10 @@ function PeriodPopover(props: {
   panelRef: RefObject<HTMLDivElement | null>;
   anchor: { top: number; left: number };
   period: SummaryPeriod;
+  coverage: { from: string; to: string; complete: boolean } | null;
   disabled?: boolean;
-  onChange: (period: SummaryPeriod, close: boolean) => void;
+  onView: (period: SummaryPeriod) => void;
+  onFetch: (period: SummaryPeriod) => void;
 }) {
   const initial = props.period.kind === 'custom' ? props.period.from : todayIso();
   const [month, setMonth] = useState(() => monthOf(initial));
@@ -828,11 +852,21 @@ function PeriodPopover(props: {
     setDraftTo(to);
   }
 
-  function applyRange() {
+  function draftPeriod(): SummaryPeriod {
     const from = rangeFrom || today;
     const to = rangeTo || from;
-    props.onChange({ kind: 'custom', from, to, fromTime, toTime }, true);
+    return { kind: 'custom', from, to, fromTime, toTime };
   }
+
+  const coveredDays = props.coverage?.complete ? coverageDays(props.coverage.from, props.coverage.to) : null;
+  const viewRange = rangeFrom && rangeTo ? { from: rangeFrom, to: rangeTo } : rangeFrom ? { from: rangeFrom, to: rangeFrom } : null;
+  const canView = Boolean(
+    props.coverage &&
+      viewRange &&
+      coveredDays &&
+      viewRange.from >= coveredDays.from &&
+      viewRange.to <= coveredDays.to,
+  );
 
   return createPortal(
     <div
@@ -873,6 +907,7 @@ function PeriodPopover(props: {
           const future = iso > today;
           const endpoint = iso === rangeFrom || iso === rangeTo;
           const inside = Boolean(rangeFrom && rangeTo && iso > rangeFrom && iso < rangeTo);
+          const stored = Boolean(coveredDays && iso >= coveredDays.from && iso <= coveredDays.to);
           return (
             <button
               key={iso}
@@ -885,10 +920,10 @@ function PeriodPopover(props: {
                 future
                   ? 'cursor-default text-slate-300'
                   : endpoint
-                    ? 'bg-sky-600 font-semibold text-white'
+                    ? `bg-sky-600 text-white ${stored ? 'font-bold' : 'font-semibold'}`
                     : inside
-                      ? 'bg-sky-100 text-sky-900'
-                      : 'text-slate-700 hover:bg-slate-100'
+                      ? `bg-sky-100 text-sky-900${stored ? ' font-bold ring-1 ring-inset ring-slate-300' : ''}`
+                      : `text-slate-700 hover:bg-slate-100${stored ? ' font-bold ring-1 ring-inset ring-slate-300' : ''}`
               }`}
             >
               {day}
@@ -897,21 +932,9 @@ function PeriodPopover(props: {
         })}
       </div>
       <div className="mt-auto flex items-center gap-1 pt-2">
-        <input
-          type="time"
-          aria-label="Время начала сводки"
-          value={fromTime}
-          onChange={(event) => setFromTime(event.target.value)}
-          className="h-7 min-w-0 flex-1 rounded border border-slate-300 px-1 text-[11px] text-slate-700"
-        />
+        <HourInput label="Час начала сводки" value={fromTime} onChange={setFromTime} />
         <ArrowRightIcon className="h-3 w-3 shrink-0 text-slate-400" />
-        <input
-          type="time"
-          aria-label="Время конца сводки"
-          value={toTime}
-          onChange={(event) => setToTime(event.target.value)}
-          className="h-7 min-w-0 flex-1 rounded border border-slate-300 px-1 text-[11px] text-slate-700"
-        />
+        <HourInput label="Час конца сводки" value={toTime} onChange={setToTime} />
       </div>
       </div>
       <div className="flex w-36 flex-col gap-1 self-stretch">
@@ -943,14 +966,26 @@ function PeriodPopover(props: {
             </button>
           );
         })}
-        <button
-          type="button"
-          disabled={props.disabled}
-          className="mt-auto h-7 rounded border border-emerald-600 bg-emerald-600 px-1 text-[11px] font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
-          onClick={applyRange}
-        >
-          Сформировать
-        </button>
+        <div className="mt-auto flex flex-col gap-1">
+          {props.coverage && (
+            <button
+              type="button"
+              disabled={props.disabled || !canView}
+              className="h-7 rounded border border-slate-300 px-1 text-[11px] text-slate-700 hover:bg-slate-50 disabled:cursor-default disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-300"
+              onClick={() => props.onView(draftPeriod())}
+            >
+              Просмотр
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={props.disabled}
+            className="h-7 rounded border border-emerald-600 bg-emerald-600 px-1 text-[11px] font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
+            onClick={() => props.onFetch(draftPeriod())}
+          >
+            Сформировать
+          </button>
+        </div>
       </div>
     </div>,
     document.body,
@@ -1027,13 +1062,124 @@ function saveSummarySort(sort: SummarySort) {
   localStorage.setItem(SUMMARY_SORT_KEY, JSON.stringify(sort));
 }
 
+const SUMMARY_PEOPLE_KEY = 'broteam.summaryPeople';
+
+function loadSummaryPeopleOrder(): number[] {
+  try {
+    const raw = localStorage.getItem(SUMMARY_PEOPLE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    return Array.isArray(parsed) ? parsed.filter((id): id is number => typeof id === 'number') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveSummaryPeopleOrder(order: number[]) {
+  localStorage.setItem(SUMMARY_PEOPLE_KEY, JSON.stringify(order));
+}
+
+function orderSummaryPeople(people: Developer[], order: number[]): Developer[] {
+  const rank = new Map(order.map((id, index) => [id, index]));
+  const byRole = (role: Developer['role']) =>
+    people
+      .filter((person) => person.role === role)
+      .sort((a, b) => {
+        const left = rank.get(a.id);
+        const right = rank.get(b.id);
+        if (left == null && right == null) return a.sortOrder - b.sortOrder;
+        if (left == null) return 1;
+        if (right == null) return -1;
+        return left - right;
+      });
+  return PARTICIPANT_ROLES.flatMap((role) => byRole(role.id));
+}
+
+function reorderSummaryPerson(people: Developer[], order: number[], id: number, delta: number): number[] {
+  const person = people.find((item) => item.id === id);
+  if (!person) return order;
+  const group = orderSummaryPeople(
+    people.filter((item) => item.role === person.role),
+    order,
+  );
+  const index = group.findIndex((item) => item.id === id);
+  const target = index + delta;
+  if (index < 0 || target < 0 || target >= group.length) return order;
+  const nextGroup = [...group];
+  const moved = nextGroup[index];
+  nextGroup.splice(index, 1);
+  nextGroup.splice(target, 0, moved);
+  const next: number[] = [];
+  for (const role of PARTICIPANT_ROLES) {
+    const list =
+      role.id === person.role
+        ? nextGroup
+        : orderSummaryPeople(
+            people.filter((item) => item.role === role.id),
+            order,
+          );
+    for (const entry of list) next.push(entry.id);
+  }
+  return next;
+}
+
+function dedupeSummaryRows(rows: SummaryRow[], boards: SavedBoard[]): SummaryRow[] {
+  const boardById = new Map(boards.map((board) => [board.id, board]));
+  const queueOf = (key: string) => {
+    const dash = key.lastIndexOf('-');
+    return (dash > 0 ? key.slice(0, dash) : key).toLowerCase();
+  };
+  const fromQueue = (row: SummaryRow) => {
+    const board = row.boardLocalId == null ? undefined : boardById.get(row.boardLocalId);
+    return Boolean(board && board.queueKey.toLowerCase() === queueOf(row.key));
+  };
+  const byKey = new Map<string, SummaryRow>();
+  for (const row of rows) {
+    const prev = byKey.get(row.key);
+    if (!prev || (fromQueue(row) && !fromQueue(prev))) byKey.set(row.key, row);
+  }
+  return [...byKey.values()];
+}
+
+function coverageDays(from: string, to: string): { from: string; to: string } {
+  const start = localDay(from);
+  const end = localDay(to);
+  return start <= end ? { from: start, to: end } : { from: end, to: start };
+}
+
+function localDay(iso: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso.slice(0, 10);
+  return isoDate(date);
+}
+
+function HourInput(props: { label: string; value: string; onChange: (value: string) => void }) {
+  const parsed = Number(/^(\d{1,2})/.exec(props.value)?.[1]);
+  const hour = Number.isFinite(parsed) ? Math.max(0, Math.min(23, parsed)) : 0;
+  return (
+    <input
+      type="number"
+      min={0}
+      max={23}
+      aria-label={props.label}
+      value={hour}
+      onChange={(event) => {
+        const next = Number(event.target.value);
+        const safe = Number.isFinite(next) ? Math.max(0, Math.min(23, next)) : 0;
+        props.onChange(`${String(safe).padStart(2, '0')}:00`);
+      }}
+      className="h-7 w-12 rounded border border-slate-300 px-1 text-center text-[11px] tabular-nums text-slate-700"
+    />
+  );
+}
+
 type SummaryFrame = 'plain' | 'gold' | 'primary' | 'success';
 
 const FRAME_CLASS: Record<SummaryFrame, string> = {
   plain: 'border-slate-200',
   gold: 'border-amber-400',
   primary: 'border-sky-600',
-  success: 'border-emerald-600',
+  success: 'border-emerald-300',
 };
 
 function SummaryCard(props: {
@@ -1065,7 +1211,7 @@ function SummaryCard(props: {
   const seenStoryRev = useRef(storyRev);
   const [story, setStory] = useState(() => readIssueStory(row.key));
   const [storyBusy, setStoryBusy] = useState(false);
-  const [storyPart, setStoryPart] = useState<'description' | 'comment' | null>(null);
+  const [storyPart, setStoryPart] = useState<'description' | 'comment' | 'stats' | null>(null);
   const [storyFailed, setStoryFailed] = useState(false);
   useEffect(() => {
     if (!props.open) setEditingNote(false);
@@ -1075,7 +1221,7 @@ function SummaryCard(props: {
     seenStoryRev.current = storyRev;
     const cached = readIssueStory(row.key);
     setStory(cached);
-    if (cached || !storyPart) return;
+    if (cached || !storyPart || storyPart === 'stats') return;
     let alive = true;
     setStoryBusy(true);
     setStoryFailed(false);
@@ -1095,12 +1241,13 @@ function SummaryCard(props: {
       alive = false;
     };
   }, [storyRev, row.key, storyPart]);
-  async function loadStory(part: 'description' | 'comment') {
+  async function loadStory(part: 'description' | 'comment' | 'stats') {
     if (storyPart === part) {
       setStoryPart(null);
       return;
     }
     setStoryPart(part);
+    if (part === 'stats') return;
     const cached = readIssueStory(row.key);
     if (cached) {
       setStory(cached);
@@ -1221,7 +1368,7 @@ function SummaryCard(props: {
                 <span className={owns([row.author], props.personName) ? 'font-bold' : ''}>{row.author || '—'}</span>
               </div>
             </div>
-            <div className="max-w-[40%] shrink-0 self-center px-1 text-center text-[11px] font-medium text-slate-800">
+            <div className="max-w-[40%] shrink-0 self-center px-1 text-center text-[1.5em] font-bold leading-tight text-slate-800">
               {row.currentStatus || '—'}
             </div>
             <div className="min-w-0 flex-1 space-y-0.5 text-right">
@@ -1239,46 +1386,32 @@ function SummaryCard(props: {
               </div>
             </div>
           </div>
-          <SummaryHours
-            row={row}
-            personId={props.personId}
-            personRole={props.personRole}
-            columns={props.columns}
-          />
-          {sprints.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-1 pl-3.5">
-              {sprints.map((sprint) => (
-                <span key={sprint} className="rounded bg-slate-100 px-1.5 py-px text-[10px] text-slate-600">
-                  {sprint}
-                </span>
-              ))}
-            </div>
-          )}
-          <TaskActivity row={row} personId={props.personId} personName={props.personName} />
-          <div className="mt-2 flex gap-1 pl-3.5">
-            <button
-              type="button"
-              className={`rounded border px-1.5 py-0.5 text-[10px] ${storyPart === 'description' ? 'border-slate-400 bg-white' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-white'}`}
-              onClick={() => void loadStory('description')}
-            >
-              Описание
-            </button>
-            <button
-              type="button"
-              className={`rounded border px-1.5 py-0.5 text-[10px] ${storyPart === 'comment' ? 'border-slate-400 bg-white' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-white'}`}
-              onClick={() => void loadStory('comment')}
-            >
-              Последний комментарий
-            </button>
+          <div className="mt-2 flex justify-center gap-1">
+            {(
+              [
+                ['description', 'Описание'],
+                ['comment', 'Последний комментарий'],
+                ['stats', 'Статистика'],
+              ] as const
+            ).map(([part, label]) => (
+              <button
+                key={part}
+                type="button"
+                className={`rounded border px-1.5 py-0.5 text-[10px] ${storyPart === part ? 'border-slate-400 bg-white' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-white'}`}
+                onClick={() => void loadStory(part)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-          {storyBusy && storyPart && (
-            <div className="mt-2 pl-3.5">
+          {storyBusy && storyPart && storyPart !== 'stats' && (
+            <div className="mt-2 px-6">
               <LoadBar label={storyPart === 'description' ? 'Загрузка описания…' : 'Загрузка последнего комментария…'} />
             </div>
           )}
-          {storyFailed && storyPart && <div className="mt-1 pl-3.5 text-slate-400">Не загрузилось</div>}
+          {storyFailed && storyPart && storyPart !== 'stats' && <div className="mt-1 px-6 text-slate-400">Не загрузилось</div>}
           {story && storyPart === 'description' && (
-            <div className="mt-2 pl-3.5">
+            <div className="mt-2 px-6">
               {story.description ? (
                 <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(story.description) }} />
               ) : (
@@ -1287,7 +1420,7 @@ function SummaryCard(props: {
             </div>
           )}
           {story && storyPart === 'comment' && (
-            <div className="mt-2 ml-3.5 rounded border border-amber-200/80 bg-[#fffbeb] px-2 py-1.5">
+            <div className="mx-6 mt-2 rounded border border-amber-200/80 bg-[#fffbeb] px-2 py-1.5">
               {story.commentText ? (
                 <>
                   <a
@@ -1314,6 +1447,24 @@ function SummaryCard(props: {
               )}
             </div>
           )}
+          {storyPart === 'stats' && (
+            <SummaryHours
+              row={row}
+              personId={props.personId}
+              personRole={props.personRole}
+              columns={props.columns}
+            />
+          )}
+          {sprints.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1 pl-3.5">
+              {sprints.map((sprint) => (
+                <span key={sprint} className="rounded bg-slate-100 px-1.5 py-px text-[10px] text-slate-600">
+                  {sprint}
+                </span>
+              ))}
+            </div>
+          )}
+          <TaskActivity row={row} />
         </div>
       )}
       {showNote && (
@@ -1331,42 +1482,15 @@ function SummaryCard(props: {
   );
 }
 
-function TaskActivity(props: { row: SummaryRow; personId: number | null; personName: string }) {
-  const id = props.personId == null ? '' : String(props.personId);
-  const own = id ? props.row.commentsById : undefined;
-  const comments = own ? own[id] || 0 : props.row.commentCount;
-  const last = id ? props.row.lastById?.[id] : newestParticipantAction(props.row.lastById);
-  const when = actionStamp(last?.at);
-  const action = [last?.text, when].filter(Boolean).join(' · ') || '—';
-  const label = props.personName.trim()
-    ? `Последнее действие ${props.personName.trim()}`
-    : 'Последнее действие любого участника';
+function TaskActivity(props: { row: SummaryRow }) {
+  const when = actionStamp(props.row.lastActionAt);
+  const action = [props.row.lastActionText, props.row.lastActionBy, when].filter(Boolean).join(' · ') || '—';
   return (
-    <div className="mt-1.5 space-y-0.5 pl-3.5 text-[11px] text-slate-600">
-      <div>
-        <span className="text-slate-500">Комментарии: </span>
-        {comments}
-      </div>
-      <div>
-        <span className="text-slate-500">{label}: </span>
-        {action}
-      </div>
+    <div className="mt-1.5 pl-3.5 text-[11px] text-slate-600">
+      <span className="text-slate-500">Последнее действие: </span>
+      {action}
     </div>
   );
-}
-
-function newestParticipantAction(
-  lastById: SummaryRow['lastById'],
-): { at: string; text: string } | null {
-  let best: { at: string; text: string } | null = null;
-  let bestAt = Number.NEGATIVE_INFINITY;
-  for (const item of Object.values(lastById || {})) {
-    const at = Date.parse(item.at || '');
-    if (!Number.isFinite(at) || at < bestAt) continue;
-    best = item;
-    bestAt = at;
-  }
-  return best;
 }
 
 function actionStamp(iso: string | null | undefined): string {
@@ -1605,10 +1729,8 @@ function splitRole(list: string[] | undefined, current: string): { current: stri
 }
 
 function summaryFrame(row: SummaryRow, person: Developer | null, columns: BoardColumnConfig[]): SummaryFrame {
-  const kind = cardKind(row, person, columns);
-  if (kind === 'success') return 'success';
-  if (kind === 'personal') return 'primary';
-  if (kind === 'plan') return 'gold';
+  if (columnOf(row, columns)?.ownerRole === 'developer') return 'success';
+  if (cardKind(row, person, columns) === 'activity') return 'gold';
   return 'plain';
 }
 
@@ -2033,22 +2155,7 @@ function personHit(person: Developer, value: string | null | undefined): boolean
   return [person.displayName, person.login].some((item) => item.trim().toLowerCase() === name);
 }
 
-function personOnRow(row: SummaryRow, person: Developer): boolean {
-  if ((row.touchedIds || []).includes(person.id)) return true;
-  const keys = [person.displayName, person.login].map((item) => item.trim()).filter(Boolean);
-  const names = [
-    row.assignee,
-    row.reviewer,
-    row.qa,
-    row.author,
-    ...(row.assignees || []),
-    ...(row.reviewers || []),
-    ...(row.qas || []),
-  ];
-  return names.some((name) => keys.includes((name || '').trim()));
-}
-
-type CardKind = 'success' | 'personal' | 'indirect' | 'plan' | 'activity';
+type CardKind = 'plan' | 'activity';
 
 function hadActivity(row: SummaryRow): boolean {
   return row.activeInPeriod !== false;
@@ -2080,9 +2187,10 @@ function standsWith(column: BoardColumnConfig, row: SummaryRow, person: Develope
 function cardKind(row: SummaryRow, person: Developer | null, columns: BoardColumnConfig[]): CardKind | null {
   const column = columnOf(row, columns);
   if (!person) return hadActivity(row) ? 'activity' : 'plan';
-  if (column?.ownerRole && column.ownerRole === person.role && standsWith(column, row, person)) return 'success';
-  if ((row.changedByIds || []).includes(person.id)) return 'personal';
-  if (hadActivity(row) && personOnRow(row, person)) return 'indirect';
+  if ((row.changedByIds || []).includes(person.id)) return 'activity';
+  if (column?.ownerRole && column.ownerRole === person.role && standsWith(column, row, person)) {
+    return hadActivity(row) ? 'activity' : 'plan';
+  }
   if (!hadActivity(row) && isPlanFor(column, row, person)) return 'plan';
   return null;
 }
@@ -2092,16 +2200,14 @@ function cardVisible(
   person: Developer | null,
   columns: BoardColumnConfig[],
   people: Developer[],
-  flags: { personal: boolean; indirect: boolean; plans: boolean; activity: boolean },
+  flags: { plans: boolean; activity: boolean },
 ): boolean {
   if (!person) {
     if (hadActivity(row)) return flags.activity;
     return flags.plans && people.some((item) => isPlanFor(columnOf(row, columns), row, item));
   }
   const kind = cardKind(row, person, columns);
-  if (kind === 'success') return true;
-  if (kind === 'personal') return flags.personal;
-  if (kind === 'indirect') return flags.indirect;
+  if (kind === 'activity') return flags.activity;
   if (kind === 'plan') return flags.plans;
   return false;
 }

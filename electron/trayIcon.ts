@@ -26,7 +26,7 @@ const GLYPHS = [
 
 const SIZE = 22;
 const RADIUS = 5;
-const WARNING = { r: 251, g: 191, b: 36 };
+const ALERT = { r: 220, g: 38, b: 38 };
 
 function coverage(x: number, y: number): number {
   const px = x + 0.5;
@@ -72,7 +72,7 @@ function paint(alert: boolean): Buffer {
       for (let x = cx - 3; x <= cx + 3; x += 1) {
         const dx = x - cx;
         const dy = y - cy;
-        if (dx * dx + dy * dy <= 10 && coverage(x, y) >= 1) set(x, y, WARNING.r, WARNING.g, WARNING.b, 255);
+        if (dx * dx + dy * dy <= 10 && coverage(x, y) >= 1) set(x, y, ALERT.r, ALERT.g, ALERT.b, 255);
       }
     }
   }
