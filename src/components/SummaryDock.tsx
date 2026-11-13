@@ -481,16 +481,6 @@ export default function SummaryDock(props: {
                         >
                           <button
                             type="button"
-                            className="min-w-0 flex-1 truncate text-left"
-                            onClick={() => {
-                              props.onPersonId(person.id);
-                              setPersonOpen(false);
-                            }}
-                          >
-                            {person.displayName || person.login}
-                          </button>
-                          <button
-                            type="button"
                             title="Выше"
                             disabled={index === 0}
                             className="inline-flex h-4 w-4 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:text-slate-200 disabled:hover:bg-transparent"
@@ -506,6 +496,16 @@ export default function SummaryDock(props: {
                             onClick={() => moveSummaryPerson(person.id, 1)}
                           >
                             <ArrowDownIcon className="h-3 w-3" />
+                          </button>
+                          <button
+                            type="button"
+                            className="min-w-0 flex-1 truncate text-left"
+                            onClick={() => {
+                              props.onPersonId(person.id);
+                              setPersonOpen(false);
+                            }}
+                          >
+                            {person.displayName || person.login}
                           </button>
                           <span className="w-5 shrink-0 text-right tabular-nums text-[10px] text-slate-400">{count}</span>
                         </div>
@@ -1985,7 +1985,7 @@ function SummaryHours(props: {
         <thead>
           <tr className="text-[10px] font-medium text-slate-400">
             <th className="py-0.5 pl-2.5 text-left font-medium">Статус</th>
-            <th className="py-0.5 pr-2.5 text-right font-medium">Часы (личные)</th>
+            <th className="py-0.5 pr-2.5 text-right font-medium">{split ? 'Часы (личные)' : 'Часы (общие)'}</th>
             {split && <th className="py-0.5 pr-2.5 text-right font-medium">Часы (общие)</th>}
             {showAi && <th className="py-0.5 pr-2.5 text-right font-medium">ИИ</th>}
           </tr>

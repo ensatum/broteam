@@ -624,43 +624,45 @@ export default function IssuePanel(props: Props) {
             >
               {header}
               <div className="px-2 py-1.5">
-                <div className="leading-snug">
-                  <div className="text-[10px] text-slate-500">Создано: {createdLabel(issue) || '—'}</div>
-                  <div className="mt-0.5 text-[10px] text-slate-500">
-                    {issue.statusDisplay}
-                    {issue.daysInStatus != null ? ` · ${formatDays(issue.daysInStatus)}` : ''}
-                  </div>
-                  <IssuePeopleLines issue={issue} />
-                  <div className="mt-1 min-w-0">
-                    <div className="whitespace-pre-wrap leading-snug text-red-800">
-                      {hasNote ? note : <span className="text-slate-300">&nbsp;</span>}
+                <div className="flex items-stretch gap-1.5">
+                  <div className="w-44 shrink-0 leading-snug">
+                    <div className="text-[10px] text-slate-500">Создано: {createdLabel(issue) || '—'}</div>
+                    <div className="mt-0.5 text-[10px] text-slate-500">
+                      {issue.statusDisplay}
+                      {issue.daysInStatus != null ? ` · ${formatDays(issue.daysInStatus)}` : ''}
                     </div>
-                    {linkedNames.length > 0 && (
-                      <div className="mt-0.5 text-[10px] text-slate-500">{linkedNames.join(', ')}</div>
+                    <IssuePeopleLines issue={issue} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    {shownChange && (
+                      <ChangeBadge
+                        inline
+                        text={shownChange.text}
+                        at={shownChange.at}
+                        actor={resolvePersonDisplayName(issue.updatedByMatchKeys, issue.updatedByDisplay, people) || ''}
+                        rawActor={issue.updatedByDisplay}
+                        seen={!freshChange}
+                        expanded
+                        onDismiss={acknowledge}
+                        onOpen={openFromBadge}
+                      />
                     )}
-                    {hasNote && noteUpdatedAt && (
-                      <div className="mt-0.5 text-[10px] text-slate-400">
-                        Дата примечания {new Date(noteUpdatedAt).toLocaleString('ru-RU')}
+                    {(hasNote || linkedNames.length > 0) && (
+                      <div className={shownChange ? 'mt-1' : ''}>
+                        {hasNote && <div className="whitespace-pre-wrap leading-snug text-red-800">{note}</div>}
+                        {linkedNames.length > 0 && (
+                          <div className="mt-0.5 text-[10px] text-slate-500">{linkedNames.join(', ')}</div>
+                        )}
+                        {hasNote && noteUpdatedAt && (
+                          <div className="mt-0.5 text-[10px] text-slate-400">
+                            Дата примечания {new Date(noteUpdatedAt).toLocaleString('ru-RU')}
+                          </div>
+                        )}
                       </div>
                     )}
+                    <IssueStory issueKey={issue.key} />
                   </div>
                 </div>
-                <IssueStory issueKey={issue.key} />
-                {shownChange && (
-                  <div className="mt-1">
-                    <ChangeBadge
-                      inline
-                      text={shownChange.text}
-                      at={shownChange.at}
-                      actor={resolvePersonDisplayName(issue.updatedByMatchKeys, issue.updatedByDisplay, people) || ''}
-                      rawActor={issue.updatedByDisplay}
-                      seen={!freshChange}
-                      expanded
-                      onDismiss={acknowledge}
-                      onOpen={openFromBadge}
-                    />
-                  </div>
-                )}
               </div>
               {notePopup}
             </div>

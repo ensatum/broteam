@@ -2759,7 +2759,10 @@ export default function BoardPage(props: Props) {
       personId={summaryPersonId}
       period={summaryPeriod}
       castOn={castOn}
-      onPersonId={setSummaryPersonId}
+      onPersonId={(id) => {
+        setSummaryPersonId(id);
+        if (id == null) setCastOn(false);
+      }}
       onCast={() => {
         if (summaryPersonId == null && !castOn) return;
         setCastOn((on) => !on);
