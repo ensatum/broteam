@@ -990,24 +990,6 @@ export default function BoardPage(props: Props) {
   useEffect(() => {
     if (boardScope === 'changes' && unseenChangeKeys.size === 0) setBoardScope('total');
   }, [boardScope, unseenChangeKeys]);
-  useEffect(() => {
-    if (props.activeBoardId == null || !sourceMatrix) return;
-    const present = new Set<string>();
-    for (const row of sourceMatrix.developers || []) {
-      for (const issues of Object.values(row.issuesByColumn || {})) {
-        for (const issue of issues || []) present.add(issue.key);
-      }
-    }
-    const orphans = props.changes
-      .filter(
-        (change) =>
-          change.boardLocalId === props.activeBoardId &&
-          !change.seen &&
-          !present.has(change.issueKey),
-      )
-      .map((change) => change.issueKey);
-    if (orphans.length) props.onDismissChanges([...new Set(orphans)]);
-  }, [sourceMatrix, props.changes, props.activeBoardId]);
   const matrix = useMemo(() => {
     if (!reflowed) return null;
     const castPerson =

@@ -793,6 +793,43 @@ export function listColumns(): BoardColumnConfig[] {
     });
 }
 
+export function addBoardColumns(
+  columns: Array<Omit<BoardColumnConfig, 'id'>>,
+): BoardColumnConfig[] {
+  if (!columns.length) return listColumns();
+  const existing = new Set(listColumns().map((column) => `${column.boardLocalId}:${column.statusKey}`));
+  const database = getDb();
+  const insert = database.prepare(
+    `INSERT INTO board_columns(
+       column_id, column_name, status_key, status_display, alias, color, enabled, sort_order, board_local_id, duty, owner_role
+     ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const tx = database.transaction(() => {
+    for (const column of columns) {
+      const boardLocalId = column.boardLocalId || 0;
+      if (existing.has(`${boardLocalId}:${column.statusKey}`)) continue;
+      const duty = normalizeColumnDuty(column.duty);
+      const ownerRole = normalizeColumnOwnerRole(column.ownerRole);
+      insert.run(
+        column.columnId,
+        column.columnName,
+        column.statusKey,
+        column.statusDisplay,
+        column.alias,
+        column.color,
+        column.enabled ? 1 : 0,
+        column.sortOrder,
+        boardLocalId,
+        duty,
+        ownerRole,
+      );
+      existing.add(`${boardLocalId}:${column.statusKey}`);
+    }
+  });
+  tx();
+  return listColumns();
+}
+
 export function replaceColumns(
   columns: Array<Omit<BoardColumnConfig, 'id'> & { id?: number }>,
 ): BoardColumnConfig[] {

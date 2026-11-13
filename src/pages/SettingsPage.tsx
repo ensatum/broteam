@@ -11,7 +11,8 @@ import type {
   TrackerUser,
 } from '@shared/types';
 import type { AppUpdateProgress } from '@shared/appUpdate';
-import { COLUMN_COLORS, DEFAULT_GITHUB, DEVELOPER_TONE_PRESETS, PARTICIPANT_ROLES, normalizeDeveloperTone } from '@shared/types';
+import { freshBoardColumns } from '@shared/boardColumns';
+import { DEFAULT_GITHUB, DEVELOPER_TONE_PRESETS, PARTICIPANT_ROLES, normalizeDeveloperTone } from '@shared/types';
 import { sessionLog } from '../sessionLog';
 import ColorField from '../components/ColorField';
 import { ActivityIcon, BellOffIcon, DownloadIcon, InfoIcon, PlusIcon, RefreshIcon, TrashIcon, UploadIcon } from '../components/Icons';
@@ -466,27 +467,10 @@ export default function SettingsPage(props: Props) {
     props.onError(null);
     try {
       const cols = await window.api.getBoardColumns(trackerBoardId);
-      const mapped: BoardColumnConfig[] = [];
-      let colorIdx = 0;
-      for (const col of cols) {
-        for (const status of col.statuses.length ? col.statuses : [{ key: col.id, display: col.name }]) {
-          mapped.push({
-            id: 0,
-            columnId: col.id,
-            columnName: col.name,
-            statusKey: status.key,
-            statusDisplay: status.display,
-            alias: shortAlias(status.display || col.name),
-            color: COLUMN_COLORS[colorIdx % COLUMN_COLORS.length],
-            duty: '',
-            ownerRole: '',
-            enabled: true,
-            sortOrder: mapped.length,
-            boardLocalId: localId,
-          });
-          colorIdx += 1;
-        }
-      }
+      const mapped: BoardColumnConfig[] = freshBoardColumns(cols, localId).map((column) => ({
+        ...column,
+        id: 0,
+      }));
       const savedForBoard = props.columns
         .filter((column) => column.boardLocalId === localId)
         .slice()
@@ -1655,26 +1639,4 @@ function sameColumnStructure(saved: BoardColumnConfig[], next: BoardColumnConfig
     }
   }
   return true;
-}
-
-function shortAlias(name: string): string {
-  const map: Record<string, string> = {
-    Новая: 'New',
-    Открыт: 'Open',
-    'Требуется информация': 'Info',
-    'Цель заблокирована': 'Hold',
-    'На доработку': 'Hold',
-    'В работе': 'Active',
-    'В работе, Разработка': 'Active',
-    Ревью: 'Review',
-    'Тестирование на DEV': 'Test',
-    'Готово к релизу': 'Pre-Prod',
-    'Можно тестировать': 'QA',
-    'В тестирование': 'QA',
-    Тестируется: 'Testing',
-    Решен: 'Accept',
-    Приемка: 'Accept',
-    Закрыт: 'Closed',
-  };
-  return map[name] || name.slice(0, 10);
 }

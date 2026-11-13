@@ -260,6 +260,7 @@ export default function App() {
         setRefreshingBoardId(item.id);
         try {
           const data = await window.api.refreshBoard(item.id);
+          setColumns(await window.api.listColumns());
           if (viewRef.current === item.id) {
             setRefreshingBoardId(null);
             await startContentFade(false);

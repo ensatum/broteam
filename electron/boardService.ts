@@ -10,6 +10,7 @@ import {
   getIssueBookmarks,
   getIssueBookmarkCreatedAt,
   ensureAssigneeDevelopers,
+  addBoardColumns,
   listColumns,
   listDevelopers,
   saveLastMatrix,
@@ -20,7 +21,9 @@ import { describeIssueChange } from '../shared/issueChanges';
 import { TrackerClient, buildIssuesQuery } from './tracker';
 import type { BoardMatrix, Developer, TrackerIssue, TrackerSprint } from '../shared/types';
 import { OTHERS_ROW_ID, UNASSIGNED_ROW_ID } from '../shared/types';
+import { freshBoardColumns } from '../shared/boardColumns';
 import { issueIsDone } from '../shared/columnMeta';
+import { sessionLog } from './sessionLog';
 import {
   applyDeveloperDisplayNames,
   remapMatrixPersonNames,
@@ -304,7 +307,7 @@ export async function buildLiveMatrix(options?: {
   }
 
   const activeBoardId = getActiveBoardLocalId();
-  const columns = listColumns().filter(
+  let columns = listColumns().filter(
     (c) => activeBoardId == null || c.boardLocalId === activeBoardId,
   );
   const board = getBoardConfig();
@@ -318,6 +321,22 @@ export async function buildLiveMatrix(options?: {
   const ignoreSprint = Boolean(options?.ignoreSprintFilter);
 
   const client = new TrackerClient(connection);
+  if (activeBoardId != null && board.boardId) {
+    try {
+      const remote = await client.getBoardColumns(board.boardId);
+      const known = new Set(columns.map((column) => column.statusKey));
+      let order = columns.reduce((max, column) => Math.max(max, column.sortOrder), -1) + 1;
+      const additions = freshBoardColumns(remote, activeBoardId)
+        .filter((column) => !known.has(column.statusKey))
+        .map((column) => ({ ...column, sortOrder: order++ }));
+      if (additions.length) {
+        addBoardColumns(additions);
+        columns = listColumns().filter((column) => column.boardLocalId === activeBoardId);
+      }
+    } catch (error) {
+      sessionLog('error', 'board columns', { boardId: board.boardId, error });
+    }
+  }
   const sprintById = new Map<number, TrackerSprint>();
   let openSprintIds: number[] = [];
   const foreignOpenIds: number[] = [];
