@@ -765,11 +765,11 @@ function PeriodField(props: {
         ref={buttonRef}
         type="button"
         title={label}
-        className="inline-flex h-6 items-center gap-1 rounded px-1 text-[11px] font-normal text-slate-600 hover:bg-white"
+        className="inline-flex h-6 items-center gap-1.5 rounded border border-slate-300 bg-white px-1.5 text-[11px] font-normal leading-none text-slate-700 hover:border-slate-400 hover:bg-slate-50"
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="whitespace-nowrap">{label}</span>
-        <CalendarIcon className="h-3.5 w-3.5" />
+        <span className="whitespace-nowrap leading-none">{label}</span>
+        <CalendarIcon className="h-3.5 w-3.5 shrink-0" />
       </button>
       {open && anchor && (
         <PeriodPopover
@@ -1179,7 +1179,7 @@ const FRAME_CLASS: Record<SummaryFrame, string> = {
   plain: 'border-slate-200',
   gold: 'border-amber-400',
   primary: 'border-sky-600',
-  success: 'border-emerald-300',
+  success: 'border-emerald-600',
 };
 
 function SummaryCard(props: {
