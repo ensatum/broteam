@@ -17,7 +17,7 @@ import { staleNewTaskNote, changeStillOpen } from '@shared/issueChanges';
 import { invalidateIssueStories } from '../issueStoryCache';
 import IssuePanel from '../components/IssuePanel';
 import SummaryDock from '../components/SummaryDock';
-import { RunSpinner } from '../components/ApiRunControls';
+import { RunSpinner, stopBoardRefresh } from '../components/ApiRunControls';
 import { InstantTip } from '../components/InstantTip';
 import { ConsoleDock } from '../components/ConsoleDock';
 import { attachFadeHost, fadeThen, hideWorkBusy, reapplyFade, showWorkBusy } from '../contentFade';
@@ -3217,7 +3217,10 @@ export default function BoardPage(props: Props) {
   const refreshVeil = refreshOnThisBoard ? (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/60">
       <div className="pointer-events-auto">
-        <RunSpinner requests={props.apiRequests} />
+        <RunSpinner
+          requests={props.apiRequests}
+          onStop={() => stopBoardRefresh()}
+        />
       </div>
     </div>
   ) : null;
@@ -4176,7 +4179,10 @@ export default function BoardPage(props: Props) {
             ref={(node) => attachFadeHost('spinner', node)}
             className="pointer-events-none absolute inset-0 z-40 hidden flex-col items-center justify-center"
           >
-            <RunSpinner requests={props.apiRequests} />
+            <RunSpinner
+              requests={props.apiRequests}
+              onStop={() => stopBoardRefresh()}
+            />
           </div>
           {refreshVeil}
           </div>

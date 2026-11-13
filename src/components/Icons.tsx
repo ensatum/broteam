@@ -263,6 +263,16 @@ export function ToggleRightIcon({ className = 'h-4 w-4', filled = false }: { cla
   );
 }
 
+/** Feather: stop-circle */
+export function StopCircleIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" {...stroke} aria-hidden>
+      <circle cx="12" cy="12" r="10" />
+      <rect x="9" y="9" width="6" height="6" />
+    </svg>
+  );
+}
+
 /** Feather: pause-circle */
 export function PauseCircleIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (

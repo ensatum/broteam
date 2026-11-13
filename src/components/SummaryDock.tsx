@@ -38,7 +38,7 @@ import {
 } from './Icons';
 import { CopyIssueButton } from './IssuePanel';
 import { LoadBar } from './LoadBar';
-import { RunSpinner } from './ApiRunControls';
+import { RunSpinner, stopMatchingRuns } from './ApiRunControls';
 import { InstantTip } from './InstantTip';
 import { SortMenu, type ListSortDir } from './ListSort';
 import {
@@ -622,7 +622,12 @@ export default function SummaryDock(props: {
         )}
         {running && (
           <div className="flex justify-center py-4">
-            <RunSpinner requests={requests} seen={index} total={total} />
+            <RunSpinner
+              requests={requests}
+              seen={index}
+              total={total}
+              onStop={() => stopMatchingRuns((title) => title === 'Формирование сводки')}
+            />
           </div>
         )}
         {error && <div className="text-red-700">{error}</div>}
