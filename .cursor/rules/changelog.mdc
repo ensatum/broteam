@@ -1,41 +1,50 @@
 ---
-description: Писать строки изменений в changelog/unreleased.md; сборка и релиз забирают их в коммиты и файл релиза
+description: Коммит задачи в develop сразу после неё; сборка и релиз собирают заголовки этих коммитов
 alwaysApply: true
 ---
 
-# Список изменений
+# Коммиты
 
-Номер версии строками не управляется. Он по-прежнему `год.релиз.сборка`.
+Номер версии строками не управляется. Он по-прежнему `год.релиз.сборка`, его пишут только скрипты сборки и релиза.
 
-Пока идёт правка, дописывать запись в `changelog/unreleased.md`. Название и тело записи — на английском, в Conventional Commits. В скобках область этой программы:
-
-`feat(board):`, `fix(update):`, `refactor(summary):`, `perf(db):`, `docs(settings):`, `test(board):`, `build(build):`, `chore(tracker):`.
-
-Области: `board`, `summary`, `notes`, `update`, `db`, `tray`, `settings`, `tracker`, `build`. Номер задачи в квадратных скобках не добавлять.
+После задачи, которую попросил человек, сразу коммит в `develop`. Не пушить. Заголовок на английском, Conventional Commits. Область в скобках: `board`, `summary`, `notes`, `update`, `db`, `tray`, `settings`, `tracker`, `build`. Номер задачи не добавлять. Тело — список сделанного:
 
 ```
-feat(board): drop the stale new-task dot from the board tab
+feat(summary): group tasks and show latest activity
 
-The amber dot stayed after the yellow notice was dismissed.
+- Exclude indirect tasks from the summary view
+- Merge tasks from multiple boards into a single card
 ```
 
-Тело под названием необязательно. Записи разделять пустой строкой. Запись нужна, когда меняется поведение, данные или сборка. Не писать её для формата, комментария и правила Cursor. Второй список руками не вести.
-
-`scripts/build.sh` коммитит на `develop`:
+В том же коммите обновить прогноз следующего билда `changelog/unreleased.md`. Это заголовки коммитов задачи с прошлой сборки, включая текущий. Список можно переписать целиком, строки остаются этими заголовками. Пустой файл значит, что таких коммитов нет.
 
 ```
-Build 2026.10.226
-
-feat(board): drop the stale new-task dot from the board tab
+Included changes since last build:
+- feat(summary): group tasks and show latest activity
 ```
 
-Тело — содержимое `changelog/unreleased.md`. Пустой файл оставляет тело пустым, сборка не останавливается. Тот же коммит очищает файл. В общий длинный журнал строки не переносить.
+Запись не нужна для формата, комментария и правки только этого правила. Commitizen не использовать: сообщение пишут здесь и в скриптах. Формат проверяет commitlint.
 
-`scripts/release.sh` до переключения на `main`, не увеличивая номер релиза:
+`scripts/build.sh` не забирает грязное дерево. Прогноз должен совпасть с коммитами. Коммит на `develop`:
 
-- останавливается, если `changelog/unreleased.md` не пуст;
-- собирает тела коммитов `Build` с прошлого тега;
-- создаёт новый `changelog/2026.10.md` и не правит файлы прошлых релизов;
-- коммитит на `develop` заголовок `Release 2026.10` и это тело.
+```
+build: compile release artifacts for 2026.12.230
 
-Дальше релиз как прежде: перемотка `main`, пакеты, тег `год.релиз`.
+Included changes since last build:
+- fix(summary): fix date filter resetting on mount
+```
+
+Тот же коммит очищает прогноз и отправляет `develop` в origin.
+
+`scripts/release.sh` останавливается, если прогноз не пуст. До перемотки `main` коммит на `develop`:
+
+```
+chore(release): 2026.12
+
+- feat(build): pack each macOS framework file once
+- fix(summary): show selected activity and plans in the primary color
+
+Full changelog: changelog/2026.12.md
+```
+
+Файл — эти же пункты из коммитов сборки с прошлого тега. Старый коммит `Build` отдаёт свои заголовки Conventional Commits так же. Номер релиза скрипт не увеличивает. Дальше как прежде: перемотка `main`, пакеты, тег `год.релиз`.

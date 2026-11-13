@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Если changelog/unreleased.md не пуст, останавливается.
-# Собирает тела коммитов Build с прошлого тега в changelog/год.релиз.md
+# Если прогноз changelog/unreleased.md не пуст, останавливается.
+# Собирает пункты коммитов сборки с прошлого тега в changelog/год.релиз.md
 # и коммитит это в develop. Номер релиза не увеличивает.
 # Затем перематывает main на этот коммит, собирает пакеты Linux и macOS
 # в release/ и ставит тег Год.Релиз. Пакеты в git не входят.
@@ -17,7 +17,7 @@ if [[ -d .git/rebase-merge || -d .git/rebase-apply || -f .git/MERGE_HEAD ]]; the
   echo "Сначала завершите rebase или merge." >&2
   exit 1
 fi
-if ! git diff --quiet || ! git diff --cached --quiet; then
+if [[ -n "$(git status --porcelain)" ]]; then
   echo "Сначала закоммитьте или уберите локальные изменения." >&2
   exit 1
 fi
@@ -39,24 +39,24 @@ if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null \
   echo "Тег ${tag} уже есть. Сначала сборка в develop поднимет номер релиза." >&2
   exit 1
 fi
-if [[ -n "$(node scripts/changelog.mjs unreleased)" ]]; then
-  echo "changelog/unreleased.md не пуст. Сначала соберите билд: запись должна уйти в коммит сборки." >&2
+if ! node scripts/changelog.mjs check; then
+  exit 1
+fi
+if [[ -n "$(node scripts/changelog.mjs forecast)" ]]; then
+  echo "Есть коммиты задачи без сборки. Сначала соберите билд: npm run build:dev." >&2
   exit 1
 fi
 
 notes="$(node scripts/changelog.mjs release "$tag")"
 git add -- "changelog/${tag}.md"
 if git diff --cached --quiet; then
-  if [[ "$(git log -1 --format=%s)" != "Release ${tag}" ]]; then
-    echo "changelog/${tag}.md не изменился, коммита Release ${tag} нет." >&2
+  subject="$(git log -1 --format=%s)"
+  if [[ "$subject" != "chore(release): ${tag}" && "$subject" != "Release ${tag}" ]]; then
+    echo "changelog/${tag}.md не изменился, коммита chore(release): ${tag} нет." >&2
     exit 1
   fi
 else
-  msg="Release ${tag}"
-  if [[ -n "$notes" ]]; then
-    msg+=$'\n\n'"$notes"
-  fi
-  git commit -m "$msg"
+  printf '%s\n' "$notes" | git commit -F -
 fi
 
 git checkout main
@@ -93,7 +93,7 @@ if [[ ${#artifacts[@]} -eq 0 ]]; then
   exit 1
 fi
 
-git tag -a "$tag" -m "Release ${tag}"
+git tag -a "$tag" -m "chore(release): ${tag}"
 git push origin develop
 git push origin HEAD
 git push origin "$tag"

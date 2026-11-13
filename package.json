@@ -27,15 +27,16 @@
     "dist:win": "npm run build && electron-builder --win nsis && node scripts/prune-artifacts.mjs release 1",
     "prune:releases": "node scripts/prune-artifacts.mjs release 1",
     "prune:builds": "node scripts/prune-artifacts.mjs builds 3",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepare": "husky"
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
     "@tailwindcss/vite": "^4.1.13",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.5.2",
     "@types/react": "^19.1.13",
@@ -46,6 +47,9 @@
     "electron": "^38.1.2",
     "electron-builder": "^26.0.12",
     "esbuild": "^0.25.10",
+    "husky": "^9.1.7",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
     "tailwindcss": "^4.1.13",
     "typescript": "^5.9.2",
     "vite": "^7.1.7",

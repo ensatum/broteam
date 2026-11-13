@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Собирает AppImage в builds/ и публикует коммит в develop на origin.
-# main не вливается. Локальные изменения develop входят в этот же коммит.
+# main не вливается. Грязное дерево не берёт: задачи уже лежат отдельными коммитами.
 # Если тег текущего релиза уже есть, поднимаются релиз и сборка. Иначе только сборка.
-# Тело коммита — changelog/unreleased.md. Тот же коммит очищает файл.
-# Пустой файл оставляет тело пустым, сборка из-за этого не останавливается.
+# Тело коммита — заголовки этих коммитов. Тот же коммит очищает changelog/unreleased.md.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -26,6 +25,14 @@ else
   git checkout -b develop
 fi
 
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "Сначала закоммитьте изменения задачи в develop. Сборка их в свой коммит не заберёт." >&2
+  exit 1
+fi
+if ! node scripts/changelog.mjs check; then
+  exit 1
+fi
+
 current_tag="$(node scripts/version-lib.mjs tag)"
 if git rev-parse -q --verify "refs/tags/${current_tag}" >/dev/null \
   || git ls-remote --exit-code origin "refs/tags/${current_tag}" >/dev/null; then
@@ -39,7 +46,8 @@ node scripts/ensure-native.mjs linux "$arch"
 npx electron-builder --linux AppImage "--${arch}" -c.directories.output=builds -c.linux.artifactName="BroTeam-${version}.\${ext}"
 node scripts/prune-artifacts.mjs builds 3
 
-notes="$(node scripts/changelog.mjs unreleased)"
+notes="$(node scripts/changelog.mjs forecast)"
+msg="$(node scripts/changelog.mjs build-message "$version")"
 node scripts/changelog.mjs clear
 git add -A
 if git diff --cached --quiet; then
@@ -48,11 +56,7 @@ if git diff --cached --quiet; then
   echo "Нечего коммитить." >&2
   exit 1
 fi
-msg="Build ${version}"
-if [[ -n "$notes" ]]; then
-  msg+=$'\n\n'"$notes"
-fi
-if ! git commit -m "$msg"; then
+if ! printf '%s\n' "$msg" | git commit -F -; then
   printf '%s\n' "$notes" | node scripts/changelog.mjs restore
   git add -- changelog/unreleased.md
   exit 1
