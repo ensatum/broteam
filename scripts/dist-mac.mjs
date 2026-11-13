@@ -19,6 +19,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertReleaseArtifact } from './check-artifact.mjs';
+import { packTmp } from './pack-tmp.mjs';
 import { archName, assertBinary } from './ensure-native.mjs';
 import { readPackage } from './version-lib.mjs';
 
@@ -111,6 +112,7 @@ export function slimMacZip(projectRoot, arch) {
 
 const isCli = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isCli) {
+  process.env.TMPDIR = packTmp();
   const { pkg } = readPackage(root);
   const arches = process.argv.slice(2).length ? process.argv.slice(2) : ['x64', 'arm64'];
   for (const arch of arches) archName(arch);

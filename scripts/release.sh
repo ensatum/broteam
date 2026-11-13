@@ -66,6 +66,7 @@ git merge --ff-only develop || {
 }
 
 echo "Release ${tag} (${version})"
+export TMPDIR="$(node scripts/pack-tmp.mjs)"
 npm run build
 
 failed=()

@@ -38,6 +38,7 @@ if git rev-parse -q --verify "refs/tags/${current_tag}" >/dev/null \
   || git ls-remote --exit-code origin "refs/tags/${current_tag}" >/dev/null; then
   node scripts/bump-version.mjs release >/dev/null
 fi
+export TMPDIR="$(node scripts/pack-tmp.mjs)"
 version="$(node scripts/bump-version.mjs build)"
 arch="$(node -p 'process.arch')"
 echo "Build ${version}"
