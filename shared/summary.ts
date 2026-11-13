@@ -141,8 +141,6 @@ export function defaultSummaryPeriod(today = new Date()): SummaryPeriod {
     kind: 'custom',
     from: previousWorkdayIso(today),
     to: isoDate(today),
-    fromTime: '12:00',
-    toTime: '12:00',
   };
 }
 

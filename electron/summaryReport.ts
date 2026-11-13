@@ -320,11 +320,9 @@ function periodWindow(period: SummaryPeriod): { fromIso: string; toIso: string; 
     const swapped = period.from > period.to;
     const from = swapped ? period.to : period.from;
     const to = swapped ? period.from : period.to;
-    const fromTime = swapped ? period.toTime : period.fromTime;
-    const toTime = swapped ? period.fromTime : period.toTime;
     return {
-      fromIso: clockBound(from, fromTime, false),
-      toIso: clockBound(to, toTime, true),
+      fromIso: clockBound(from, undefined, false),
+      toIso: clockBound(to, undefined, true),
       query: `Updated: >= "${from}" AND Updated: < "${addIsoDays(to, 1)}"`,
     };
   }

@@ -64,17 +64,17 @@ const SORTS: Array<{ key: SummarySortKey; label: string }> = [
 const RANGE_PRESETS: Array<{
   id: string;
   label: string;
-  range: () => { from: string; to: string; fromTime: string; toTime: string };
+  range: () => { from: string; to: string };
 }> = [
   {
     id: 'last',
     label: 'Повседневная',
-    range: () => ({ from: previousWorkdayIso(), to: isoDate(new Date()), fromTime: '12:00', toTime: '12:00' }),
+    range: () => ({ from: previousWorkdayIso(), to: isoDate(new Date()) }),
   },
-  { id: '3d', label: '3 дня', range: () => ({ ...spanDays(3), fromTime: '00:00', toTime: '23:59' }) },
-  { id: '7d', label: '7 дней', range: () => ({ ...spanDays(7), fromTime: '00:00', toTime: '23:59' }) },
-  { id: '1m', label: '1 месяц', range: () => ({ ...spanMonths(1), fromTime: '00:00', toTime: '23:59' }) },
-  { id: '2m', label: '2 месяца', range: () => ({ ...spanMonths(2), fromTime: '00:00', toTime: '23:59' }) },
+  { id: '3d', label: '3 дня', range: () => spanDays(3) },
+  { id: '7d', label: '7 дней', range: () => spanDays(7) },
+  { id: '1m', label: '1 месяц', range: () => spanMonths(1) },
+  { id: '2m', label: '2 месяца', range: () => spanMonths(2) },
 ];
 
 export default function SummaryDock(props: {
@@ -814,8 +814,6 @@ function PeriodPopover(props: {
   const [draftFrom, setDraftFrom] = useState<string | null>(props.period.kind === 'custom' ? props.period.from : null);
   const [draftTo, setDraftTo] = useState<string | null>(props.period.kind === 'custom' ? props.period.to : null);
   const [hover, setHover] = useState<string | null>(null);
-  const [fromTime, setFromTime] = useState(props.period.kind === 'custom' ? props.period.fromTime || '12:00' : '12:00');
-  const [toTime, setToTime] = useState(props.period.kind === 'custom' ? props.period.toTime || '12:00' : '12:00');
   const [pos, setPos] = useState(props.anchor);
   const days = useMemo(() => buildCalendar(month.year, month.month), [month]);
   const monthTitle = useMemo(() => {
@@ -862,7 +860,7 @@ function PeriodPopover(props: {
   function draftPeriod(): SummaryPeriod {
     const from = rangeFrom || today;
     const to = rangeTo || from;
-    return { kind: 'custom', from, to, fromTime, toTime };
+    return { kind: 'custom', from, to };
   }
 
   const coveredDays = props.coverage?.complete ? coverageDays(props.coverage.from, props.coverage.to) : null;
@@ -878,10 +876,11 @@ function PeriodPopover(props: {
   return createPortal(
     <div
       ref={props.panelRef}
-      className="fixed z-[9999] flex gap-2 rounded-lg border border-slate-300 bg-white p-2 shadow-xl"
+      className="fixed z-[9999] flex flex-col gap-2 rounded-lg border border-slate-300 bg-white p-2 shadow-xl"
       style={{ top: pos.top, left: pos.left }}
       onMouseDown={(event) => event.stopPropagation()}
     >
+      <div className="flex gap-2">
       <div className="flex w-52 flex-col">
       <div className="relative mb-2 flex items-center justify-center px-7">
         <button
@@ -938,20 +937,11 @@ function PeriodPopover(props: {
           );
         })}
       </div>
-      <div className="mt-auto flex items-center gap-1 pt-2">
-        <HourInput label="Час начала сводки" value={fromTime} onChange={setFromTime} />
-        <ArrowRightIcon className="h-3 w-3 shrink-0 text-slate-400" />
-        <HourInput label="Час конца сводки" value={toTime} onChange={setToTime} />
-      </div>
       </div>
       <div className="flex w-36 flex-col gap-1 self-stretch">
         {RANGE_PRESETS.map((preset) => {
           const range = preset.range();
-          const selected =
-            draftFrom === range.from &&
-            draftTo === range.to &&
-            fromTime === range.fromTime &&
-            toTime === range.toTime;
+          const selected = draftFrom === range.from && draftTo === range.to;
           return (
             <button
               key={preset.id}
@@ -964,8 +954,6 @@ function PeriodPopover(props: {
               onClick={() => {
                 setDraftFrom(range.from);
                 setDraftTo(range.to);
-                setFromTime(range.fromTime);
-                setToTime(range.toTime);
                 setMonth(monthOf(range.to));
               }}
             >
@@ -973,26 +961,25 @@ function PeriodPopover(props: {
             </button>
           );
         })}
-        <div className="mt-auto flex flex-col gap-1">
-          {props.coverage && (
-            <button
-              type="button"
-              disabled={props.disabled || !canView}
-              className="h-7 rounded border border-slate-300 px-1 text-[11px] text-slate-700 hover:bg-slate-50 disabled:cursor-default disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-300"
-              onClick={() => props.onView(draftPeriod())}
-            >
-              Просмотр
-            </button>
-          )}
-          <button
-            type="button"
-            disabled={props.disabled}
-            className="h-7 rounded border border-emerald-600 bg-emerald-600 px-1 text-[11px] font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
-            onClick={() => props.onFetch(draftPeriod())}
-          >
-            Сформировать
-          </button>
-        </div>
+      </div>
+      </div>
+      <div className="flex gap-1">
+        <button
+          type="button"
+          disabled={props.disabled || !canView}
+          className="h-7 flex-1 rounded border border-slate-300 px-1 text-[11px] text-slate-700 hover:bg-slate-50 disabled:cursor-default disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-300"
+          onClick={() => props.onView(draftPeriod())}
+        >
+          Посмотреть
+        </button>
+        <button
+          type="button"
+          disabled={props.disabled}
+          className="h-7 flex-1 rounded border border-emerald-600 bg-emerald-600 px-1 text-[11px] font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
+          onClick={() => props.onFetch(draftPeriod())}
+        >
+          Сформировать
+        </button>
       </div>
     </div>,
     document.body,
@@ -1158,26 +1145,6 @@ function localDay(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso.slice(0, 10);
   return isoDate(date);
-}
-
-function HourInput(props: { label: string; value: string; onChange: (value: string) => void }) {
-  const parsed = Number(/^(\d{1,2})/.exec(props.value)?.[1]);
-  const hour = Number.isFinite(parsed) ? Math.max(0, Math.min(23, parsed)) : 0;
-  return (
-    <input
-      type="number"
-      min={0}
-      max={23}
-      aria-label={props.label}
-      value={hour}
-      onChange={(event) => {
-        const next = Number(event.target.value);
-        const safe = Number.isFinite(next) ? Math.max(0, Math.min(23, next)) : 0;
-        props.onChange(`${String(safe).padStart(2, '0')}:00`);
-      }}
-      className="h-7 w-12 rounded border border-slate-300 px-1 text-center text-[11px] tabular-nums text-slate-700"
-    />
-  );
 }
 
 type SummaryFrame = 'plain' | 'gold' | 'primary' | 'success';
