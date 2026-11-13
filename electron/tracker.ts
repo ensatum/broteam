@@ -31,6 +31,7 @@ type RequestOptions = {
 };
 
 const BOARD_LOOKUP_TIMEOUT_MS = 12_000;
+const LIST_PAGE_SIZE = 100;
 
 function normalizeKnownBoards(known: TrackerBoard[] | undefined): TrackerBoard[] {
   if (!Array.isArray(known)) return [];
@@ -543,7 +544,7 @@ export class TrackerClient {
    */
   async listIssueComments(issueId: string): Promise<TrackerComment[]> {
     const path = `/v3/issues/${encodeURIComponent(issueId)}/comments`;
-    const perPage = 50;
+    const perPage = LIST_PAGE_SIZE;
     const items: TrackerComment[] = [];
     const seen = new Set<string>();
     let cursor: string | undefined;
@@ -606,12 +607,12 @@ export class TrackerClient {
     const path = changelogPath(issueKey);
     const meta: { totalPages?: number } = {};
     const first = await this.request<TrackerChangelogEvent[]>(path, {
-      query: { perPage: 50, page: 1 },
+      query: { perPage: LIST_PAGE_SIZE, page: 1 },
       retries: 5,
       meta,
     });
     const page1 = first || [];
-    const total = meta.totalPages && meta.totalPages > 0 ? meta.totalPages : page1.length < 50 ? 1 : 30;
+    const total = meta.totalPages && meta.totalPages > 0 ? meta.totalPages : page1.length < LIST_PAGE_SIZE ? 1 : 30;
     const items: TrackerChangelogEvent[] = [];
     const consume = (batch: TrackerChangelogEvent[]) => {
       items.push(...batch);
@@ -626,7 +627,7 @@ export class TrackerClient {
           page === 1
             ? page1
             : (await this.request<TrackerChangelogEvent[]>(path, {
-                query: { perPage: 50, page },
+                query: { perPage: LIST_PAGE_SIZE, page },
                 retries: 5,
               })) || [];
         if (consume(batch)) break;
@@ -634,14 +635,14 @@ export class TrackerClient {
       }
     } else {
       const crossed = consume(page1);
-      if (!crossed && page1.length === 50) {
+      if (!crossed && page1.length === LIST_PAGE_SIZE) {
         for (let page = 2; page <= total; page += 1) {
           const batch =
             (await this.request<TrackerChangelogEvent[]>(path, {
-              query: { perPage: 50, page },
+              query: { perPage: LIST_PAGE_SIZE, page },
               retries: 5,
             })) || [];
-          if (consume(batch) || batch.length < 50) break;
+          if (consume(batch) || batch.length < LIST_PAGE_SIZE) break;
           await pauseableWait(120);
         }
       }
@@ -656,7 +657,7 @@ export class TrackerClient {
   async getFieldChangelog(issueKey: string, field: string): Promise<TrackerChangelogEvent[]> {
     const path = changelogPath(issueKey);
     const meta: { totalPages?: number } = {};
-    const query = { perPage: 50, page: 1, field };
+    const query = { perPage: LIST_PAGE_SIZE, page: 1, field };
     let first: TrackerChangelogEvent[] = [];
     try {
       first =
@@ -671,17 +672,17 @@ export class TrackerClient {
       if (/^Tracker API (400|404|422)\b/.test(message)) return [];
       throw error;
     }
-    const total = meta.totalPages && meta.totalPages > 0 ? meta.totalPages : first.length < 50 ? 1 : 20;
+    const total = meta.totalPages && meta.totalPages > 0 ? meta.totalPages : first.length < LIST_PAGE_SIZE ? 1 : 20;
     const items = [...first];
     const last = Math.min(total, 20);
     for (let page = 2; page <= last; page += 1) {
       const batch =
         (await this.request<TrackerChangelogEvent[]>(path, {
-          query: { perPage: 50, page, field },
+          query: { perPage: LIST_PAGE_SIZE, page, field },
           retries: 5,
         })) || [];
       items.push(...batch);
-      if (batch.length < 50) break;
+      if (batch.length < LIST_PAGE_SIZE) break;
       await pauseableWait(120);
     }
     return uniqueChangelog(items);
@@ -689,9 +690,9 @@ export class TrackerClient {
 
   private async paged<T>(path: string, cap: number): Promise<T[]> {
     const meta: { totalPages?: number } = {};
-    const first = await this.request<T[]>(path, { query: { perPage: 50, page: 1 }, retries: 5, meta });
+    const first = await this.request<T[]>(path, { query: { perPage: LIST_PAGE_SIZE, page: 1 }, retries: 5, meta });
     const items = [...(first || [])];
-    const total = meta.totalPages && meta.totalPages > 0 ? meta.totalPages : first && first.length === 50 ? cap : 1;
+    const total = meta.totalPages && meta.totalPages > 0 ? meta.totalPages : first && first.length === LIST_PAGE_SIZE ? cap : 1;
     const pages: number[] = [];
     if (total <= cap) {
       for (let page = 2; page <= total; page += 1) pages.push(page);
@@ -700,9 +701,9 @@ export class TrackerClient {
       for (let page = Math.max(7, total - (cap - 6)); page <= total; page += 1) pages.push(page);
     }
     for (const page of pages) {
-      const batch = await this.request<T[]>(path, { query: { perPage: 50, page }, retries: 5 });
+      const batch = await this.request<T[]>(path, { query: { perPage: LIST_PAGE_SIZE, page }, retries: 5 });
       items.push(...(batch || []));
-      if (!batch || batch.length < 50) break;
+      if (!batch || batch.length < LIST_PAGE_SIZE) break;
       await pauseableWait(120);
     }
     return items;
