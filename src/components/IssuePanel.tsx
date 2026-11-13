@@ -624,30 +624,28 @@ export default function IssuePanel(props: Props) {
             >
               {header}
               <div className="px-2 py-1.5">
-                <div className="flex items-stretch gap-1.5">
-                  <div className="w-44 shrink-0 leading-snug">
-                    <div className="text-[10px] text-slate-500">Создано: {createdLabel(issue) || '—'}</div>
-                    <div className="mt-0.5 text-[10px] text-slate-500">
-                      {issue.statusDisplay}
-                      {issue.daysInStatus != null ? ` · ${formatDays(issue.daysInStatus)}` : ''}
-                    </div>
-                    <IssuePeopleLines issue={issue} />
-                    <div className="mt-1 min-w-0">
-                      <div className="whitespace-pre-wrap leading-snug text-red-800">
-                        {hasNote ? note : <span className="text-slate-300">&nbsp;</span>}
-                      </div>
-                      {linkedNames.length > 0 && (
-                        <div className="mt-0.5 text-[10px] text-slate-500">{linkedNames.join(', ')}</div>
-                      )}
-                      {hasNote && noteUpdatedAt && (
-                        <div className="mt-0.5 text-[10px] text-slate-400">
-                          Дата примечания {new Date(noteUpdatedAt).toLocaleString('ru-RU')}
-                        </div>
-                      )}
-                    </div>
+                <div className="leading-snug">
+                  <div className="text-[10px] text-slate-500">Создано: {createdLabel(issue) || '—'}</div>
+                  <div className="mt-0.5 text-[10px] text-slate-500">
+                    {issue.statusDisplay}
+                    {issue.daysInStatus != null ? ` · ${formatDays(issue.daysInStatus)}` : ''}
                   </div>
-                  <IssueStory issueKey={issue.key} />
+                  <IssuePeopleLines issue={issue} />
+                  <div className="mt-1 min-w-0">
+                    <div className="whitespace-pre-wrap leading-snug text-red-800">
+                      {hasNote ? note : <span className="text-slate-300">&nbsp;</span>}
+                    </div>
+                    {linkedNames.length > 0 && (
+                      <div className="mt-0.5 text-[10px] text-slate-500">{linkedNames.join(', ')}</div>
+                    )}
+                    {hasNote && noteUpdatedAt && (
+                      <div className="mt-0.5 text-[10px] text-slate-400">
+                        Дата примечания {new Date(noteUpdatedAt).toLocaleString('ru-RU')}
+                      </div>
+                    )}
+                  </div>
                 </div>
+                <IssueStory issueKey={issue.key} />
                 {shownChange && (
                   <div className="mt-1">
                     <ChangeBadge
@@ -677,98 +675,98 @@ function IssueStory(props: { issueKey: string }) {
   const storyRev = useIssueStoryRevision();
   const [story, setStory] = useState(() => readIssueStory(props.issueKey));
   const [failed, setFailed] = useState(false);
-  const [descriptionOpen, setDescriptionOpen] = useState(true);
-  const [commentOpen, setCommentOpen] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [part, setPart] = useState<'description' | 'comment' | null>(null);
   useEffect(() => {
-    setDescriptionOpen(true);
-    setCommentOpen(true);
+    setPart(null);
+    setFailed(false);
+    setStory(readIssueStory(props.issueKey));
   }, [props.issueKey]);
   useEffect(() => {
+    setStory(readIssueStory(props.issueKey));
+  }, [props.issueKey, storyRev]);
+  async function toggle(next: 'description' | 'comment') {
+    if (part === next) {
+      setPart(null);
+      return;
+    }
+    setPart(next);
     const cached = readIssueStory(props.issueKey);
     if (cached) {
       setStory(cached);
       setFailed(false);
       return;
     }
-    let alive = true;
-    setStory(null);
+    if (story || busy) return;
+    setBusy(true);
     setFailed(false);
-    void window.api
-      .getIssueStory(props.issueKey)
-      .then((next) => {
-        writeIssueStory(props.issueKey, next);
-        if (alive) setStory(next);
-      })
-      .catch(() => {
-        if (alive) setFailed(true);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [props.issueKey, storyRev]);
+    try {
+      const loaded = await window.api.getIssueStory(props.issueKey);
+      writeIssueStory(props.issueKey, loaded);
+      setStory(loaded);
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const buttonClass = (active: boolean) =>
+    `rounded border px-1.5 py-0.5 text-[10px] ${active ? 'border-slate-400 bg-white' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-white'}`;
   return (
-    <div className="min-w-0 flex-1 text-[11px] leading-snug text-slate-700">
-      {!story && !failed && <LoadBar label="Загрузка описания и последнего комментария…" />}
-      {failed && <div className="text-slate-400">Описание не загрузилось</div>}
-      {story && (
-        <>
-          <button
-            type="button"
-            className="text-[10px] font-medium text-slate-500 hover:text-slate-800"
-            onClick={() => setDescriptionOpen((open) => !open)}
-          >
-            {descriptionOpen ? '▾' : '▸'} Описание
-          </button>
-          {descriptionOpen &&
-            (story.description ? (
-              <div className="markdown-body mt-0.5" dangerouslySetInnerHTML={{ __html: renderMarkdown(story.description) }} />
-            ) : (
-              <div className="mt-0.5 text-slate-400">Нет описания</div>
-            ))}
-          <div className="mt-2">
-            <button
-              type="button"
-              className="text-[10px] font-medium text-sky-700 hover:underline"
-              onClick={() => setCommentOpen((open) => !open)}
-            >
-              {commentOpen ? '▾' : '▸'} Последний комментарий
-            </button>
-            {commentOpen && (
-              <div className="mt-1 rounded border border-amber-200/80 bg-[#fffbeb] px-2 py-1.5">
-                {story.commentText ? (
-                  <>
-                    {(story.commentAuthor || story.commentAt) && (
-                      <div className="text-[10px] text-slate-500">
-                        {[story.commentAuthor, story.commentAt ? new Date(story.commentAt).toLocaleString('ru-RU') : '']
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </div>
-                    )}
-                    {story.commentUrl && (
-                      <a
-                        href={story.commentUrl}
-                        className="text-[10px] text-sky-700 hover:underline"
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          void window.api.openExternal(story.commentUrl);
-                        }}
-                      >
-                        Открыть в Трекере
-                      </a>
-                    )}
-                    <div
-                      className="markdown-body mt-0.5"
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown(story.commentText) }}
-                    />
-                  </>
-                ) : (
-                  <div className="text-slate-400">Нет комментария</div>
-                )}
-              </div>
-            )}
-          </div>
-        </>
+    <div className="mt-2 text-[11px] leading-snug text-slate-700">
+      <div className="flex justify-center gap-1">
+        <button type="button" className={buttonClass(part === 'description')} onClick={() => void toggle('description')}>
+          Описание
+        </button>
+        <button type="button" className={buttonClass(part === 'comment')} onClick={() => void toggle('comment')}>
+          Последний комментарий
+        </button>
+      </div>
+      {busy && part && (
+        <div className="mt-2">
+          <LoadBar label={part === 'description' ? 'Загрузка описания…' : 'Загрузка последнего комментария…'} />
+        </div>
+      )}
+      {failed && part && <div className="mt-1 text-center text-slate-400">Не загрузилось</div>}
+      {story && part === 'description' && (
+        <div className="mt-2">
+          {story.description ? (
+            <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(story.description) }} />
+          ) : (
+            <div className="text-slate-400">Нет описания</div>
+          )}
+        </div>
+      )}
+      {story && part === 'comment' && (
+        <div className="mt-2 rounded border border-amber-200/80 bg-[#fffbeb] px-2 py-1.5">
+          {story.commentText ? (
+            <>
+              {(story.commentAuthor || story.commentAt) && (
+                <div className="text-[10px] text-slate-500">
+                  {[story.commentAuthor, story.commentAt ? new Date(story.commentAt).toLocaleString('ru-RU') : '']
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
+              )}
+              {story.commentUrl && (
+                <a
+                  href={story.commentUrl}
+                  className="text-[10px] text-sky-700 hover:underline"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void window.api.openExternal(story.commentUrl);
+                  }}
+                >
+                  Открыть в Трекере
+                </a>
+              )}
+              <div className="markdown-body mt-0.5" dangerouslySetInnerHTML={{ __html: renderMarkdown(story.commentText) }} />
+            </>
+          ) : (
+            <div className="text-slate-400">Нет комментария</div>
+          )}
+        </div>
       )}
     </div>
   );
