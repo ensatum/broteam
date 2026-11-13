@@ -1255,7 +1255,7 @@ function SummaryCard(props: {
       onMouseLeave={() => props.onHover(null, null)}
     >
       {props.authored && (
-        <span title="Автор" className="absolute inset-y-0 left-0 w-1.5 bg-emerald-500" aria-hidden />
+        <span title="Автор" className="absolute inset-y-0 left-0 w-1.5 bg-emerald-200" aria-hidden />
       )}
       <div className={`flex items-center gap-1.5 px-2 py-1 ${props.open ? 'border-b border-slate-200 bg-slate-50' : ''}`}>
         <InstantTip text={row.currentStatus || '—'} className="inline-flex shrink-0 items-center">
