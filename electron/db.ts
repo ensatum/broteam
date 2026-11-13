@@ -1378,6 +1378,21 @@ export function upsertIssueChanges(
   tx();
 }
 
+export function dropAbsentIssueChanges(boardLocalId: number, presentKeys: Iterable<string>): void {
+  const keep = new Set(presentKeys);
+  const stale = listIssueChanges(boardLocalId)
+    .map((row) => row.issueKey)
+    .filter((key) => !keep.has(key));
+  if (!stale.length) return;
+  const stmt = getDb().prepare(
+    `DELETE FROM issue_changes WHERE board_local_id = ? AND issue_key = ?`,
+  );
+  const tx = getDb().transaction(() => {
+    for (const key of stale) stmt.run(boardLocalId, key);
+  });
+  tx();
+}
+
 export function deleteIssueChanges(boardLocalId: number, issueKeys: string[]): void {
   if (!issueKeys.length) return;
   const stmt = getDb().prepare(

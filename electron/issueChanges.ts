@@ -1,4 +1,4 @@
-import { deleteIssueChanges, upsertIssueChanges } from './db';
+import { deleteIssueChanges, dropAbsentIssueChanges, upsertIssueChanges } from './db';
 import { bornSince, describeIssueChange } from '../shared/issueChanges';
 import type { BoardMatrix, TrackerIssue } from '../shared/types';
 
@@ -44,4 +44,5 @@ export function syncIssueChanges(
   }
   deleteIssueChanges(boardLocalId, drop);
   upsertIssueChanges(boardLocalId, writes);
+  dropAbsentIssueChanges(boardLocalId, seenNext);
 }
