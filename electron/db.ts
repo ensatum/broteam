@@ -4,6 +4,7 @@ import path from 'node:path';
 import type {
   BoardColumnConfig,
   BoardConfig,
+  ColumnGroup,
   Developer,
   ParticipantRole,
   SavedBoard,
@@ -13,6 +14,7 @@ import type {
 import { DEFAULT_BOARD, DEFAULT_CONNECTION, DEFAULT_GITHUB, normalizeParticipantRole } from '../shared/types';
 import { normalizeColumnDuty, normalizeColumnOwnerRole } from '../shared/columnMeta';
 import { parseSourceStatuses } from '../shared/boardColumns';
+import { coalesceColumns } from '../shared/columnGroups';
 import { liveVersion, settingsIncompatible } from '../shared/version';
 
 let db: Database.Database | null = null;
@@ -251,6 +253,19 @@ function migratePeopleAndBoards(database: Database.Database): void {
   if (!dutyCols.some((column) => column.name === 'source_statuses')) {
     database.exec(`ALTER TABLE board_columns ADD COLUMN source_statuses TEXT NOT NULL DEFAULT ''`);
   }
+  if (!dutyCols.some((column) => column.name === 'group_id')) {
+    database.exec(`ALTER TABLE board_columns ADD COLUMN group_id INTEGER`);
+  }
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS column_groups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      board_local_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      color TEXT NOT NULL DEFAULT '#64748b',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      collapsed INTEGER NOT NULL DEFAULT 0
+    );
+  `);
 
   const boardCols = database.prepare(`PRAGMA table_info(agile_boards)`).all() as Array<{ name: string }>;
   if (!boardCols.some((column) => column.name === 'alias')) {
@@ -716,9 +731,11 @@ export function replaceSavedBoards(boards: Array<Omit<SavedBoard, 'id'> & { id?:
     const existing = database.prepare(`SELECT id FROM agile_boards`).all() as Array<{ id: number }>;
     const removeBoard = database.prepare(`DELETE FROM agile_boards WHERE id = ?`);
     const removeCols = database.prepare(`DELETE FROM board_columns WHERE board_local_id = ?`);
+    const removeGroups = database.prepare(`DELETE FROM column_groups WHERE board_local_id = ?`);
     for (const row of existing) {
       if (keep.has(row.id)) continue;
       removeCols.run(row.id);
+      removeGroups.run(row.id);
       removeBoard.run(row.id);
     }
   });
@@ -809,7 +826,7 @@ export function listColumns(): BoardColumnConfig[] {
     .prepare(
       `SELECT id, column_id as columnId, column_name as columnName,
               status_key as statusKey, status_display as statusDisplay,
-              source_statuses as sourceStatuses,
+              source_statuses as sourceStatuses, group_id as groupId,
               alias, color, enabled, sort_order as sortOrder,
               board_local_id as boardLocalId, duty, owner_role as ownerRole
        FROM board_columns ORDER BY sort_order ASC, id ASC`,
@@ -821,6 +838,7 @@ export function listColumns(): BoardColumnConfig[] {
         duty: string | null;
         ownerRole: string | null;
         sourceStatuses: string | null;
+        groupId: number | null;
       };
       const duty = normalizeColumnDuty(raw.duty);
       const ownerRole = normalizeColumnOwnerRole(raw.ownerRole);
@@ -829,6 +847,7 @@ export function listColumns(): BoardColumnConfig[] {
         duty,
         ownerRole,
         sourceStatuses: parseSourceStatuses(raw.sourceStatuses),
+        groupId: raw.groupId == null ? null : Number(raw.groupId),
         enabled: Boolean(raw.enabled),
         boardLocalId: raw.boardLocalId || 0,
       };
@@ -843,9 +862,9 @@ export function addBoardColumns(
   const database = getDb();
   const insert = database.prepare(
     `INSERT INTO board_columns(
-       column_id, column_name, status_key, status_display, source_statuses, alias, color, enabled, sort_order,
+       column_id, column_name, status_key, status_display, source_statuses, group_id, alias, color, enabled, sort_order,
        board_local_id, duty, owner_role
-     ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const tx = database.transaction(() => {
     for (const column of columns) {
@@ -859,6 +878,7 @@ export function addBoardColumns(
         column.statusKey,
         column.statusDisplay,
         JSON.stringify(column.sourceStatuses || []),
+        column.groupId ?? null,
         column.alias,
         column.color,
         column.enabled ? 1 : 0,
@@ -882,9 +902,9 @@ export function replaceColumns(
     database.prepare('DELETE FROM board_columns').run();
     const insert = database.prepare(
       `INSERT INTO board_columns(
-         column_id, column_name, status_key, status_display, source_statuses, alias, color, enabled, sort_order,
+         column_id, column_name, status_key, status_display, source_statuses, group_id, alias, color, enabled, sort_order,
          board_local_id, duty, owner_role
-       ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const [index, c] of columns.entries()) {
       const duty = normalizeColumnDuty(c.duty);
@@ -895,6 +915,7 @@ export function replaceColumns(
         c.statusKey,
         c.statusDisplay,
         JSON.stringify(c.sourceStatuses || []),
+        c.groupId ?? null,
         c.alias,
         c.color,
         c.enabled ? 1 : 0,
@@ -907,6 +928,124 @@ export function replaceColumns(
   });
   tx();
   return listColumns();
+}
+
+export type ColumnGroupWrite = {
+  id?: number;
+  name: string;
+  color: string;
+  sortOrder: number;
+  collapsed: boolean;
+  statusKeys: string[];
+};
+
+export function listColumnGroups(): ColumnGroup[] {
+  return (
+    getDb()
+      .prepare(
+        `SELECT id, board_local_id as boardLocalId, name, color,
+                sort_order as sortOrder, collapsed
+         FROM column_groups ORDER BY sort_order ASC, id ASC`,
+      )
+      .all() as Array<Omit<ColumnGroup, 'collapsed'> & { collapsed: number }>
+  ).map((row) => ({ ...row, collapsed: Boolean(row.collapsed) }));
+}
+
+export function replaceColumnGroups(
+  boardLocalId: number,
+  drafts: ColumnGroupWrite[],
+  columnOrder?: string[],
+): { groups: ColumnGroup[]; columns: BoardColumnConfig[] } {
+  const database = getDb();
+  const tx = database.transaction(() => {
+    const existing = database
+      .prepare(`SELECT id FROM column_groups WHERE board_local_id = ?`)
+      .all(boardLocalId) as Array<{ id: number }>;
+    const keep = new Set<number>();
+    const update = database.prepare(
+      `UPDATE column_groups SET name = ?, color = ?, sort_order = ?, collapsed = ? WHERE id = ? AND board_local_id = ?`,
+    );
+    const insert = database.prepare(
+      `INSERT INTO column_groups(board_local_id, name, color, sort_order, collapsed) VALUES(?, ?, ?, ?, ?)`,
+    );
+    const realIds: number[] = [];
+    drafts.forEach((draft, index) => {
+      const name = draft.name.trim() || 'Группа';
+      const color = draft.color || '#64748b';
+      const collapsed = draft.collapsed ? 1 : 0;
+      const order = draft.sortOrder ?? index;
+      const known = draft.id != null && existing.some((row) => row.id === draft.id);
+      if (known && draft.id != null) {
+        update.run(name, color, order, collapsed, draft.id, boardLocalId);
+        keep.add(draft.id);
+        realIds.push(draft.id);
+        return;
+      }
+      const info = insert.run(boardLocalId, name, color, order, collapsed);
+      const id = Number(info.lastInsertRowid);
+      keep.add(id);
+      realIds.push(id);
+    });
+    const remove = database.prepare(`DELETE FROM column_groups WHERE id = ?`);
+    for (const row of existing) {
+      if (!keep.has(row.id)) remove.run(row.id);
+    }
+    database.prepare(`UPDATE board_columns SET group_id = NULL WHERE board_local_id = ?`).run(boardLocalId);
+    const assign = database.prepare(
+      `UPDATE board_columns SET group_id = ? WHERE board_local_id = ? AND status_key = ?`,
+    );
+    drafts.forEach((draft, index) => {
+      const groupId = realIds[index];
+      if (groupId == null) return;
+      for (const statusKey of draft.statusKeys) assign.run(groupId, boardLocalId, statusKey);
+    });
+    const boardColumns = listColumns().filter((column) => column.boardLocalId === boardLocalId);
+    const ordered = columnOrder?.length
+      ? orderBoardColumns(boardColumns, columnOrder)
+      : coalesceColumns(boardColumns);
+    const setOrder = database.prepare(`UPDATE board_columns SET sort_order = ? WHERE id = ?`);
+    for (const column of ordered) setOrder.run(column.sortOrder, column.id);
+  });
+  tx();
+  return { groups: listColumnGroups(), columns: listColumns() };
+}
+
+function orderBoardColumns(columns: BoardColumnConfig[], statusKeys: string[]): BoardColumnConfig[] {
+  const byKey = new Map(columns.map((column) => [column.statusKey, column]));
+  const used = new Set<string>();
+  const ordered: BoardColumnConfig[] = [];
+  for (const key of statusKeys) {
+    const column = byKey.get(key);
+    if (!column || used.has(key)) continue;
+    used.add(key);
+    ordered.push(column);
+  }
+  for (const column of columns) {
+    if (!used.has(column.statusKey)) ordered.push(column);
+  }
+  return ordered.map((column, index) => ({ ...column, sortOrder: index }));
+}
+
+export function importColumnGroups(groups: ColumnGroup[]): void {
+  const database = getDb();
+  const tx = database.transaction(() => {
+    database.prepare('DELETE FROM column_groups').run();
+    const insert = database.prepare(
+      `INSERT INTO column_groups(id, board_local_id, name, color, sort_order, collapsed)
+       VALUES(?, ?, ?, ?, ?, ?)`,
+    );
+    for (const [index, group] of groups.entries()) {
+      insert.run(
+        group.id,
+        group.boardLocalId,
+        group.name.trim() || 'Группа',
+        group.color || '#64748b',
+        group.sortOrder ?? index,
+        group.collapsed ? 1 : 0,
+      );
+    }
+  });
+  tx();
 }
 
 export function getIssueNotes(): Record<string, string> {

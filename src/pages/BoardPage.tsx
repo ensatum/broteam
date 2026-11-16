@@ -3,12 +3,14 @@ import { createPortal } from 'react-dom';
 import type {
   BoardColumnConfig,
   BoardMatrix,
+  ColumnGroup,
   Developer,
   SavedBoard,
   TrackerIssue,
 } from '@shared/types';
 import { OTHERS_ROW_ID, UNASSIGNED_ROW_ID } from '@shared/types';
 import { reflowMatrix } from '@shared/reflowMatrix';
+import { groupHeaderCells, groupStatusKey, moveGroupBefore, placeColumn, tableSlots } from '@shared/columnGroups';
 import { resolveDeveloperRowColor, darkenHex } from '@shared/types';
 import { describeMatrix } from '@shared/matrixShape';
 import { sessionLog } from '../sessionLog';
@@ -37,6 +39,7 @@ import {
   ActivityIcon,
   TerminalIcon,
   BellIcon,
+  ArrowDownIcon,
   BellOffIcon,
   FilterIcon,
   ClockIcon,
@@ -482,6 +485,8 @@ type Props = {
   onMatrixChange: (m: BoardMatrix) => void;
   onDevelopersChange: (d: Developer[]) => void;
   onColumnsChange: (c: BoardColumnConfig[]) => void;
+  groups: ColumnGroup[];
+  onGroupsChange: (groups: ColumnGroup[]) => void;
   onError: (msg: string | null) => void;
   onGoSettings: (section: 'integrations' | 'boards') => void;
   onSnapshotContentChange: () => void;
@@ -1485,7 +1490,7 @@ export default function BoardPage(props: Props) {
         ...selection,
         kind: 'issues',
         developerName: row.developer.displayName,
-        issues: row.issuesByColumn[selection.statusKey] || [],
+        issues: issuesForStatus(row.issuesByColumn, selection.statusKey, props.columns),
       });
       return;
     }
@@ -1493,7 +1498,9 @@ export default function BoardPage(props: Props) {
       setSelection({
         ...selection,
         kind: 'issues',
-        issues: matrix.developers.flatMap((r) => r.issuesByColumn[selection.statusKey!] || []),
+        issues: matrix.developers.flatMap((r) =>
+          issuesForStatus(r.issuesByColumn, selection.statusKey!, props.columns),
+        ),
       });
       return;
     }
@@ -1661,7 +1668,26 @@ export default function BoardPage(props: Props) {
     beginResize('row');
   }
 
-  const columns = matrix?.columns || [];
+  const columns = useMemo(() => {
+    const base = matrix?.columns || [];
+    const stored = props.columns.filter(
+      (column) => props.activeBoardId == null || column.boardLocalId === props.activeBoardId,
+    );
+    if (!stored.length) return base;
+    const byKey = new Map(stored.map((column) => [column.statusKey, column]));
+    const byColumn = new Map(stored.map((column) => [column.columnId, column]));
+    return base
+      .map((column) => {
+        const saved = byKey.get(column.statusKey) || byColumn.get(column.columnId);
+        if (!saved) return { ...column, groupId: column.groupId ?? null };
+        return { ...column, groupId: saved.groupId ?? null, sortOrder: saved.sortOrder };
+      })
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  }, [matrix, props.columns, props.activeBoardId]);
+  const boardGroups = props.groups
+    .filter((group) => group.boardLocalId === props.activeBoardId)
+    .slice()
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
   const columnSlot = props.activeBoardId == null ? undefined : columnPrefs[String(props.activeBoardId)];
   const autoSkipColumns = new Set(
     props.activeBoardId == null ? [] : columnAutoSkip[String(props.activeBoardId)] || [],
@@ -1670,8 +1696,19 @@ export default function BoardPage(props: Props) {
   const shownColumns = columns.filter((column) => {
     if (reorderMode) return true;
     if (columnSlot?.hidden?.includes(column.statusKey)) return false;
-    return columnTaskTotal(column.statusKey) > 0;
+    if (columnTaskTotal(column.statusKey) > 0) return true;
+    if (column.groupId == null) return false;
+    return columns.some(
+      (other) =>
+        other.groupId === column.groupId &&
+        !columnSlot?.hidden?.includes(other.statusKey) &&
+        columnTaskTotal(other.statusKey) > 0,
+    );
   });
+  const slots = tableSlots(shownColumns, boardGroups);
+  const groupRow = groupHeaderCells(slots, boardGroups);
+  const showGroupRow = groupRow.some((cell) => cell.kind === 'group');
+  const headSticky = showGroupRow ? 'top-7' : 'top-0';
   const shownStatusKeys = useMemo(
     () => new Set(shownColumns.map((column) => column.statusKey)),
     [shownColumns],
@@ -2682,15 +2719,60 @@ export default function BoardPage(props: Props) {
     return saved;
   }
 
+  async function persistLayout(next: BoardColumnConfig[]) {
+    const boardId = props.activeBoardId;
+    if (boardId == null) {
+      await persistColumns(next);
+      return;
+    }
+    const rank = new Map<number, number>();
+    next.forEach((column, index) => {
+      if (column.groupId != null && !rank.has(column.groupId)) rank.set(column.groupId, index);
+    });
+    const drafts = props.groups
+      .filter((group) => group.boardLocalId === boardId)
+      .slice()
+      .sort((a, b) => (rank.get(a.id) ?? a.sortOrder) - (rank.get(b.id) ?? b.sortOrder) || a.id - b.id)
+      .map((group, index) => ({
+        id: group.id,
+        name: group.name,
+        color: group.color,
+        sortOrder: index,
+        collapsed: group.collapsed,
+        statusKeys: next.filter((column) => column.groupId === group.id).map((column) => column.statusKey),
+      }));
+    const saved = await window.api.saveColumnGroups(
+      boardId,
+      drafts,
+      next.map((column) => column.statusKey),
+    );
+    props.onGroupsChange(saved.groups);
+    props.onColumnsChange(saved.columns);
+  }
+
   function reorderColumns(fromKey: string, toKey: string) {
     if (readOnly || fromKey === toKey) return;
-    const next = [...columns];
-    const from = next.findIndex((col) => col.statusKey === fromKey);
-    const to = next.findIndex((col) => col.statusKey === toKey);
-    if (from < 0 || to < 0) return;
-    const [item] = next.splice(from, 1);
-    next.splice(to, 0, item);
-    void persistColumns(next);
+    const next = fromKey.startsWith('group:')
+      ? moveGroupBefore(columns, Number(fromKey.slice('group:'.length)), toKey)
+      : placeColumn(columns, fromKey, toKey);
+    void persistLayout(next);
+  }
+
+  async function toggleGroup(group: ColumnGroup) {
+    const boardId = group.boardLocalId;
+    const drafts = props.groups
+      .filter((item) => item.boardLocalId === boardId)
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        color: item.color,
+        sortOrder: item.sortOrder,
+        collapsed: item.id === group.id ? !item.collapsed : item.collapsed,
+        statusKeys: props.columns.filter((column) => column.groupId === item.id).map((column) => column.statusKey),
+      }));
+    const saved = await window.api.saveColumnGroups(boardId, drafts);
+    props.onGroupsChange(saved.groups);
+    props.onColumnsChange(saved.columns);
   }
 
   function reorderDevelopers(fromId: number, toId: number) {
@@ -2843,7 +2925,7 @@ export default function BoardPage(props: Props) {
     doneStatusKeys,
   );
   const showPending = grandFigures.open > 0 && !reorderMode;
-  const dataCols = shownColumns.length + (showPending ? 2 : 1);
+  const dataCols = slots.length + (showPending ? 2 : 1);
   const developerRows = matrix.developers;
   function columnDropMark(statusKey: string): string {
     if (draggingCol === statusKey) return 'bro-drag-source';
@@ -3041,6 +3123,7 @@ export default function BoardPage(props: Props) {
     reflowed?.matrix ?? null,
     selection,
     doneStatusKeys,
+    columns,
   );
   const scopedIssues = detailIssues.filter((issue) => {
     if (boardScope === 'changes') return unseenChangeKeys.has(issue.key);
@@ -3722,25 +3805,107 @@ export default function BoardPage(props: Props) {
                 <col style={{ width: '9.75rem' }} />
               </colgroup>
               <thead>
-                <tr className="h-8 bg-slate-50">
+                {showGroupRow && (
+                  <tr className="h-7 bg-slate-50">
+                    <th className={`sticky top-0 left-0 z-20 border-b border-slate-200 bg-slate-50 ${nameColW}`} />
+                    {groupRow.map((cell, index) => {
+                      const first = cell.kind === 'group'
+                        ? columns.find((column) => column.groupId === cell.group.id)
+                        : undefined;
+                      const dropKey = first?.statusKey || '';
+                      return (
+                        <th
+                          key={cell.kind === 'group' ? `group-${cell.group.id}` : `gap-${index}`}
+                          colSpan={cell.colspan}
+                          title={cell.kind === 'group' ? cell.group.name : undefined}
+                          onDragOver={dropKey ? (event) => allowColumnDrop(event, dropKey) : undefined}
+                          onDrop={dropKey ? (event) => dropColumn(event, dropKey) : undefined}
+                          className="sticky top-0 z-10 border-b border-r border-slate-200 bg-slate-50 px-1 text-left"
+                        >
+                          {cell.kind === 'group' && (
+                            <span className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-500"
+                                title={cell.group.collapsed ? 'Развернуть группу' : 'Свернуть группу'}
+                                onClick={() => void toggleGroup(cell.group)}
+                              >
+                                {cell.group.collapsed ? (
+                                  <ArrowRightIcon className="h-3 w-3" />
+                                ) : (
+                                  <ArrowDownIcon className="h-3 w-3" />
+                                )}
+                              </button>
+                              <span
+                                className={`min-w-0 flex-1 truncate text-[11px] font-semibold ${reorderMode && !readOnly ? 'cursor-grab' : ''}`}
+                                style={{ color: cell.group.color }}
+                                draggable={reorderMode && !readOnly}
+                                onDragStart={(event) => {
+                                  if (!reorderMode || readOnly) return;
+                                  const key = groupStatusKey(cell.group.id);
+                                  dragDevId.current = null;
+                                  dragColKey.current = key;
+                                  setDraggingCol(key);
+                                  event.dataTransfer.effectAllowed = 'move';
+                                  event.dataTransfer.setData('text/plain', key);
+                                  setMoveGhost(event, cell.group.name);
+                                }}
+                                onDragEnd={() => {
+                                  dragColKey.current = null;
+                                  setDraggingCol(null);
+                                  setDropColKey(null);
+                                }}
+                              >
+                                {cell.group.name}
+                              </span>
+                            </span>
+                          )}
+                        </th>
+                      );
+                    })}
+                    {showPending && <th className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50" />}
+                    <th className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50" />
+                  </tr>
+                )}
+                <tr className="bg-slate-50">
                   <th
-                    className={`sticky top-0 left-0 z-20 overflow-hidden border-b border-slate-200 bg-slate-50 ${nameColW} px-0 py-1 text-left ${nameColBorder} ${shade('head', 'name')}`}
+                    className={`sticky ${headSticky} left-0 z-20 overflow-hidden border-b border-slate-200 bg-slate-50 ${nameColW} px-0 py-1 text-left ${nameColBorder} ${shade('head', 'name')}`}
                     onMouseEnter={() => setTableHover({ row: 'head', col: 'name' })}
                   >
                     {tableCorner()}
                   </th>
-                  {shownColumns.map((c) => (
+                  {slots.map((slot) => {
+                    if (slot.kind === 'group') {
+                      const key = groupStatusKey(slot.group.id);
+                      const dropKey = slot.columns[0]?.statusKey || key;
+                      return (
+                        <th
+                          key={key}
+                          title={slot.group.name}
+                          onDragOver={(e) => allowColumnDrop(e, dropKey)}
+                          onDrop={(e) => dropColumn(e, dropKey)}
+                          onMouseEnter={() => setTableHover({ row: 'head', col: key })}
+                          className={`sticky ${headSticky} z-10 bg-slate-50 ${numColW} px-1 py-1 text-left border-b border-r border-slate-300 font-semibold text-[11px] leading-tight ${shade('head', key)} ${columnDropMark(dropKey)}`}
+                        >
+                          <span className="block truncate" style={{ color: slot.group.color }}>
+                            {slot.group.name}
+                          </span>
+                        </th>
+                      );
+                    }
+                    const c = slot.column;
+                    return (
                     <th
                       key={c.statusKey}
                       title={c.alias}
                       onDragOver={(e) => allowColumnDrop(e, c.statusKey)}
                       onDrop={(e) => dropColumn(e, c.statusKey)}
                       onMouseEnter={() => setTableHover({ row: 'head', col: c.statusKey })}
-                      className={`sticky top-0 z-10 bg-slate-50 ${numColW} px-1 py-1 text-left border-b border-r border-slate-300 font-semibold text-[11px] leading-tight text-black ${shade('head', c.statusKey)} ${columnDropMark(c.statusKey)}`}
+                      className={`sticky ${headSticky} z-10 bg-slate-50 ${numColW} px-1 py-1 text-left border-b border-r border-slate-300 font-semibold text-[11px] leading-tight text-black ${shade('head', c.statusKey)} ${columnDropMark(c.statusKey)}`}
                     >
-                      <span className="flex items-center gap-0.5">
+                      <span className="flex min-w-0 flex-col gap-0.5">
                         <span
-                          className={`min-w-0 flex-1 truncate ${reorderMode && !readOnly ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                          className={`min-w-0 truncate ${reorderMode && !readOnly ? 'cursor-grab active:cursor-grabbing' : ''}`}
                           draggable={reorderMode && !readOnly}
                           onDragStart={(e) => {
                             if (!reorderMode || readOnly) return;
@@ -3760,6 +3925,7 @@ export default function BoardPage(props: Props) {
                         >
                           <ColumnAliasLabel alias={c.alias} color={c.color} />
                         </span>
+                        <span className="flex items-center gap-0.5">
                         <button
                           type="button"
                           title={
@@ -3792,14 +3958,16 @@ export default function BoardPage(props: Props) {
                             <EyeOffIcon className="h-3 w-3" />
                           </button>
                         )}
+                        </span>
                       </span>
                     </th>
-                  ))}
+                    );
+                  })}
                   {showPending && (
                   <th
                     title="Задачи не в финальном статусе"
                     onMouseEnter={() => setTableHover({ row: 'head', col: PENDING_COLUMN })}
-                    className={`sticky top-0 z-10 bg-slate-50 ${numColW} px-1 py-1.5 text-center border-b border-r border-slate-300 font-bold text-[11px] whitespace-nowrap ${shade('head', PENDING_COLUMN)}`}
+                    className={`sticky ${headSticky} z-10 bg-slate-50 ${numColW} px-1 py-1.5 text-center border-b border-r border-slate-300 font-bold text-[11px] whitespace-nowrap ${shade('head', PENDING_COLUMN)}`}
                   >
                     <span className="block truncate">Pending</span>
                   </th>
@@ -3807,7 +3975,7 @@ export default function BoardPage(props: Props) {
                   <th
                     title="Все задачи"
                     onMouseEnter={() => setTableHover({ row: 'head', col: 'total' })}
-                    className={`sticky top-0 z-10 bg-slate-50 ${numColW} px-1 py-1.5 text-center border-b border-r border-slate-300 font-bold text-[11px] whitespace-nowrap ${shade('head', 'total')}`}
+                    className={`sticky ${headSticky} z-10 bg-slate-50 ${numColW} px-1 py-1.5 text-center border-b border-r border-slate-300 font-bold text-[11px] whitespace-nowrap ${shade('head', 'total')}`}
                   >
                     <span className="block truncate">Total</span>
                   </th>
@@ -3905,7 +4073,62 @@ export default function BoardPage(props: Props) {
                           </span>
                         </div>
                       </td>
-                      {shownColumns.map((c) => {
+                      {slots.map((slot) => {
+                        if (slot.kind === 'group') {
+                          const key = groupStatusKey(slot.group.id);
+                          const count = slot.columns.reduce(
+                            (sum, column) => sum + (row.counts[column.statusKey] || 0),
+                            0,
+                          );
+                          const issues = slot.columns.flatMap(
+                            (column) => row.issuesByColumn[column.statusKey] || [],
+                          );
+                          const active = isCellSelected(row.developer.id, key);
+                          const dropKey = slot.columns[0]?.statusKey || key;
+                          return (
+                            <td
+                              key={key}
+                              onDragOver={(e) => {
+                                allowColumnDrop(e, dropKey);
+                                allowRowDrop(e, row.developer.id);
+                              }}
+                              onDrop={(e) => {
+                                if (dragColKey.current) dropColumn(e, dropKey);
+                                else dropRow(e, row.developer.id);
+                              }}
+                              onMouseEnter={() => setTableHover({ row: row.developer.id, col: key })}
+                              className={`relative border-b border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${shade(row.developer.id, key)} ${
+                                active ? cellSelectedClass : ''
+                              } ${columnDropMark(dropKey)}`}
+                            >
+                              <div className={cellBox}>
+                                <button
+                                  type="button"
+                                  className="bro-cell-count bro-count-center absolute inset-0 z-[1] cursor-pointer flex leading-none"
+                                  style={{ color: slot.group.color }}
+                                  onClick={() =>
+                                    choose(
+                                      {
+                                        kind: 'issues',
+                                        developerId: row.developer.id,
+                                        developerName: row.developer.displayName,
+                                        statusKey: key,
+                                        issues,
+                                      },
+                                      'clear',
+                                    )
+                                  }
+                                >
+                                  {count}
+                                </button>
+                                <span className="bro-cell-count bro-count-center bro-cell-spacer invisible block leading-none" aria-hidden>
+                                  {count}
+                                </span>
+                              </div>
+                            </td>
+                          );
+                        }
+                        const c = slot.column;
                         const count = row.counts[c.statusKey] || 0;
                         const cellPending = Boolean(
                           reflowed?.pendingDevIds.has(row.developer.id) ||
@@ -4098,7 +4321,55 @@ export default function BoardPage(props: Props) {
                       </span>
                     </div>
                   </td>
-                  {shownColumns.map((c) => {
+                  {slots.map((slot) => {
+                    if (slot.kind === 'group') {
+                      const key = groupStatusKey(slot.group.id);
+                      const selected = isCellSelected(null, key);
+                      const value = slot.columns.reduce(
+                        (sum, column) => sum + (matrix.columnTotals[column.statusKey] || 0),
+                        0,
+                      );
+                      const issues = matrix.developers.flatMap((developerRow) =>
+                        slot.columns.flatMap((column) => developerRow.issuesByColumn[column.statusKey] || []),
+                      );
+                      const dropKey = slot.columns[0]?.statusKey || key;
+                      return (
+                        <td
+                          key={key}
+                          onDragOver={(e) => allowColumnDrop(e, dropKey)}
+                          onDrop={(e) => dropColumn(e, dropKey)}
+                          onMouseEnter={() => setTableHover({ row: 'total', col: key })}
+                          className={`relative border-t border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${shade('total', key)} ${
+                            selected ? cellSelectedClass : 'bg-slate-100'
+                          } ${columnDropMark(dropKey)}`}
+                        >
+                          <div className={totalBox}>
+                            <button
+                              className="bro-cell-count bro-count-center absolute inset-0 z-[1] cursor-pointer flex leading-none"
+                              style={{ color: slot.group.color }}
+                              onClick={() =>
+                                choose(
+                                  {
+                                    kind: 'issues',
+                                    developerId: null,
+                                    developerName: 'Вся команда',
+                                    statusKey: key,
+                                    issues,
+                                  },
+                                  'clear',
+                                )
+                              }
+                            >
+                              {value}
+                            </button>
+                            <span className="bro-cell-count bro-count-center bro-cell-spacer invisible block leading-none" aria-hidden>
+                              {value}
+                            </span>
+                          </div>
+                        </td>
+                      );
+                    }
+                    const c = slot.column;
                     const selected = isCellSelected(null, c.statusKey);
                     const value = matrix.columnTotals[c.statusKey] || 0;
                     const issues = matrix.developers.flatMap(
@@ -5254,10 +5525,23 @@ function nameIn(set: Set<string>, value: string | null | undefined, unassigned: 
   return Boolean(name) && set.has(name);
 }
 
+function issuesForStatus(
+  issuesByColumn: Record<string, TrackerIssue[]>,
+  statusKey: string,
+  sourceColumns: BoardColumnConfig[],
+): TrackerIssue[] {
+  if (!statusKey.startsWith('group:')) return issuesByColumn[statusKey] || [];
+  const groupId = Number(statusKey.slice('group:'.length));
+  return sourceColumns
+    .filter((column) => column.groupId === groupId)
+    .flatMap((column) => issuesByColumn[column.statusKey] || []);
+}
+
 function issuesForSelection(
   source: BoardMatrix | null,
   selection: CellSelection | null,
-  doneStatusKeys?: ReadonlySet<string>,
+  doneStatusKeys: ReadonlySet<string> | undefined,
+  sourceColumns: BoardColumnConfig[],
 ): TrackerIssue[] {
   if (!source || !selection || selection.kind !== 'issues') return [];
   if (selection.statusKey === PENDING_COLUMN) {
@@ -5275,10 +5559,12 @@ function issuesForSelection(
   }
   if (selection.developerId != null && selection.statusKey != null) {
     const row = source.developers.find((item) => item.developer.id === selection.developerId);
-    return row?.issuesByColumn[selection.statusKey] || [];
+    return row ? issuesForStatus(row.issuesByColumn, selection.statusKey, sourceColumns) : [];
   }
   if (selection.developerId == null && selection.statusKey != null) {
-    return source.developers.flatMap((row) => row.issuesByColumn[selection.statusKey!] || []);
+    return source.developers.flatMap((row) =>
+      issuesForStatus(row.issuesByColumn, selection.statusKey!, sourceColumns),
+    );
   }
   return source.developers.flatMap((row) => Object.values(row.issuesByColumn).flat());
 }

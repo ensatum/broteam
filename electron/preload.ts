@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   BoardColumnConfig,
   BoardConfig,
+  ColumnGroup,
   BoardMatrix,
   SavedBoard,
   Developer,
@@ -59,6 +60,19 @@ export type ElectronApi = {
   listIssueNoteLinks: () => Promise<Record<string, number[]>>;
   setIssueNoteLinks: (issueKey: string, participantIds: number[]) => Promise<number[]>;
   listColumns: () => Promise<BoardColumnConfig[]>;
+  listColumnGroups: () => Promise<ColumnGroup[]>;
+  saveColumnGroups: (
+    boardLocalId: number,
+    drafts: Array<{
+      id?: number;
+      name: string;
+      color: string;
+      sortOrder: number;
+      collapsed: boolean;
+      statusKeys: string[];
+    }>,
+    columnOrder?: string[],
+  ) => Promise<{ groups: ColumnGroup[]; columns: BoardColumnConfig[] }>;
   replaceColumns: (
     columns: Array<Omit<BoardColumnConfig, 'id'> & { id?: number }>,
   ) => Promise<BoardColumnConfig[]>;
@@ -259,6 +273,9 @@ const api: ElectronApi = {
   setIssueNoteLinks: (issueKey, participantIds) =>
     ipcRenderer.invoke('notes:setLinks', issueKey, participantIds),
   listColumns: () => ipcRenderer.invoke('columns:list'),
+  listColumnGroups: () => ipcRenderer.invoke('columns:listGroups'),
+  saveColumnGroups: (boardLocalId, drafts, columnOrder) =>
+    ipcRenderer.invoke('columns:saveGroups', boardLocalId, drafts, columnOrder),
   replaceColumns: (columns) => ipcRenderer.invoke('columns:replace', columns),
   searchUsers: (query) => ipcRenderer.invoke('tracker:searchUsers', query),
   listBoards: (queue, known) => ipcRenderer.invoke('tracker:listBoards', queue, known),

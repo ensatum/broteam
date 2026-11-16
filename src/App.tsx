@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import type {
   BoardColumnConfig,
   BoardConfig,
+  ColumnGroup,
   BoardMatrix,
   Developer,
   SavedBoard,
@@ -60,6 +61,7 @@ export default function App() {
   const [board, setBoard] = useState<BoardConfig>(DEFAULT_BOARD);
   const [developers, setDevelopers] = useState<Developer[]>([]);
   const [columns, setColumns] = useState<BoardColumnConfig[]>([]);
+  const [groups, setGroups] = useState<ColumnGroup[]>([]);
   const [boards, setBoards] = useState<SavedBoard[]>([]);
   const [activeBoardId, setActiveBoardId] = useState<number | null>(null);
   const [shownBoardId, setShownBoardId] = useState<number | null>(null);
@@ -107,11 +109,12 @@ export default function App() {
   const summarySaveLock = useRef(false);
 
   const loadSettings = useCallback(async () => {
-    const [conn, boardCfg, devs, cols, savedBoards, activeId, last] = await Promise.all([
+    const [conn, boardCfg, devs, cols, savedGroups, savedBoards, activeId, last] = await Promise.all([
       window.api.getConnection(),
       window.api.getBoard(),
       window.api.listDevelopers(),
       window.api.listColumns(),
+      window.api.listColumnGroups(),
       window.api.listSavedBoards(),
       window.api.getActiveBoard(),
       window.api.getLastBoard(),
@@ -120,6 +123,7 @@ export default function App() {
     setBoard(boardCfg);
     setDevelopers(devs);
     setColumns(cols);
+    setGroups(savedGroups);
     setBoards(savedBoards);
     setActiveBoardId(activeId);
     setShownBoardId(activeId);
@@ -673,6 +677,8 @@ export default function App() {
             onBoardChange={setBoard}
             onDevelopersChange={setDevelopers}
             onColumnsChange={setColumns}
+            groups={groups}
+            onGroupsChange={setGroups}
             onBoardsChange={setBoards}
             onActiveBoardChange={setActiveBoardId}
             onReloadAll={() => void loadSettings()}
@@ -704,6 +710,8 @@ export default function App() {
             onMatrixChange={handleMatrixChange}
             onDevelopersChange={setDevelopers}
             onColumnsChange={setColumns}
+            groups={groups}
+            onGroupsChange={setGroups}
             participants={developers}
             columns={columns}
             boards={boards}

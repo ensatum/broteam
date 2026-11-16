@@ -4,6 +4,7 @@ import type { BrowserWindow } from 'electron';
 import type {
   BoardColumnConfig,
   BoardConfig,
+  ColumnGroup,
   Developer,
   SavedBoard,
   SnapshotPayload,
@@ -14,6 +15,8 @@ import {
   getActiveBoardLocalId,
   importSavedBoards,
   listColumns,
+  listColumnGroups,
+  importColumnGroups,
   listDevelopers,
   listDrafts,
   listIssueNotes,
@@ -45,6 +48,7 @@ export type AppBackup = {
     boards?: SavedBoard[];
     activeBoardLocalId?: number | null;
     columns: BoardColumnConfig[];
+    groups?: ColumnGroup[];
     developers: Developer[];
   };
   history?: Array<{ date: string; createdAt: string; payload: SnapshotPayload }>;
@@ -109,6 +113,7 @@ export function buildBackup(sections: BackupSections): AppBackup {
       boards: listSavedBoards(),
       activeBoardLocalId: getActiveBoardLocalId(),
       columns: listColumns(),
+      groups: listColumnGroups(),
       developers: listDevelopers(),
     };
   }
@@ -213,6 +218,7 @@ export function applyBackup(backup: AppBackup, sections: BackupSections): string
           summary: d.summary == null ? d.role === 'developer' || d.role === 'qa' : Boolean(d.summary),
         })),
       );
+      importColumnGroups(settings.groups || []);
       replaceColumns(
         settings.columns.map((c, index) => ({
           columnId: c.columnId,
@@ -220,6 +226,7 @@ export function applyBackup(backup: AppBackup, sections: BackupSections): string
           statusKey: c.statusKey,
           statusDisplay: c.statusDisplay,
           sourceStatuses: c.sourceStatuses || [],
+          groupId: c.groupId ?? null,
           alias: c.alias,
           color: c.color,
           enabled: c.enabled,

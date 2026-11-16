@@ -58,6 +58,8 @@ export type BoardColumnConfig = {
   statusDisplay: string;
   /** Tracker statuses the board column accepts. Empty on rows saved before this field. */
   sourceStatuses: Array<{ key: string; display: string }>;
+  /** column_groups.id. Null means the column stands on its own. */
+  groupId: number | null;
   alias: string;
   color: string;
   enabled: boolean;
@@ -68,6 +70,15 @@ export type BoardColumnConfig = {
   duty: ColumnDuty;
   /** Разработчик or Тестировщик. Empty means the column is not active work for a role. */
   ownerRole: ColumnOwnerRole;
+};
+
+export type ColumnGroup = {
+  id: number;
+  boardLocalId: number;
+  name: string;
+  color: string;
+  sortOrder: number;
+  collapsed: boolean;
 };
 
 export type SavedBoard = {

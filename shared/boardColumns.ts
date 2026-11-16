@@ -108,6 +108,7 @@ export function viewColumns(columns: BoardColumnConfig[]): BoardColumnConfig[] {
       color: named.color || prev.color,
       duty: named.duty || prev.duty,
       ownerRole: named.ownerRole || prev.ownerRole,
+      groupId: named.groupId ?? prev.groupId ?? null,
       statusDisplay: column.columnName || prev.statusDisplay,
       sourceStatuses,
     });
@@ -149,6 +150,7 @@ export function freshBoardColumns(
         display: status.display || column.name,
       })),
       alias: shortAlias(column.name),
+      groupId: null,
       color: COLUMN_COLORS[rows.length % COLUMN_COLORS.length],
       duty: '',
       ownerRole: '',

@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useRef, useState, type DragEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import type {
   BoardColumnConfig,
   BoardConfig,
+  ColumnGroup,
   Developer,
   SavedBoard,
   TrackerBoard,
@@ -12,6 +13,7 @@ import type {
 } from '@shared/types';
 import type { AppUpdateProgress } from '@shared/appUpdate';
 import { freshBoardColumns } from '@shared/boardColumns';
+import { coalesceColumns, moveGroupBefore, placeColumn } from '@shared/columnGroups';
 import { excludedTypeKeys, typeIsExcluded } from '@shared/issueTypeFilter';
 import { DEFAULT_GITHUB, DEVELOPER_TONE_PRESETS, PARTICIPANT_ROLES, normalizeDeveloperTone } from '@shared/types';
 import { sessionLog } from '../sessionLog';
@@ -53,6 +55,8 @@ type Props = {
   onBoardChange: (b: BoardConfig) => void;
   onDevelopersChange: (d: Developer[]) => void;
   onColumnsChange: (c: BoardColumnConfig[]) => void;
+  groups: ColumnGroup[];
+  onGroupsChange: (groups: ColumnGroup[]) => void;
   onBoardsChange: (boards: SavedBoard[]) => void;
   onActiveBoardChange: (id: number | null) => void;
   onReloadAll?: () => void;
@@ -72,13 +76,14 @@ export default function SettingsPage(props: Props) {
   );
   const [colDraft, setColDraft] = useState(props.columns);
   const columnDraftHold = useRef<BoardColumnConfig[] | null>(null);
+  const dragColumnKey = useRef<string | null>(null);
   const [userQuery, setUserQuery] = useState('');
   const [userResults, setUserResults] = useState<TrackerUser[]>([]);
   const [savedBoards, setSavedBoards] = useState<SavedBoard[]>(props.boards);
   const [boardHits, setBoardHits] = useState<TrackerBoard[]>([]);
   const [boardSearch, setBoardSearch] = useState('');
   const [boardSearchError, setBoardSearchError] = useState<string | null>(null);
-  const [columnListsOpen, setColumnListsOpen] = useState<Record<number, boolean>>({});
+  const [boardTab, setBoardTab] = useState<number | null>(props.activeBoardId);
   const [busy, setBusy] = useState(false);
   const [importSections, setImportSections] = useState<BackupChoice>(() => ({
     settings: false,
@@ -137,6 +142,20 @@ export default function SettingsPage(props: Props) {
   useEffect(() => setBoardDraft(props.board), [props.board]);
   useEffect(() => setSavedBoards(props.boards), [props.boards]);
   useEffect(() => setDevDraft(props.developers), [props.developers]);
+  useEffect(() => {
+    if (boardTab != null && savedBoards.some((board) => board.id === boardTab)) return;
+    const next =
+      savedBoards.find((board) => board.id === props.activeBoardId)?.id ?? savedBoards[0]?.id ?? null;
+    setBoardTab(next);
+  }, [savedBoards, boardTab, props.activeBoardId]);
+  useEffect(() => {
+    const board = savedBoards.find((item) => item.id === boardTab);
+    if (!board || issueTypes[board.id]) return;
+    void window.api
+      .listBoardIssueTypes(board.trackerBoardId, board.queueKey)
+      .then((types) => setIssueTypes((prev) => ({ ...prev, [board.id]: types })))
+      .catch((error: unknown) => publishErr('boards', error));
+  }, [boardTab, savedBoards, issueTypes]);
   useEffect(() => {
     if (columnDraftHold.current) {
       setColDraft(columnDraftHold.current);
@@ -421,7 +440,10 @@ export default function SettingsPage(props: Props) {
       }
       setBoardHits([]);
       setBoardSearch('');
-      if (added) await loadColumns(added.id, added.trackerBoardId, added.queueKey, added.issueTypeFilter);
+      if (added) {
+        setBoardTab(added.id);
+        await loadColumns(added.id, added.trackerBoardId, added.queueKey, added.issueTypeFilter);
+      }
       publishOk('boards', `Добавлена доска ${board.name}#${board.id}`);
     } catch (e) {
       publishErr('boards', e);
@@ -510,6 +532,7 @@ export default function SettingsPage(props: Props) {
         ordered.push({
           ...incoming,
           alias: kept.alias,
+          groupId: kept.groupId ?? null,
           color: kept.color,
           duty: kept.duty,
           ownerRole: kept.ownerRole,
@@ -564,6 +587,40 @@ export default function SettingsPage(props: Props) {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function saveBoardGroups(boardId: number, nextBoardColumns: BoardColumnConfig[], nextGroups: ColumnGroup[]) {
+    const saved = await window.api.saveColumnGroups(
+      boardId,
+      nextGroups.map((group, index) => ({
+        id: group.id > 0 ? group.id : undefined,
+        name: group.name,
+        color: group.color,
+        sortOrder: index,
+        collapsed: group.collapsed,
+        statusKeys: nextBoardColumns
+          .filter((column) => column.groupId === group.id)
+          .map((column) => column.statusKey),
+      })),
+      nextBoardColumns.map((column) => column.statusKey),
+    );
+    const merged = saved.columns.map((column) => {
+      const edited = colDraft.find(
+        (item) => item.boardLocalId === column.boardLocalId && item.statusKey === column.statusKey,
+      );
+      if (!edited) return column;
+      return {
+        ...column,
+        alias: edited.alias,
+        color: edited.color,
+        duty: edited.duty,
+        ownerRole: edited.ownerRole,
+      };
+    });
+    columnDraftHold.current = merged;
+    props.onColumnsChange(saved.columns);
+    props.onGroupsChange(saved.groups);
+    setColDraft(merged);
   }
 
   async function saveBoardSettings() {
@@ -944,7 +1001,7 @@ export default function SettingsPage(props: Props) {
         busy={busy}
         onSave={props.onScheduleSave}
       />
-      <SettingsSection title="Доски" note={noteFor('boards')}>
+      <SettingsSection title="Добавленные доски" note={noteFor('boards')}>
 
         <div className="space-y-2">
           <p className="text-xs text-slate-500">Название доски, ключ очереди или id. Регистр не важен.</p>
@@ -1004,25 +1061,43 @@ export default function SettingsPage(props: Props) {
           Не переносить заголовки колонок в таблице на новую строку
         </label>
 
+        {savedBoards.length > 0 && (
+          <div className="flex flex-wrap gap-1 border-b border-slate-200">
+            {savedBoards.map((board) => {
+              const selected = board.id === boardTab;
+              const label = (board.alias || '').trim() || board.name;
+              return (
+                <button
+                  key={board.id}
+                  type="button"
+                  className={`border-b-2 px-3 py-1.5 text-sm ${
+                    selected
+                      ? 'border-slate-900 font-medium text-slate-900'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                  onClick={() => setBoardTab(board.id)}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="space-y-3">
           {savedBoards.map((board) => {
-            const boardColumns = colDraft.filter((c) => c.boardLocalId === board.id);
-            const columnsOpen = columnListsOpen[board.id] === true;
+            if (board.id !== boardTab) return null;
+            const boardColumns = colDraft
+              .filter((c) => c.boardLocalId === board.id)
+              .slice()
+              .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+            const boardGroups = props.groups
+              .filter((group) => group.boardLocalId === board.id)
+              .slice()
+              .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
             return (
               <div key={board.id} className="overflow-hidden rounded border border-slate-200">
-                <div
-                  className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-sm hover:bg-slate-100"
-                  onClick={() => {
-                    const open = !columnsOpen;
-                    setColumnListsOpen((prev) => ({ ...prev, [board.id]: open }));
-                    if (open && !issueTypes[board.id]) {
-                      void window.api
-                        .listBoardIssueTypes(board.trackerBoardId, board.queueKey)
-                        .then((types) => setIssueTypes((prev) => ({ ...prev, [board.id]: types })))
-                        .catch((error: unknown) => publishErr('boards', error));
-                    }
-                  }}
-                >
+                <div className="flex items-center gap-2 px-2 py-1.5 text-sm">
                   <button
                     type="button"
                     title={boardColumns.length ? 'Обновить колонки' : 'Загрузить колонки'}
@@ -1035,10 +1110,20 @@ export default function SettingsPage(props: Props) {
                   >
                     <RefreshIcon className="h-4 w-4" />
                   </button>
-                  <span className="min-w-0 truncate font-medium text-slate-900">
+                  <a
+                    className="min-w-0 truncate font-medium text-slate-900 underline"
+                    href={`https://tracker.yandex.ru/agile/board/${board.trackerBoardId}`}
+                    title="Открыть доску в Трекере"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      void window.api.openExternal(
+                        `https://tracker.yandex.ru/agile/board/${board.trackerBoardId}`,
+                      );
+                    }}
+                  >
                     {board.name}#{board.trackerBoardId}
-                  </span>
-                  <span onClick={(event) => event.stopPropagation()}>
+                  </a>
+                  <span>
                     <ColorField
                       value={board.color || '#64748b'}
                       onChange={(hex) => {
@@ -1052,7 +1137,6 @@ export default function SettingsPage(props: Props) {
                     className="h-7 w-36 shrink-0 rounded border border-slate-300 px-2 text-xs"
                     placeholder="Своё название"
                     value={board.alias || ''}
-                    onClick={(event) => event.stopPropagation()}
                     onChange={(event) => {
                       const alias = event.target.value;
                       setSavedBoards((prev) =>
@@ -1074,16 +1158,12 @@ export default function SettingsPage(props: Props) {
                     type="button"
                     title="Удалить"
                     className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-red-300 text-red-600 hover:bg-red-50"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void removeBoard(board.id);
-                    }}
+                    onClick={() => void removeBoard(board.id)}
                   >
                     <TrashIcon className="h-4 w-4" />
                   </button>
                 </div>
-                {columnsOpen && (
-                <div className="space-y-1 border-t border-slate-100 px-2 py-2">
+                <div className="space-y-2 border-t border-slate-100 px-2 py-2">
                   <div className="space-y-1 pb-1">
                     <div className="text-xs text-slate-500">Типы задач</div>
                     {issueTypes[board.id] == null ? (
@@ -1128,6 +1208,14 @@ export default function SettingsPage(props: Props) {
                       По умолчанию отмечены все. Снятый тип убирает его статусы из колонок.
                     </p>
                   </div>
+                  <ColumnGroupList
+                    boardId={board.id}
+                    columns={boardColumns}
+                    groups={boardGroups}
+                    busy={busy}
+                    onSave={(nextColumns, nextGroups) => saveBoardGroups(board.id, nextColumns, nextGroups)}
+                    onError={(error) => publishErr('boards', error)}
+                  />
                   {boardColumns.map((c) => {
                     const index = colDraft.findIndex(
                       (item) => item.boardLocalId === c.boardLocalId && item.statusKey === c.statusKey,
@@ -1136,7 +1224,34 @@ export default function SettingsPage(props: Props) {
                       <div
                         key={`${c.boardLocalId}-${c.statusKey}`}
                         className="flex items-center gap-2 rounded border border-slate-100 p-2 text-sm"
+                        onDragOver={(event) => {
+                          if (!dragColumnKey.current) return;
+                          event.preventDefault();
+                        }}
+                        onDrop={(event) => {
+                          const from = dragColumnKey.current;
+                          dragColumnKey.current = null;
+                          if (!from || from === c.statusKey) return;
+                          void saveBoardGroups(board.id, placeColumn(boardColumns, from, c.statusKey), boardGroups).catch(
+                            (error: unknown) => publishErr('boards', error),
+                          );
+                        }}
                       >
+                        <span
+                          draggable={!busy}
+                          title="Перетащить"
+                          className="cursor-grab select-none px-0.5 text-slate-400"
+                          onDragStart={(event) => {
+                            dragColumnKey.current = c.statusKey;
+                            event.dataTransfer.effectAllowed = 'move';
+                            event.dataTransfer.setData('text/plain', c.statusKey);
+                          }}
+                          onDragEnd={() => {
+                            dragColumnKey.current = null;
+                          }}
+                        >
+                          ☰
+                        </span>
                         <ColorField
                           value={c.color}
                           onChange={(hex) => {
@@ -1214,7 +1329,6 @@ export default function SettingsPage(props: Props) {
                     <div className="text-sm text-slate-500">Колонки ещё не загружены</div>
                   )}
                 </div>
-                )}
               </div>
             );
           })}
@@ -1741,4 +1855,191 @@ function sameColumnStructure(saved: BoardColumnConfig[], next: BoardColumnConfig
     }
   }
   return true;
+}
+
+function ColumnGroupList(props: {
+  boardId: number;
+  columns: BoardColumnConfig[];
+  groups: ColumnGroup[];
+  busy: boolean;
+  onSave: (columns: BoardColumnConfig[], groups: ColumnGroup[]) => Promise<void>;
+  onError: (error: unknown) => void;
+}) {
+  const dragGroupId = useRef<number | null>(null);
+  const [names, setNames] = useState<Record<number, string>>({});
+  async function save(columns: BoardColumnConfig[], groups: ColumnGroup[]) {
+    try {
+      await props.onSave(columns, groups);
+    } catch (error) {
+      props.onError(error);
+    }
+  }
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-slate-500">Группы колонок</span>
+        <button
+          type="button"
+          className="text-sm text-emerald-700 underline disabled:opacity-50"
+          disabled={props.busy}
+          onClick={() =>
+            void save(props.columns, [
+              ...props.groups,
+              {
+                id: 0,
+                boardLocalId: props.boardId,
+                name: 'Группа',
+                color: '#64748b',
+                sortOrder: props.groups.length,
+                collapsed: false,
+              },
+            ])
+          }
+        >
+          Новая группа
+        </button>
+      </div>
+      {props.groups.map((group) => {
+        const members = props.columns.filter((column) => column.groupId === group.id);
+        const free = props.columns.filter((column) => column.groupId !== group.id);
+        return (
+          <div
+            key={group.id}
+            className="space-y-2 rounded border border-slate-100 p-2"
+            onDragOver={(event) => {
+              if (dragGroupId.current == null) return;
+              event.preventDefault();
+            }}
+            onDrop={(event) => {
+              const fromId = dragGroupId.current;
+              dragGroupId.current = null;
+              if (fromId == null || fromId === group.id) return;
+              const from = props.groups.findIndex((item) => item.id === fromId);
+              const to = props.groups.findIndex((item) => item.id === group.id);
+              if (from < 0 || to < 0) return;
+              const anchor = props.columns.find((column) => column.groupId === group.id);
+              const nextColumns = anchor
+                ? moveGroupBefore(props.columns, fromId, anchor.statusKey)
+                : props.columns;
+              const rank = new Map<number, number>();
+              nextColumns.forEach((column, index) => {
+                if (column.groupId != null && !rank.has(column.groupId)) rank.set(column.groupId, index);
+              });
+              const nextGroups = anchor
+                ? [...props.groups].sort(
+                    (a, b) => (rank.get(a.id) ?? a.sortOrder) - (rank.get(b.id) ?? b.sortOrder) || a.id - b.id,
+                  )
+                : (() => {
+                    const copy = [...props.groups];
+                    const [moved] = copy.splice(from, 1);
+                    copy.splice(to, 0, moved);
+                    return copy;
+                  })();
+              void save(nextColumns, nextGroups);
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <span
+                draggable={!props.busy}
+                title="Перетащить"
+                className="cursor-grab select-none px-0.5 text-slate-400"
+                onDragStart={(event: DragEvent) => {
+                  dragGroupId.current = group.id;
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('text/plain', String(group.id));
+                }}
+                onDragEnd={() => {
+                  dragGroupId.current = null;
+                }}
+              >
+                ☰
+              </span>
+              <ColorField
+                value={group.color || '#64748b'}
+                onChange={(hex) =>
+                  void save(
+                    props.columns,
+                    props.groups.map((item) => (item.id === group.id ? { ...item, color: hex } : item)),
+                  )
+                }
+              />
+              <input
+                className="h-8 min-w-0 flex-1 rounded border border-slate-300 px-2 text-sm"
+                value={names[group.id] ?? group.name}
+                onChange={(event) => setNames((prev) => ({ ...prev, [group.id]: event.target.value }))}
+                onBlur={() => {
+                  const name = (names[group.id] ?? group.name).trim() || 'Группа';
+                  if (name === group.name) return;
+                  void save(
+                    props.columns,
+                    props.groups.map((item) => (item.id === group.id ? { ...item, name } : item)),
+                  );
+                }}
+              />
+              <button
+                type="button"
+                title="Удалить"
+                className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-red-300 text-red-600 hover:bg-red-50"
+                onClick={() =>
+                  void save(
+                    coalesceColumns(props.columns.map((column) =>
+                      column.groupId === group.id ? { ...column, groupId: null } : column,
+                    )),
+                    props.groups.filter((item) => item.id !== group.id),
+                  )
+                }
+              >
+                <TrashIcon className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              {members.map((column) => (
+                <button
+                  key={column.statusKey}
+                  type="button"
+                  className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-700"
+                  title="Убрать из группы"
+                  onClick={() =>
+                    void save(
+                      coalesceColumns(
+                        props.columns.map((item) =>
+                          item.statusKey === column.statusKey ? { ...item, groupId: null } : item,
+                        ),
+                      ),
+                      props.groups,
+                    )
+                  }
+                >
+                  {(column.alias || '').trim() || column.columnName} ×
+                </button>
+              ))}
+              <select
+                className="h-7 rounded border border-slate-300 bg-white px-1 text-xs text-slate-700"
+                value=""
+                onChange={(event) => {
+                  const statusKey = event.target.value;
+                  if (!statusKey) return;
+                  void save(
+                    coalesceColumns(
+                      props.columns.map((column) =>
+                        column.statusKey === statusKey ? { ...column, groupId: group.id } : column,
+                      ),
+                    ),
+                    props.groups,
+                  );
+                }}
+              >
+                <option value="">Добавить колонку</option>
+                {free.map((column) => (
+                  <option key={column.statusKey} value={column.statusKey}>
+                    {(column.alias || '').trim() || column.columnName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }

@@ -12,6 +12,8 @@ import {
   getSnapshotById,
   initDb,
   listColumns,
+  listColumnGroups,
+  replaceColumnGroups,
   listDevelopers,
   listSavedBoards,
   replaceSavedBoards,
@@ -558,6 +560,23 @@ function registerIpc(): void {
   );
 
   ipcMain.handle('columns:list', () => listColumns());
+  ipcMain.handle('columns:listGroups', () => listColumnGroups());
+  ipcMain.handle(
+    'columns:saveGroups',
+    (
+      _e,
+      boardLocalId: number,
+      drafts: Array<{
+        id?: number;
+        name: string;
+        color: string;
+        sortOrder: number;
+        collapsed: boolean;
+        statusKeys: string[];
+      }>,
+      columnOrder?: string[],
+    ) => replaceColumnGroups(boardLocalId, drafts, columnOrder),
+  );
   ipcMain.handle(
     'columns:replace',
     (_e, columns: Array<Omit<BoardColumnConfig, 'id'> & { id?: number }>) => {
