@@ -22,6 +22,7 @@ import { TrackerClient, buildIssuesQuery } from './tracker';
 import type { BoardMatrix, Developer, TrackerIssue, TrackerSprint } from '../shared/types';
 import { OTHERS_ROW_ID, UNASSIGNED_ROW_ID } from '../shared/types';
 import { freshBoardColumns } from '../shared/boardColumns';
+import { issueTypeNames } from '../shared/issueTypeFilter';
 import { issueIsDone } from '../shared/columnMeta';
 import { sessionLog } from './sessionLog';
 import {
@@ -323,7 +324,12 @@ export async function buildLiveMatrix(options?: {
   const client = new TrackerClient(connection);
   if (activeBoardId != null && board.boardId) {
     try {
-      const remote = await client.getBoardColumns(board.boardId);
+      const savedBoard = listSavedBoards().find((item) => item.id === activeBoardId);
+      const remote = await client.getBoardColumns(
+        board.boardId,
+        savedBoard?.queueKey || board.queueKey,
+        issueTypeNames(savedBoard?.issueTypeFilter),
+      );
       const known = new Set(columns.map((column) => column.statusKey));
       let order = columns.reduce((max, column) => Math.max(max, column.sortOrder), -1) + 1;
       const additions = freshBoardColumns(remote, activeBoardId)

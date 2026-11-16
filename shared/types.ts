@@ -77,6 +77,11 @@ export type SavedBoard = {
   /** Accent for the board tab and summary badge. Empty keeps the neutral tab. */
   color: string;
   queueKey: string;
+  /**
+   * Comma-separated issue type names whose workflow statuses this board keeps.
+   * Empty keeps «Задача» and «Ошибка».
+   */
+  issueTypeFilter: string;
   enabled: boolean;
   sortOrder: number;
 };

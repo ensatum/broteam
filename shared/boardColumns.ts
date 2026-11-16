@@ -22,6 +22,20 @@ export function shortAlias(name: string): string {
   return map[name] || name.slice(0, 10);
 }
 
+/** Drop statuses that are not steps of the selected issue-type workflows. */
+export function keepStatuses(
+  remote: TrackerBoardColumn[],
+  allowed: ReadonlySet<string>,
+): TrackerBoardColumn[] {
+  const kept: TrackerBoardColumn[] = [];
+  for (const column of remote) {
+    const statuses = column.statuses.filter((status) => allowed.has(status.key));
+    if (!statuses.length) continue;
+    kept.push(statuses.length === column.statuses.length ? column : { ...column, statuses });
+  }
+  return kept;
+}
+
 /** One row per status, in the order Tracker lists the board columns. */
 export function freshBoardColumns(
   remote: TrackerBoardColumn[],

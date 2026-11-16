@@ -6,6 +6,8 @@ import type {
   TrackerSprint,
   TrackerUser,
 } from '../shared/types';
+import { keepStatuses } from '../shared/boardColumns';
+import { issueTypeNames, sameIssueTypeName } from '../shared/issueTypeFilter';
 import { collectPersonMatchKeys } from '../shared/personDisplay';
 import { trackRequestEnd, trackRequestStart } from './trackerActivity';
 import { noteRunRequest } from './trackerRuns';
@@ -77,6 +79,47 @@ function queueAlreadyListed(boards: Iterable<TrackerBoard>, queueKey: string): b
     if (board.queueKey?.trim().toLowerCase() === q) return true;
   }
   return false;
+}
+
+type QueueFilter = {
+  fieldValues?: Array<{
+    id?: string;
+    key?: string;
+    value?: Array<{ fixed?: { key?: string } }>;
+  }>;
+};
+
+type WorkflowType = { key: string; display: string };
+
+type WorkflowBody = {
+  steps?: Array<{ status?: { key?: string } | string }>;
+};
+
+/** Queue `workflows` is a map of workflow id to the issue types that use it. */
+function workflowBindings(workflows: unknown): Array<{ id: string; types: WorkflowType[] }> {
+  const bindings: Array<{ id: string; types: WorkflowType[] }> = [];
+  const push = (id: string, types: unknown) => {
+    if (!id || !Array.isArray(types)) return;
+    const parsed: WorkflowType[] = [];
+    for (const type of types) {
+      if (!type || typeof type !== 'object') continue;
+      const key = String((type as { key?: string }).key || '').trim();
+      const display = String((type as { display?: string }).display || '').trim();
+      if (key || display) parsed.push({ key, display });
+    }
+    if (parsed.length) bindings.push({ id, types: parsed });
+  };
+  if (Array.isArray(workflows)) {
+    for (const item of workflows) {
+      if (!item || typeof item !== 'object') continue;
+      const row = item as { id?: string; issueTypes?: unknown; types?: unknown };
+      push(String(row.id || ''), row.issueTypes ?? row.types);
+    }
+    return bindings;
+  }
+  if (!workflows || typeof workflows !== 'object') return bindings;
+  for (const [id, types] of Object.entries(workflows)) push(id, types);
+  return bindings;
 }
 
 export class TrackerClient {
@@ -450,23 +493,136 @@ export class TrackerClient {
     return types;
   }
 
-  async getBoardColumns(boardId: number): Promise<TrackerBoardColumn[]> {
-    const columns = await this.request<
-      Array<{
-        id: string | number;
-        display?: string;
-        name?: string;
-        statuses?: Array<{ key: string; display: string }>;
-      }>
-    >(`/v2/boards/${boardId}/columns`);
-    return columns.map((c) => ({
-      id: String(c.id),
-      name: c.display || c.name || String(c.id),
-      statuses: (c.statuses || []).map((s) => ({
-        key: s.key,
-        display: s.display,
+  async getBoardColumns(
+    boardId: number,
+    queueKey?: string,
+    typeNames?: string[],
+  ): Promise<TrackerBoardColumn[]> {
+    const [columns, queues] = await Promise.all([
+      this.request<
+        Array<{
+          id: string | number;
+          display?: string;
+          name?: string;
+          statuses?: Array<{ key: string; display: string }>;
+        }>
+      >(`/v2/boards/${boardId}/columns`),
+      this.boardQueueKeys(boardId, queueKey),
+    ]);
+    const allowed = await this.statusKeysForTypes(queues, issueTypeNames(typeNames));
+    return keepStatuses(
+      columns.map((c) => ({
+        id: String(c.id),
+        name: c.display || c.name || String(c.id),
+        statuses: (c.statuses || []).map((s) => ({
+          key: s.key,
+          display: s.display,
+        })),
       })),
-    }));
+      allowed,
+    );
+  }
+
+  /** Saved queue plus every queue named in the board filter. */
+  private async boardQueueKeys(boardId: number, queueKey?: string): Promise<string[]> {
+    const keys = new Set<string>();
+    const add = (value: unknown) => {
+      if (typeof value !== 'string') return;
+      const key = value.trim();
+      if (key) keys.add(key);
+    };
+    add(queueKey);
+    try {
+      const board = await this.request<{
+        queues?: Array<{ key?: string }>;
+        autoFilterSettings?: {
+          addFilterSettings?: { liveFilter?: QueueFilter };
+          addActionSettings?: { liveFilter?: QueueFilter };
+        };
+      }>(`/v2/boards/${boardId}`, { retries: 1, timeoutMs: BOARD_LOOKUP_TIMEOUT_MS });
+      for (const queue of board.queues || []) add(queue.key);
+      const filters = [
+        board.autoFilterSettings?.addFilterSettings?.liveFilter,
+        board.autoFilterSettings?.addActionSettings?.liveFilter,
+      ];
+      for (const filter of filters) {
+        for (const field of filter?.fieldValues || []) {
+          if (field.key !== 'queue' && field.id !== 'queue') continue;
+          for (const value of field.value || []) add(value.fixed?.key);
+        }
+      }
+    } catch (error) {
+      if (keys.size) return [...keys];
+      throw error;
+    }
+    if (!keys.size) throw new Error('У доски не указана очередь, фильтр типов применить нельзя.');
+    return [...keys];
+  }
+
+  /** Status keys from the workflows bound to the named issue types. */
+  private async statusKeysForTypes(queueKeys: string[], typeNames: string[]): Promise<Set<string>> {
+    const loaded = await Promise.allSettled(
+      queueKeys.map((queueKey) =>
+        this.request<{ workflows?: unknown }>(`/v3/queues/${encodeURIComponent(queueKey)}`, {
+          query: { expand: 'workflows' },
+          retries: 1,
+          timeoutMs: BOARD_LOOKUP_TIMEOUT_MS,
+        }),
+      ),
+    );
+    const workflowsByQueue: unknown[] = [];
+    const readable: string[] = [];
+    for (const [index, result] of loaded.entries()) {
+      if (result.status === 'fulfilled') {
+        readable.push(queueKeys[index]);
+        workflowsByQueue.push(result.value.workflows);
+        continue;
+      }
+      const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      if (/\bTracker API (403|404)\b/.test(message)) continue;
+      throw result.reason;
+    }
+    if (!workflowsByQueue.length) {
+      throw new Error(`Не удалось прочитать флоу ${queueKeys.join(', ')}.`);
+    }
+    const found = new Set<string>();
+    const workflowIds = new Set<string>();
+    for (const workflows of workflowsByQueue) {
+      for (const workflow of workflowBindings(workflows)) {
+        const hits = workflow.types.filter((type) =>
+          typeNames.some((name) => sameIssueTypeName(type.key, type.display, name)),
+        );
+        if (!hits.length) continue;
+        for (const type of hits) {
+          found.add(type.key.trim().toLowerCase());
+          found.add(type.display.trim().toLowerCase());
+        }
+        workflowIds.add(workflow.id);
+      }
+    }
+    const missing = typeNames.filter((name) => !found.has(name.trim().toLowerCase()));
+    if (missing.length) {
+      const where = readable.length > 1 ? `очередях ${readable.join(', ')}` : `очереди ${readable[0]}`;
+      throw new Error(`В ${where} нет типа «${missing.join('», «')}».`);
+    }
+    const workflows = await Promise.all(
+      [...workflowIds].map((id) =>
+        this.request<WorkflowBody>(`/v3/workflows/${encodeURIComponent(id)}`, {
+          retries: 1,
+          timeoutMs: BOARD_LOOKUP_TIMEOUT_MS,
+        }),
+      ),
+    );
+    const statuses = new Set<string>();
+    for (const workflow of workflows) {
+      for (const step of workflow.steps || []) {
+        const status = step.status;
+        const key = typeof status === 'string' ? status : status?.key || '';
+        if (key.trim()) statuses.add(key.trim());
+      }
+    }
+    if (!statuses.size) throw new Error(`У типов ${typeNames.join(', ')} нет статусов.`);
+    return statuses;
   }
 
   async getBoardSprints(boardId: number): Promise<TrackerSprint[]> {

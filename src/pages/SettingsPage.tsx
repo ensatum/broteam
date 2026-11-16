@@ -12,6 +12,7 @@ import type {
 } from '@shared/types';
 import type { AppUpdateProgress } from '@shared/appUpdate';
 import { freshBoardColumns } from '@shared/boardColumns';
+import { issueTypeNames } from '@shared/issueTypeFilter';
 import { DEFAULT_GITHUB, DEVELOPER_TONE_PRESETS, PARTICIPANT_ROLES, normalizeDeveloperTone } from '@shared/types';
 import { sessionLog } from '../sessionLog';
 import ColorField from '../components/ColorField';
@@ -401,6 +402,7 @@ export default function SettingsPage(props: Props) {
           alias: '',
           color: '',
           queueKey: board.queueKey || '',
+          issueTypeFilter: '',
           enabled: true,
           sortOrder: savedBoards.length,
         },
@@ -417,7 +419,7 @@ export default function SettingsPage(props: Props) {
       }
       setBoardHits([]);
       setBoardSearch('');
-      if (added) await loadColumns(added.id, added.trackerBoardId);
+      if (added) await loadColumns(added.id, added.trackerBoardId, added.queueKey, added.issueTypeFilter);
       publishOk('boards', `Добавлена доска ${board.name}#${board.id}`);
     } catch (e) {
       publishErr('boards', e);
@@ -462,11 +464,20 @@ export default function SettingsPage(props: Props) {
     }
   }
 
-  async function loadColumns(localId: number, trackerBoardId: number) {
+  async function loadColumns(
+    localId: number,
+    trackerBoardId: number,
+    queueKey: string,
+    issueTypeFilter: string,
+  ) {
     setBusy(true);
     props.onError(null);
     try {
-      const cols = await window.api.getBoardColumns(trackerBoardId);
+      const cols = await window.api.getBoardColumns(
+        trackerBoardId,
+        queueKey,
+        issueTypeNames(issueTypeFilter),
+      );
       const mapped: BoardColumnConfig[] = freshBoardColumns(cols, localId).map((column) => ({
         ...column,
         id: 0,
@@ -580,8 +591,18 @@ export default function SettingsPage(props: Props) {
   const boardsDirty =
     Boolean(boardDraft.columnHeadersNoWrap) !== Boolean(props.board.columnHeadersNoWrap) ||
     JSON.stringify(colDraft) !== JSON.stringify(props.columns) ||
-    JSON.stringify(savedBoards.map((board) => ({ id: board.id, alias: board.alias || '', color: board.color || '' }))) !==
-      JSON.stringify(props.boards.map((board) => ({ id: board.id, alias: board.alias || '', color: board.color || '' })));
+    JSON.stringify(savedBoards.map((board) => ({
+      id: board.id,
+      alias: board.alias || '',
+      color: board.color || '',
+      issueTypeFilter: board.issueTypeFilter || '',
+    }))) !==
+      JSON.stringify(props.boards.map((board) => ({
+        id: board.id,
+        alias: board.alias || '',
+        color: board.color || '',
+        issueTypeFilter: board.issueTypeFilter || '',
+      })));
 
   return (
     <div className="flex w-full items-start gap-6">
@@ -985,7 +1006,7 @@ export default function SettingsPage(props: Props) {
                     disabled={busy}
                     onClick={(event) => {
                       event.stopPropagation();
-                      void loadColumns(board.id, board.trackerBoardId);
+                      void loadColumns(board.id, board.trackerBoardId, board.queueKey, board.issueTypeFilter);
                     }}
                   >
                     <RefreshIcon className="h-4 w-4" />
@@ -1039,6 +1060,34 @@ export default function SettingsPage(props: Props) {
                 </div>
                 {columnsOpen && (
                 <div className="space-y-1 border-t border-slate-100 px-2 py-2">
+                  <div className="space-y-1 pb-1">
+                    <label className="block text-xs text-slate-500" htmlFor={`board-types-${board.id}`}>
+                      Типы задач для статусов
+                    </label>
+                    <input
+                      id={`board-types-${board.id}`}
+                      className="h-8 w-full rounded border border-slate-300 px-2 text-sm"
+                      value={board.issueTypeFilter || ''}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={(event) => {
+                        const issueTypeFilter = event.target.value;
+                        setSavedBoards((prev) =>
+                          prev.map((item) => (item.id === board.id ? { ...item, issueTypeFilter } : item)),
+                        );
+                      }}
+                      onBlur={(event) => {
+                        const issueTypeFilter = event.target.value;
+                        void patchBoards(
+                          savedBoards.map((item) =>
+                            item.id === board.id ? { ...item, issueTypeFilter } : item,
+                          ),
+                        );
+                      }}
+                    />
+                    <p className="text-xs text-slate-500">
+                      Пусто — Задача и Ошибка. Свои типы через запятую: Story, Epic
+                    </p>
+                  </div>
                   {boardColumns.map((c) => {
                     const index = colDraft.findIndex(
                       (item) => item.boardLocalId === c.boardLocalId && item.statusKey === c.statusKey,

@@ -255,6 +255,9 @@ function migratePeopleAndBoards(database: Database.Database): void {
   if (!boardCols.some((column) => column.name === 'color')) {
     database.exec(`ALTER TABLE agile_boards ADD COLUMN color TEXT NOT NULL DEFAULT ''`);
   }
+  if (!boardCols.some((column) => column.name === 'issue_type_filter')) {
+    database.exec(`ALTER TABLE agile_boards ADD COLUMN issue_type_filter TEXT NOT NULL DEFAULT ''`);
+  }
 
   const boardCount = database.prepare(`SELECT COUNT(*) as c FROM agile_boards`).get() as { c: number };
   if (boardCount.c > 0) return;
@@ -632,7 +635,7 @@ export function listSavedBoards(): SavedBoard[] {
   const rows = getDb()
     .prepare(
       `SELECT id, tracker_board_id as trackerBoardId, name, alias, color, queue_key as queueKey,
-              enabled, sort_order as sortOrder
+              issue_type_filter as issueTypeFilter, enabled, sort_order as sortOrder
        FROM agile_boards ORDER BY sort_order ASC, id ASC`,
     )
     .all() as Array<{
@@ -642,6 +645,7 @@ export function listSavedBoards(): SavedBoard[] {
     alias: string | null;
     color: string | null;
     queueKey: string;
+    issueTypeFilter: string | null;
     enabled: number;
     sortOrder: number;
   }>;
@@ -652,6 +656,7 @@ export function listSavedBoards(): SavedBoard[] {
     alias: row.alias || '',
     color: row.color || '',
     queueKey: row.queueKey,
+    issueTypeFilter: row.issueTypeFilter || '',
     enabled: Boolean(row.enabled),
     sortOrder: row.sortOrder,
   }));
@@ -663,23 +668,44 @@ export function replaceSavedBoards(boards: Array<Omit<SavedBoard, 'id'> & { id?:
     const keep = new Set<number>();
     const update = database.prepare(
       `UPDATE agile_boards
-       SET tracker_board_id = ?, name = ?, alias = ?, color = ?, queue_key = ?, enabled = ?, sort_order = ?
+       SET tracker_board_id = ?, name = ?, alias = ?, color = ?, queue_key = ?, issue_type_filter = ?,
+           enabled = ?, sort_order = ?
        WHERE id = ?`,
     );
     const insert = database.prepare(
-      `INSERT INTO agile_boards(tracker_board_id, name, alias, color, queue_key, enabled, sort_order)
-       VALUES(?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO agile_boards(tracker_board_id, name, alias, color, queue_key, issue_type_filter, enabled, sort_order)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const [index, board] of boards.entries()) {
       const order = board.sortOrder ?? index;
       const enabled = board.enabled ? 1 : 0;
       const alias = board.alias || '';
       const color = board.color || '';
+      const issueTypeFilter = board.issueTypeFilter || '';
       if (board.id && database.prepare(`SELECT id FROM agile_boards WHERE id = ?`).get(board.id)) {
-        update.run(board.trackerBoardId, board.name, alias, color, board.queueKey, enabled, order, board.id);
+        update.run(
+          board.trackerBoardId,
+          board.name,
+          alias,
+          color,
+          board.queueKey,
+          issueTypeFilter,
+          enabled,
+          order,
+          board.id,
+        );
         keep.add(board.id);
       } else {
-        const info = insert.run(board.trackerBoardId, board.name, alias, color, board.queueKey, enabled, order);
+        const info = insert.run(
+          board.trackerBoardId,
+          board.name,
+          alias,
+          color,
+          board.queueKey,
+          issueTypeFilter,
+          enabled,
+          order,
+        );
         keep.add(Number(info.lastInsertRowid));
       }
     }
@@ -714,8 +740,10 @@ export function importSavedBoards(boards: SavedBoard[], activeLocalId: number | 
   const tx = database.transaction(() => {
     database.prepare('DELETE FROM agile_boards').run();
     const insert = database.prepare(
-      `INSERT INTO agile_boards(id, tracker_board_id, name, alias, color, queue_key, enabled, sort_order)
-       VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO agile_boards(
+         id, tracker_board_id, name, alias, color, queue_key, issue_type_filter, enabled, sort_order
+       )
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const [index, board] of boards.entries()) {
       insert.run(
@@ -725,6 +753,7 @@ export function importSavedBoards(boards: SavedBoard[], activeLocalId: number | 
         board.alias || '',
         board.color || '',
         board.queueKey || '',
+        board.issueTypeFilter || '',
         board.enabled ? 1 : 0,
         board.sortOrder ?? index,
       );
