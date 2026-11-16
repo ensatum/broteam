@@ -12,7 +12,7 @@ import type {
 } from '@shared/types';
 import type { AppUpdateProgress } from '@shared/appUpdate';
 import { freshBoardColumns } from '@shared/boardColumns';
-import { issueTypeNames } from '@shared/issueTypeFilter';
+import { excludedTypeKeys, typeIsExcluded } from '@shared/issueTypeFilter';
 import { DEFAULT_GITHUB, DEVELOPER_TONE_PRESETS, PARTICIPANT_ROLES, normalizeDeveloperTone } from '@shared/types';
 import { sessionLog } from '../sessionLog';
 import ColorField from '../components/ColorField';
@@ -97,6 +97,7 @@ export default function SettingsPage(props: Props) {
   const [section, setSection] = useState<SettingsTab>(props.initialSection ?? 'app');
   const sectionRef = useRef(section);
   sectionRef.current = section;
+  const [issueTypes, setIssueTypes] = useState<Record<number, Array<{ key: string; display: string }>>>({});
   const [notice, setNotice] = useState<{ section: SettingsTab; block: string; tone: 'ok' | 'err'; text: string } | null>(null);
   function publishOk(block: string, text: string) {
     const where = sectionRef.current;
@@ -104,7 +105,8 @@ export default function SettingsPage(props: Props) {
     sessionLog('info', 'settings', { section: where, block, text });
   }
   function publishErr(block: string, error: unknown) {
-    const text = error instanceof Error ? error.message : String(error);
+    const raw = error instanceof Error ? error.message : String(error);
+    const text = raw.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, '');
     const where = sectionRef.current;
     setNotice({ section: where, block, tone: 'err', text });
     sessionLog('error', 'settings', { section: where, block, text });
@@ -473,12 +475,13 @@ export default function SettingsPage(props: Props) {
     setBusy(true);
     props.onError(null);
     try {
-      const cols = await window.api.getBoardColumns(
+      const result = await window.api.getBoardColumns(
         trackerBoardId,
         queueKey,
-        issueTypeNames(issueTypeFilter),
+        excludedTypeKeys(issueTypeFilter),
       );
-      const mapped: BoardColumnConfig[] = freshBoardColumns(cols, localId).map((column) => ({
+      setIssueTypes((prev) => ({ ...prev, [localId]: result.issueTypes }));
+      const mapped: BoardColumnConfig[] = freshBoardColumns(result.columns, localId).map((column) => ({
         ...column,
         id: 0,
       }));
@@ -486,30 +489,44 @@ export default function SettingsPage(props: Props) {
         .filter((column) => column.boardLocalId === localId)
         .slice()
         .sort((a, b) => a.sortOrder - b.sortOrder);
-      const savedByKey = new Map(savedForBoard.map((column) => [column.statusKey, column]));
-      const ordered: BoardColumnConfig[] = [];
+      const grouped = new Map<string, BoardColumnConfig[]>();
       for (const saved of savedForBoard) {
-        const incoming = mapped.find((column) => column.statusKey === saved.statusKey);
+        const list = grouped.get(saved.columnId) || [];
+        list.push(saved);
+        grouped.set(saved.columnId, list);
+      }
+      const ordered: BoardColumnConfig[] = [];
+      const used = new Set<string>();
+      for (const saved of savedForBoard) {
+        if (used.has(saved.columnId)) continue;
+        const incoming = mapped.find((column) => column.columnId === saved.columnId);
         if (!incoming) continue;
+        used.add(saved.columnId);
+        const group = grouped.get(saved.columnId) || [saved];
+        const kept =
+          group.find((column) => column.statusKey === incoming.statusKey) ||
+          group.find((column) => column.statusDisplay === incoming.columnName) ||
+          group[0];
         ordered.push({
-          ...saved,
-          columnId: incoming.columnId,
-          columnName: incoming.columnName,
-          statusDisplay: incoming.statusDisplay,
+          ...incoming,
+          alias: kept.alias,
+          color: kept.color,
+          duty: kept.duty,
+          ownerRole: kept.ownerRole,
           enabled: true,
           sortOrder: ordered.length,
         });
       }
       for (const incoming of mapped) {
-        if (savedByKey.has(incoming.statusKey)) continue;
+        if (used.has(incoming.columnId)) continue;
         ordered.push({ ...incoming, sortOrder: ordered.length });
       }
       const draftByKey = new Map(
-        colDraft.map((column) => [`${column.boardLocalId}:${column.statusKey}`, column]),
+        colDraft.map((column) => [`${column.boardLocalId}:${column.columnId}`, column]),
       );
       const withDraftEdits = (columns: BoardColumnConfig[]) =>
         columns.map((column) => {
-          const edited = draftByKey.get(`${column.boardLocalId}:${column.statusKey}`);
+          const edited = draftByKey.get(`${column.boardLocalId}:${column.columnId}`);
           if (
             !edited ||
             (edited.alias === column.alias &&
@@ -995,9 +1012,16 @@ export default function SettingsPage(props: Props) {
               <div key={board.id} className="overflow-hidden rounded border border-slate-200">
                 <div
                   className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-sm hover:bg-slate-100"
-                  onClick={() =>
-                    setColumnListsOpen((prev) => ({ ...prev, [board.id]: !columnsOpen }))
-                  }
+                  onClick={() => {
+                    const open = !columnsOpen;
+                    setColumnListsOpen((prev) => ({ ...prev, [board.id]: open }));
+                    if (open && !issueTypes[board.id]) {
+                      void window.api
+                        .listBoardIssueTypes(board.trackerBoardId, board.queueKey)
+                        .then((types) => setIssueTypes((prev) => ({ ...prev, [board.id]: types })))
+                        .catch((error: unknown) => publishErr('boards', error));
+                    }
+                  }}
                 >
                   <button
                     type="button"
@@ -1061,31 +1085,47 @@ export default function SettingsPage(props: Props) {
                 {columnsOpen && (
                 <div className="space-y-1 border-t border-slate-100 px-2 py-2">
                   <div className="space-y-1 pb-1">
-                    <label className="block text-xs text-slate-500" htmlFor={`board-types-${board.id}`}>
-                      Типы задач для статусов
-                    </label>
-                    <input
-                      id={`board-types-${board.id}`}
-                      className="h-8 w-full rounded border border-slate-300 px-2 text-sm"
-                      value={board.issueTypeFilter || ''}
-                      onClick={(event) => event.stopPropagation()}
-                      onChange={(event) => {
-                        const issueTypeFilter = event.target.value;
-                        setSavedBoards((prev) =>
-                          prev.map((item) => (item.id === board.id ? { ...item, issueTypeFilter } : item)),
-                        );
-                      }}
-                      onBlur={(event) => {
-                        const issueTypeFilter = event.target.value;
-                        void patchBoards(
-                          savedBoards.map((item) =>
-                            item.id === board.id ? { ...item, issueTypeFilter } : item,
-                          ),
-                        );
-                      }}
-                    />
+                    <div className="text-xs text-slate-500">Типы задач</div>
+                    {issueTypes[board.id] == null ? (
+                      <p className="text-xs text-slate-500">Типы подгружаются при открытии доски.</p>
+                    ) : issueTypes[board.id].length ? (
+                      <div className="flex flex-wrap gap-x-3 gap-y-1">
+                        {issueTypes[board.id].map((type) => (
+                          <label key={type.key} className="flex items-center gap-1.5 text-sm text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={!typeIsExcluded(board.issueTypeFilter, type.key)}
+                              onChange={() => {
+                                const excluded = new Set(
+                                  excludedTypeKeys(board.issueTypeFilter).map((key) => key.toLowerCase()),
+                                );
+                                const id = type.key.toLowerCase();
+                                if (excluded.has(id)) excluded.delete(id);
+                                else excluded.add(id);
+                                const issueTypeFilter = issueTypes[board.id]
+                                  .filter((item) => excluded.has(item.key.toLowerCase()))
+                                  .map((item) => item.key)
+                                  .join(',');
+                                const next = savedBoards.map((item) =>
+                                  item.id === board.id ? { ...item, issueTypeFilter } : item,
+                                );
+                                setSavedBoards(next);
+                                void patchBoards(next).then(() =>
+                                  loadColumns(board.id, board.trackerBoardId, board.queueKey, issueTypeFilter),
+                                );
+                              }}
+                            />
+                            {type.display}
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500">
+                        Типы задач прочитать не удалось. Колонки остаются как на доске.
+                      </p>
+                    )}
                     <p className="text-xs text-slate-500">
-                      Пусто — Задача и Ошибка. Свои типы через запятую: Story, Epic
+                      По умолчанию отмечены все. Снятый тип убирает его статусы из колонок.
                     </p>
                   </div>
                   {boardColumns.map((c) => {
@@ -1152,9 +1192,20 @@ export default function SettingsPage(props: Props) {
                           <option value="developer">Разработчик</option>
                           <option value="qa">Тестировщик</option>
                         </select>
-                        <div className="min-w-0 flex-1 truncate text-slate-600" title={`${c.columnName} / ${c.statusDisplay}`}>
-                          {c.columnName} → {c.statusDisplay}{' '}
-                          <span className="text-xs">({c.statusKey})</span>
+                        <div className="min-w-0 flex-1 text-slate-600">
+                          <div className="truncate" title={c.columnName}>
+                            {c.columnName}
+                          </div>
+                          {c.sourceStatuses.length > 0 ? (
+                            <div
+                              className="truncate text-xs text-slate-500"
+                              title={c.sourceStatuses.map((status) => status.display).join(', ')}
+                            >
+                              {c.sourceStatuses.map((status) => status.display).join(', ')}
+                            </div>
+                          ) : c.statusDisplay && c.statusDisplay !== c.columnName ? (
+                            <div className="truncate text-xs text-slate-500">{c.statusDisplay}</div>
+                          ) : null}
                         </div>
                       </div>
                     );
@@ -1674,14 +1725,16 @@ function AppUpdateButton() {
 
 function sameColumnStructure(saved: BoardColumnConfig[], next: BoardColumnConfig[]): boolean {
   if (saved.length !== next.length) return false;
-  const byKey = new Map(saved.map((column) => [column.statusKey, column]));
+  const byId = new Map(saved.map((column) => [column.columnId, column]));
   for (const column of next) {
-    const prev = byKey.get(column.statusKey);
+    const prev = byId.get(column.columnId);
     if (!prev) return false;
+    const prevKeys = (prev.sourceStatuses || []).map((status) => status.key).join(',');
+    const nextKeys = (column.sourceStatuses || []).map((status) => status.key).join(',');
     if (
-      prev.columnId !== column.columnId ||
       prev.columnName !== column.columnName ||
       prev.statusDisplay !== column.statusDisplay ||
+      prevKeys !== nextKeys ||
       prev.enabled !== column.enabled
     ) {
       return false;

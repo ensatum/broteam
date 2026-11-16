@@ -65,7 +65,15 @@ export type ElectronApi = {
   searchUsers: (query: string) => Promise<TrackerUser[]>;
   listBoards: (queue?: string, known?: TrackerBoard[]) => Promise<TrackerBoard[]>;
   searchBoards: (query: string, queue?: string, known?: TrackerBoard[]) => Promise<TrackerBoard[]>;
-  getBoardColumns: (boardId: number, queueKey?: string, issueTypeNames?: string[]) => Promise<TrackerBoardColumn[]>;
+  getBoardColumns: (
+    boardId: number,
+    queueKey?: string,
+    excludedTypes?: string[],
+  ) => Promise<{ columns: TrackerBoardColumn[]; issueTypes: Array<{ key: string; display: string }> }>;
+  listBoardIssueTypes: (
+    boardId: number,
+    queueKey?: string,
+  ) => Promise<Array<{ key: string; display: string }>>;
   listStatusTypes: () => Promise<Record<string, string>>;
   getBoardSprints: (boardId: number) => Promise<TrackerSprint[]>;
   getTransitions: (
@@ -256,8 +264,10 @@ const api: ElectronApi = {
   listBoards: (queue, known) => ipcRenderer.invoke('tracker:listBoards', queue, known),
   searchBoards: (query, queue, known) =>
     ipcRenderer.invoke('tracker:searchBoards', query, queue, known),
-  getBoardColumns: (boardId, queueKey, issueTypeNames) =>
-    ipcRenderer.invoke('tracker:getBoardColumns', boardId, queueKey, issueTypeNames),
+  getBoardColumns: (boardId, queueKey, excludedTypes) =>
+    ipcRenderer.invoke('tracker:getBoardColumns', boardId, queueKey, excludedTypes),
+  listBoardIssueTypes: (boardId, queueKey) =>
+    ipcRenderer.invoke('tracker:boardIssueTypes', boardId, queueKey),
   listStatusTypes: () => ipcRenderer.invoke('tracker:statusTypes'),
   getBoardSprints: (boardId) => ipcRenderer.invoke('tracker:getBoardSprints', boardId),
   getTransitions: (issueKey) => ipcRenderer.invoke('tracker:getTransitions', issueKey),

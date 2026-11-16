@@ -23,6 +23,7 @@ import {
   type StoredSummaryCache,
 } from './db';
 import { resolvePersonDisplayName } from '../shared/personDisplay';
+import { sourceStatusesOf } from '../shared/boardColumns';
 import { isTrackerStopped, pauseableWait } from './trackerGate';
 
 const TESTING_KEYS = new Set(['testing', 'readyForTest', 'testirovanieNaDev']);
@@ -379,7 +380,7 @@ function sourceBoard(key: string, foundOn: SummaryBoardRef, boards: SummaryBoard
 function watchedStatuses(request: SummaryBuildRequest, boardLocalId: number): string[] {
   const keys = request.columns
     .filter((column) => column.boardLocalId === boardLocalId && columnKeepsIssue(column))
-    .map((column) => column.statusKey);
+    .flatMap((column) => sourceStatusesOf(column).map((status) => status.key));
   return [...new Set(keys)];
 }
 
@@ -391,7 +392,7 @@ function watchedStatus(
   if (!statusKey) return false;
   return request.columns.some(
     (column) =>
-      column.statusKey === statusKey &&
+      sourceStatusesOf(column).some((status) => status.key === statusKey) &&
       (!origin || !column.boardLocalId || column.boardLocalId === origin.boardLocalId) &&
       columnKeepsIssue(column),
   );

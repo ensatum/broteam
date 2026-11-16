@@ -1,5 +1,6 @@
 import type { BoardColumnConfig, BoardMatrix, Developer, TrackerIssue } from './types';
 import { OTHERS_ROW_ID, UNASSIGNED_ROW_ID } from './types';
+import { sourceStatusesOf, statusColumnMap, viewColumns } from './boardColumns';
 
 export type ReflowView = {
   matrix: BoardMatrix;
@@ -40,9 +41,10 @@ export function reflowMatrix(
       const prev = matrix.developers.find((row) => row.developer.id === person.id);
       return prev ? { ...person, todos: undefined } : person;
     });
-  const displayColumns = columns.filter(
-    (column) => boardLocalId == null || column.boardLocalId === boardLocalId,
+  const displayColumns = viewColumns(
+    columns.filter((column) => boardLocalId == null || column.boardLocalId === boardLocalId),
   );
+  const statusToColumn = statusColumnMap(displayColumns);
   const foreignBoard =
     boardLocalId != null &&
     matrix.sourceBoardLocalId != null &&
@@ -50,10 +52,19 @@ export function reflowMatrix(
   const knownDevIds = new Set(
     matrix.developers.map((row) => row.developer.id).filter((id) => id > 0),
   );
-  const knownStatuses = new Set(matrix.columns.map((column) => column.statusKey));
+  const knownStatuses = new Set<string>();
+  for (const column of matrix.columns) {
+    knownStatuses.add(column.statusKey);
+    for (const status of sourceStatusesOf(column)) knownStatuses.add(status.key);
+  }
   const pendingDevIds = new Set(people.filter((person) => !knownDevIds.has(person.id)).map((p) => p.id));
   const pendingStatusKeys = new Set(
-    displayColumns.filter((column) => !knownStatuses.has(column.statusKey)).map((column) => column.statusKey),
+    displayColumns
+      .filter((column) => {
+        if (knownStatuses.has(column.statusKey)) return false;
+        return !sourceStatusesOf(column).some((status) => knownStatuses.has(status.key));
+      })
+      .map((column) => column.statusKey),
   );
 
   const seen = new Set<string>();
@@ -72,8 +83,7 @@ export function reflowMatrix(
 
   const byLogin = new Map<string, TrackerIssue[]>();
   for (const issue of issues) {
-    if (pendingStatusKeys.has(issue.statusKey)) continue;
-    if (!displayColumns.some((column) => column.statusKey === issue.statusKey)) continue;
+    if (!statusToColumn.has(issue.statusKey)) continue;
     const login = isUnassigned(issue) ? '__unassigned__' : matchLogin(issue, people) || '__others__';
     if (!byLogin.has(login)) byLogin.set(login, []);
     byLogin.get(login)!.push(issue);
@@ -130,7 +140,7 @@ export function reflowMatrix(
         issuesByColumn[column.statusKey] = [];
         continue;
       }
-      const list = mine.filter((issue) => issue.statusKey === column.statusKey);
+      const list = mine.filter((issue) => statusToColumn.get(issue.statusKey)?.statusKey === column.statusKey);
       issuesByColumn[column.statusKey] = list;
       counts[column.statusKey] = list.length;
       columnTotals[column.statusKey] += list.length;

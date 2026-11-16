@@ -22,7 +22,17 @@ export type SummaryBuildRequest = {
   participant: Developer | null;
   period: SummaryPeriod;
   columns: Array<
-    Pick<BoardColumnConfig, 'statusKey' | 'alias' | 'statusDisplay' | 'columnName' | 'duty' | 'ownerRole' | 'boardLocalId'>
+    Pick<
+      BoardColumnConfig,
+      | 'statusKey'
+      | 'alias'
+      | 'statusDisplay'
+      | 'columnName'
+      | 'duty'
+      | 'ownerRole'
+      | 'boardLocalId'
+      | 'sourceStatuses'
+    >
   >;
   boards?: SummaryBoardRef[];
   /** User pressed Сформировать: cancel the previous formation. */

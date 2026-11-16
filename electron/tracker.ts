@@ -7,7 +7,7 @@ import type {
   TrackerUser,
 } from '../shared/types';
 import { keepStatuses } from '../shared/boardColumns';
-import { issueTypeNames, sameIssueTypeName } from '../shared/issueTypeFilter';
+import { excludedTypeKeys } from '../shared/issueTypeFilter';
 import { collectPersonMatchKeys } from '../shared/personDisplay';
 import { trackRequestEnd, trackRequestStart } from './trackerActivity';
 import { noteRunRequest } from './trackerRuns';
@@ -94,6 +94,10 @@ type WorkflowType = { key: string; display: string };
 type WorkflowBody = {
   steps?: Array<{ status?: { key?: string } | string }>;
 };
+
+function trackerDenied(message: string): boolean {
+  return /\bTracker API (403|404)\b/.test(message);
+}
 
 /** Queue `workflows` is a map of workflow id to the issue types that use it. */
 function workflowBindings(workflows: unknown): Array<{ id: string; types: WorkflowType[] }> {
@@ -496,9 +500,9 @@ export class TrackerClient {
   async getBoardColumns(
     boardId: number,
     queueKey?: string,
-    typeNames?: string[],
-  ): Promise<TrackerBoardColumn[]> {
-    const [columns, queues] = await Promise.all([
+    excludedTypes?: string[],
+  ): Promise<{ columns: TrackerBoardColumn[]; issueTypes: Array<{ key: string; display: string }> }> {
+    const [columns, info] = await Promise.all([
       this.request<
         Array<{
           id: string | number;
@@ -507,20 +511,28 @@ export class TrackerClient {
           statuses?: Array<{ key: string; display: string }>;
         }>
       >(`/v2/boards/${boardId}/columns`),
-      this.boardQueueKeys(boardId, queueKey),
+      this.boardTypeStatuses(boardId, queueKey, excludedTypes),
     ]);
-    const allowed = await this.statusKeysForTypes(queues, issueTypeNames(typeNames));
-    return keepStatuses(
-      columns.map((c) => ({
-        id: String(c.id),
-        name: c.display || c.name || String(c.id),
-        statuses: (c.statuses || []).map((s) => ({
-          key: s.key,
-          display: s.display,
-        })),
+    const mapped = columns.map((c) => ({
+      id: String(c.id),
+      name: c.display || c.name || String(c.id),
+      statuses: (c.statuses || []).map((s) => ({
+        key: s.key,
+        display: s.display,
       })),
-      allowed,
-    );
+    }));
+    return {
+      columns: info.allowed ? keepStatuses(mapped, info.allowed) : mapped,
+      issueTypes: info.types,
+    };
+  }
+
+  async listBoardIssueTypes(
+    boardId: number,
+    queueKey?: string,
+  ): Promise<Array<{ key: string; display: string }>> {
+    const info = await this.boardTypeStatuses(boardId, queueKey, []);
+    return info.types;
   }
 
   /** Saved queue plus every queue named in the board filter. */
@@ -559,70 +571,86 @@ export class TrackerClient {
     return [...keys];
   }
 
-  /** Status keys from the workflows bound to the named issue types. */
-  private async statusKeysForTypes(queueKeys: string[], typeNames: string[]): Promise<Set<string>> {
+  /**
+   * Issue types of the board's queues and the statuses of the types still checked.
+   * `allowed` is null when workflows could not be read: columns stay unfiltered.
+   */
+  private async boardTypeStatuses(
+    boardId: number,
+    queueKey: string | undefined,
+    excludedTypes: string[] | undefined,
+  ): Promise<{ types: Array<{ key: string; display: string }>; allowed: Set<string> | null }> {
+    let queueKeys: string[] = [];
+    try {
+      queueKeys = await this.boardQueueKeys(boardId, queueKey);
+    } catch {
+      return { types: [], allowed: null };
+    }
     const loaded = await Promise.allSettled(
-      queueKeys.map((queueKey) =>
-        this.request<{ workflows?: unknown }>(`/v3/queues/${encodeURIComponent(queueKey)}`, {
+      queueKeys.map((key) =>
+        this.request<{ workflows?: unknown }>(`/v3/queues/${encodeURIComponent(key)}`, {
           query: { expand: 'workflows' },
           retries: 1,
           timeoutMs: BOARD_LOOKUP_TIMEOUT_MS,
         }),
       ),
     );
-    const workflowsByQueue: unknown[] = [];
-    const readable: string[] = [];
-    for (const [index, result] of loaded.entries()) {
+    const bindings: Array<{ id: string; types: WorkflowType[] }> = [];
+    for (const result of loaded) {
       if (result.status === 'fulfilled') {
-        readable.push(queueKeys[index]);
-        workflowsByQueue.push(result.value.workflows);
+        bindings.push(...workflowBindings(result.value.workflows));
         continue;
       }
       const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
-      if (/\bTracker API (403|404)\b/.test(message)) continue;
+      if (trackerDenied(message)) continue;
       throw result.reason;
     }
-    if (!workflowsByQueue.length) {
-      throw new Error(`Не удалось прочитать флоу ${queueKeys.join(', ')}.`);
-    }
-    const found = new Set<string>();
+    const types = new Map<string, { key: string; display: string }>();
     const workflowIds = new Set<string>();
-    for (const workflows of workflowsByQueue) {
-      for (const workflow of workflowBindings(workflows)) {
-        const hits = workflow.types.filter((type) =>
-          typeNames.some((name) => sameIssueTypeName(type.key, type.display, name)),
-        );
-        if (!hits.length) continue;
-        for (const type of hits) {
-          found.add(type.key.trim().toLowerCase());
-          found.add(type.display.trim().toLowerCase());
-        }
-        workflowIds.add(workflow.id);
+    for (const workflow of bindings) {
+      workflowIds.add(workflow.id);
+      for (const type of workflow.types) {
+        if (!type.key || types.has(type.key)) continue;
+        types.set(type.key, { key: type.key, display: type.display || type.key });
       }
     }
-    const missing = typeNames.filter((name) => !found.has(name.trim().toLowerCase()));
-    if (missing.length) {
-      const where = readable.length > 1 ? `очередях ${readable.join(', ')}` : `очереди ${readable[0]}`;
-      throw new Error(`В ${where} нет типа «${missing.join('», «')}».`);
+    const issueTypes = [...types.values()].sort((a, b) => a.display.localeCompare(b.display, 'ru'));
+    if (!workflowIds.size) return { types: issueTypes, allowed: null };
+
+    const excluded = new Set(excludedTypeKeys(excludedTypes).map((key) => key.toLowerCase()));
+    const selected = issueTypes.filter((type) => !excluded.has(type.key.toLowerCase()));
+    if (issueTypes.length && !selected.length) {
+      throw new Error('Отметьте хотя бы один тип задачи.');
     }
-    const workflows = await Promise.all(
-      [...workflowIds].map((id) =>
+    const selectedKeys = new Set(selected.map((type) => type.key));
+    const wanted = new Set(
+      bindings.filter((workflow) => workflow.types.some((type) => selectedKeys.has(type.key))).map((workflow) => workflow.id),
+    );
+    const bodies = await Promise.allSettled(
+      [...wanted].map((id) =>
         this.request<WorkflowBody>(`/v3/workflows/${encodeURIComponent(id)}`, {
           retries: 1,
           timeoutMs: BOARD_LOOKUP_TIMEOUT_MS,
         }),
       ),
     );
-    const statuses = new Set<string>();
-    for (const workflow of workflows) {
-      for (const step of workflow.steps || []) {
+    const allowed = new Set<string>();
+    let read = false;
+    for (const result of bodies) {
+      if (result.status !== 'fulfilled') {
+        const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
+        if (trackerDenied(message)) continue;
+        throw result.reason;
+      }
+      read = true;
+      for (const step of result.value.steps || []) {
         const status = step.status;
         const key = typeof status === 'string' ? status : status?.key || '';
-        if (key.trim()) statuses.add(key.trim());
+        if (key.trim()) allowed.add(key.trim());
       }
     }
-    if (!statuses.size) throw new Error(`У типов ${typeNames.join(', ')} нет статусов.`);
-    return statuses;
+    if (!read) return { types: issueTypes, allowed: null };
+    return { types: issueTypes, allowed };
   }
 
   async getBoardSprints(boardId: number): Promise<TrackerSprint[]> {

@@ -12,6 +12,7 @@ import type {
 } from '../shared/types';
 import { DEFAULT_BOARD, DEFAULT_CONNECTION, DEFAULT_GITHUB, normalizeParticipantRole } from '../shared/types';
 import { normalizeColumnDuty, normalizeColumnOwnerRole } from '../shared/columnMeta';
+import { parseSourceStatuses } from '../shared/boardColumns';
 import { liveVersion, settingsIncompatible } from '../shared/version';
 
 let db: Database.Database | null = null;
@@ -246,6 +247,9 @@ function migratePeopleAndBoards(database: Database.Database): void {
   }
   if (!dutyCols.some((column) => column.name === 'owner_role')) {
     database.exec(`ALTER TABLE board_columns ADD COLUMN owner_role TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!dutyCols.some((column) => column.name === 'source_statuses')) {
+    database.exec(`ALTER TABLE board_columns ADD COLUMN source_statuses TEXT NOT NULL DEFAULT ''`);
   }
 
   const boardCols = database.prepare(`PRAGMA table_info(agile_boards)`).all() as Array<{ name: string }>;
@@ -805,20 +809,29 @@ export function listColumns(): BoardColumnConfig[] {
     .prepare(
       `SELECT id, column_id as columnId, column_name as columnName,
               status_key as statusKey, status_display as statusDisplay,
+              source_statuses as sourceStatuses,
               alias, color, enabled, sort_order as sortOrder,
               board_local_id as boardLocalId, duty, owner_role as ownerRole
        FROM board_columns ORDER BY sort_order ASC, id ASC`,
     )
     .all()
     .map((row) => {
-      const raw = row as Omit<BoardColumnConfig, 'enabled' | 'duty' | 'ownerRole'> & {
+      const raw = row as Omit<BoardColumnConfig, 'enabled' | 'duty' | 'ownerRole' | 'sourceStatuses'> & {
         enabled: number;
         duty: string | null;
         ownerRole: string | null;
+        sourceStatuses: string | null;
       };
       const duty = normalizeColumnDuty(raw.duty);
       const ownerRole = normalizeColumnOwnerRole(raw.ownerRole);
-      return { ...raw, duty, ownerRole, enabled: Boolean(raw.enabled), boardLocalId: raw.boardLocalId || 0 };
+      return {
+        ...raw,
+        duty,
+        ownerRole,
+        sourceStatuses: parseSourceStatuses(raw.sourceStatuses),
+        enabled: Boolean(raw.enabled),
+        boardLocalId: raw.boardLocalId || 0,
+      };
     });
 }
 
@@ -830,8 +843,9 @@ export function addBoardColumns(
   const database = getDb();
   const insert = database.prepare(
     `INSERT INTO board_columns(
-       column_id, column_name, status_key, status_display, alias, color, enabled, sort_order, board_local_id, duty, owner_role
-     ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       column_id, column_name, status_key, status_display, source_statuses, alias, color, enabled, sort_order,
+       board_local_id, duty, owner_role
+     ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const tx = database.transaction(() => {
     for (const column of columns) {
@@ -844,6 +858,7 @@ export function addBoardColumns(
         column.columnName,
         column.statusKey,
         column.statusDisplay,
+        JSON.stringify(column.sourceStatuses || []),
         column.alias,
         column.color,
         column.enabled ? 1 : 0,
@@ -867,8 +882,9 @@ export function replaceColumns(
     database.prepare('DELETE FROM board_columns').run();
     const insert = database.prepare(
       `INSERT INTO board_columns(
-         column_id, column_name, status_key, status_display, alias, color, enabled, sort_order, board_local_id, duty, owner_role
-       ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         column_id, column_name, status_key, status_display, source_statuses, alias, color, enabled, sort_order,
+         board_local_id, duty, owner_role
+       ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const [index, c] of columns.entries()) {
       const duty = normalizeColumnDuty(c.duty);
@@ -878,6 +894,7 @@ export function replaceColumns(
         c.columnName,
         c.statusKey,
         c.statusDisplay,
+        JSON.stringify(c.sourceStatuses || []),
         c.alias,
         c.color,
         c.enabled ? 1 : 0,

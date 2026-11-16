@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import type { BoardColumnConfig, Developer, SavedBoard } from '@shared/types';
-import { PARTICIPANT_ROLES } from '@shared/types';
+import { sourceStatusesOf } from '@shared/boardColumns';
+import { PARTICIPANT_ROLES, type BoardColumnConfig, type Developer, type SavedBoard } from '@shared/types';
 import { applyMarkdownHotkey, handleRichHotkey, hotkeyId, htmlToMarkdown } from '../draftFormat';
 import { renderMarkdown } from '../markdown';
 import {
@@ -257,6 +257,7 @@ export default function SummaryDock(props: {
           duty: column.duty,
           ownerRole: column.ownerRole,
           boardLocalId: column.boardLocalId,
+          sourceStatuses: column.sourceStatuses,
         })),
     };
   }
@@ -1590,12 +1591,13 @@ function markerColor(row: SummaryRow, columns: BoardColumnConfig[]): string {
     (column) => row.boardLocalId == null || column.boardLocalId === row.boardLocalId,
   );
   const match =
-    onBoard.find((column) => column.statusKey === row.statusKey) ||
+    onBoard.find((column) => sourceStatusesOf(column).some((status) => status.key === row.statusKey)) ||
     onBoard.find(
       (column) =>
         column.statusDisplay === row.currentStatus ||
         column.alias === row.currentStatus ||
-        column.columnName === row.currentStatus,
+        column.columnName === row.currentStatus ||
+        sourceStatusesOf(column).some((status) => status.display === row.currentStatus),
     );
   return match?.color || '#94a3b8';
 }
@@ -1918,6 +1920,15 @@ function SummaryHours(props: {
         column.enabled &&
         (props.row.boardLocalId == null || column.boardLocalId === props.row.boardLocalId),
     )
+    .flatMap((column) => {
+      const sources = sourceStatusesOf(column);
+      if (sources.length === 1 && sources[0].key === column.statusKey) return [column];
+      return sources.map((status) => ({
+        ...column,
+        statusKey: status.key,
+        statusDisplay: status.display || column.statusDisplay,
+      }));
+    })
     .sort((a, b) => a.sortOrder - b.sortOrder);
   let frontier = -1;
   ordered.forEach((column, index) => {
@@ -2074,12 +2085,15 @@ function summaryStatusBadges(
 }
 
 function rowStatusKey(row: SummaryRow, columns: BoardColumnConfig[]): string {
+  const bySource = columns.find((column) => sourceStatusesOf(column).some((status) => status.key === row.statusKey));
+  if (bySource) return bySource.statusKey;
   if (row.statusKey && columns.some((column) => column.statusKey === row.statusKey)) return row.statusKey;
   const match = columns.find(
     (column) =>
       column.statusDisplay === row.currentStatus ||
       column.alias === row.currentStatus ||
-      column.columnName === row.currentStatus,
+      column.columnName === row.currentStatus ||
+      sourceStatusesOf(column).some((status) => status.display === row.currentStatus),
   );
   return match?.statusKey || '';
 }
@@ -2144,7 +2158,8 @@ function columnOf(row: SummaryRow, columns: BoardColumnConfig[]): BoardColumnCon
   return columns.find(
     (column) =>
       column.enabled &&
-      column.statusKey === (row.statusKey || '') &&
+      (column.statusKey === (row.statusKey || '') ||
+        sourceStatusesOf(column).some((status) => status.key === row.statusKey)) &&
       (row.boardLocalId == null || column.boardLocalId === row.boardLocalId),
   );
 }

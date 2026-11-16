@@ -371,6 +371,7 @@ export default function App() {
               duty: column.duty,
               ownerRole: column.ownerRole,
               boardLocalId: column.boardLocalId,
+              sourceStatuses: column.sourceStatuses,
             })),
         });
         if (report) saveAutoSaveStamp(stamp);

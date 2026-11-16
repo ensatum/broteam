@@ -579,10 +579,13 @@ function registerIpc(): void {
   );
   ipcMain.handle(
     'tracker:getBoardColumns',
-    async (_e, boardId: number, queueKey?: string, issueTypeNames?: string[]) => {
-      return getClient().getBoardColumns(boardId, queueKey, issueTypeNames);
+    async (_e, boardId: number, queueKey?: string, excludedTypes?: string[]) => {
+      return getClient().getBoardColumns(boardId, queueKey, excludedTypes);
     },
   );
+  ipcMain.handle('tracker:boardIssueTypes', async (_e, boardId: number, queueKey?: string) => {
+    return getClient().listBoardIssueTypes(boardId, queueKey);
+  });
   ipcMain.handle('tracker:statusTypes', async () => {
     return getClient().listStatusTypes();
   });

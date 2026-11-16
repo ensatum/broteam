@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
+import { sourceStatusesOf, viewColumns } from '@shared/boardColumns';
 import type { BoardColumnConfig, BoardMatrix, Developer, SavedBoard, TrackerIssue } from '@shared/types';
 import { resolvePersonDisplayName } from '@shared/personDisplay';
 import { trackerLastChange } from '@shared/issueChanges';
@@ -163,14 +164,23 @@ function ChangeBadge(props: {
 
 export default function IssuePanel(props: Props) {
   const { selection, columns, readOnly, width } = props;
-  const colorByStatus = useMemo(
-    () => Object.fromEntries(columns.map((c) => [c.statusKey, c.color])),
-    [columns],
-  );
-  const colByStatus = useMemo(
-    () => Object.fromEntries(columns.map((c) => [c.statusKey, c])),
-    [columns],
-  );
+  const viewedColumns = useMemo(() => viewColumns(columns), [columns]);
+  const colorByStatus = useMemo(() => {
+    const colors: Record<string, string> = {};
+    for (const column of viewedColumns) {
+      colors[column.statusKey] = column.color;
+      for (const status of sourceStatusesOf(column)) colors[status.key] = column.color;
+    }
+    return colors;
+  }, [viewedColumns]);
+  const colByStatus = useMemo(() => {
+    const map: Record<string, BoardColumnConfig> = {};
+    for (const column of viewedColumns) {
+      map[column.statusKey] = column;
+      for (const status of sourceStatusesOf(column)) map[status.key] = column;
+    }
+    return map;
+  }, [viewedColumns]);
   const [menuKey, setMenuKey] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [draft, setDraft] = useState('');
@@ -548,7 +558,7 @@ export default function IssuePanel(props: Props) {
               className="flex cursor-pointer items-center gap-1.5 bg-slate-100 px-2 py-1 hover:bg-slate-200"
               onClick={toggleExpand}
             >
-              <StatusMark color={color} name={issue.statusDisplay || col?.alias || issue.statusKey} />
+              <StatusMark color={color} name={col?.statusDisplay || issue.statusDisplay || col?.alias || issue.statusKey} />
               <span className="inline-flex shrink-0 items-baseline">
                 <a
                   href={issue.url}
@@ -628,7 +638,7 @@ export default function IssuePanel(props: Props) {
                   <div className="w-44 shrink-0 leading-snug">
                     <div className="text-[10px] text-slate-500">Создано: {createdLabel(issue) || '—'}</div>
                     <div className="mt-0.5 text-[10px] text-slate-500">
-                      {issue.statusDisplay}
+                      {col?.statusDisplay || issue.statusDisplay}
                       {issue.daysInStatus != null ? ` · ${formatDays(issue.daysInStatus)}` : ''}
                     </div>
                     <IssuePeopleLines issue={issue} />

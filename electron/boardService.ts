@@ -21,8 +21,8 @@ import { describeIssueChange } from '../shared/issueChanges';
 import { TrackerClient, buildIssuesQuery } from './tracker';
 import type { BoardMatrix, Developer, TrackerIssue, TrackerSprint } from '../shared/types';
 import { OTHERS_ROW_ID, UNASSIGNED_ROW_ID } from '../shared/types';
-import { freshBoardColumns } from '../shared/boardColumns';
-import { issueTypeNames } from '../shared/issueTypeFilter';
+import { freshBoardColumns, viewColumns, statusColumnMap } from '../shared/boardColumns';
+import { excludedTypeKeys } from '../shared/issueTypeFilter';
 import { issueIsDone } from '../shared/columnMeta';
 import { sessionLog } from './sessionLog';
 import {
@@ -328,12 +328,12 @@ export async function buildLiveMatrix(options?: {
       const remote = await client.getBoardColumns(
         board.boardId,
         savedBoard?.queueKey || board.queueKey,
-        issueTypeNames(savedBoard?.issueTypeFilter),
+        excludedTypeKeys(savedBoard?.issueTypeFilter),
       );
-      const known = new Set(columns.map((column) => column.statusKey));
+      const knownIds = new Set(columns.map((column) => column.columnId));
       let order = columns.reduce((max, column) => Math.max(max, column.sortOrder), -1) + 1;
-      const additions = freshBoardColumns(remote, activeBoardId)
-        .filter((column) => !known.has(column.statusKey))
+      const additions = freshBoardColumns(remote.columns, activeBoardId)
+        .filter((column) => !knownIds.has(column.columnId))
         .map((column) => ({ ...column, sortOrder: order++ }));
       if (additions.length) {
         addBoardColumns(additions);
@@ -343,6 +343,7 @@ export async function buildLiveMatrix(options?: {
       sessionLog('error', 'board columns', { boardId: board.boardId, error });
     }
   }
+  columns = viewColumns(columns);
   const sprintById = new Map<number, TrackerSprint>();
   let openSprintIds: number[] = [];
   const foreignOpenIds: number[] = [];
@@ -391,7 +392,7 @@ export async function buildLiveMatrix(options?: {
     foreignOpenIds,
   });
 
-  const statusToColumn = new Map(columns.map((c) => [c.statusKey, c]));
+  const statusToColumn = statusColumnMap(columns);
   const requiredBoardId = board.boardId;
   const boardIssues: TrackerIssue[] = [];
   for (const issue of issues) {
@@ -489,9 +490,11 @@ export async function buildLiveMatrix(options?: {
     );
 
     for (const issue of devIssues) {
-      counts[issue.statusKey] += 1;
-      issuesByColumn[issue.statusKey].push(issue);
-      columnTotals[issue.statusKey] += 1;
+      const column = statusToColumn.get(issue.statusKey);
+      if (!column) continue;
+      counts[column.statusKey] += 1;
+      issuesByColumn[column.statusKey].push(issue);
+      columnTotals[column.statusKey] += 1;
     }
 
     const total = Object.values(counts).reduce((a, b) => a + b, 0);
@@ -538,7 +541,7 @@ export async function buildLiveMatrix(options?: {
  */
 export function patchIssueInMatrix(matrix: BoardMatrix, issue: TrackerIssue): BoardMatrix {
   const columns = matrix.columns;
-  const statusToColumn = new Map(columns.map((c) => [c.statusKey, c]));
+  const statusToColumn = statusColumnMap(columns);
   const namedDevelopers = matrix.developers.map((row) => row.developer).filter((person) => person.id > 0);
   const loginByLower = new Map(namedDevelopers.map((person) => [person.login.toLowerCase(), person.login]));
   const loginByUid = new Map(
@@ -601,10 +604,13 @@ export function patchIssueInMatrix(matrix: BoardMatrix, issue: TrackerIssue): Bo
     }
 
     if (placeOnBoard && row.developer.login === targetLogin) {
-      issuesByColumn[resolvedIssue.statusKey].push(resolvedIssue);
-      counts[resolvedIssue.statusKey] += 1;
-      columnTotals[resolvedIssue.statusKey] += 1;
-      visibleIssues.push(resolvedIssue);
+      const column = statusToColumn.get(resolvedIssue.statusKey);
+      if (column) {
+        issuesByColumn[column.statusKey].push(resolvedIssue);
+        counts[column.statusKey] += 1;
+        columnTotals[column.statusKey] += 1;
+        visibleIssues.push(resolvedIssue);
+      }
     }
 
     const total = Object.values(counts).reduce((a, b) => a + b, 0);

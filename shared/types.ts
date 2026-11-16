@@ -56,6 +56,8 @@ export type BoardColumnConfig = {
   columnName: string;
   statusKey: string;
   statusDisplay: string;
+  /** Tracker statuses the board column accepts. Empty on rows saved before this field. */
+  sourceStatuses: Array<{ key: string; display: string }>;
   alias: string;
   color: string;
   enabled: boolean;
@@ -78,8 +80,8 @@ export type SavedBoard = {
   color: string;
   queueKey: string;
   /**
-   * Comma-separated issue type names whose workflow statuses this board keeps.
-   * Empty keeps «Задача» and «Ошибка».
+   * Comma-separated issue type keys to leave out.
+   * Empty keeps every type of the board's queues.
    */
   issueTypeFilter: string;
   enabled: boolean;

@@ -219,6 +219,7 @@ export function applyBackup(backup: AppBackup, sections: BackupSections): string
           columnName: c.columnName,
           statusKey: c.statusKey,
           statusDisplay: c.statusDisplay,
+          sourceStatuses: c.sourceStatuses || [],
           alias: c.alias,
           color: c.color,
           enabled: c.enabled,
