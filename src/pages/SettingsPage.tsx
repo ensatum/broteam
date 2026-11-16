@@ -77,6 +77,7 @@ export default function SettingsPage(props: Props) {
   const [colDraft, setColDraft] = useState(props.columns);
   const columnDraftHold = useRef<BoardColumnConfig[] | null>(null);
   const dragColumnKey = useRef<string | null>(null);
+  const dragGroupId = useRef<number | null>(null);
   const [userQuery, setUserQuery] = useState('');
   const [userResults, setUserResults] = useState<TrackerUser[]>([]);
   const [savedBoards, setSavedBoards] = useState<SavedBoard[]>(props.boards);
@@ -1208,123 +1209,102 @@ export default function SettingsPage(props: Props) {
                       По умолчанию отмечены все. Снятый тип убирает его статусы из колонок.
                     </p>
                   </div>
-                  <ColumnGroupList
-                    boardId={board.id}
-                    columns={boardColumns}
-                    groups={boardGroups}
-                    busy={busy}
-                    onSave={(nextColumns, nextGroups) => saveBoardGroups(board.id, nextColumns, nextGroups)}
-                    onError={(error) => publishErr('boards', error)}
-                  />
-                  {boardColumns.map((c) => {
-                    const index = colDraft.findIndex(
-                      (item) => item.boardLocalId === c.boardLocalId && item.statusKey === c.statusKey,
-                    );
-                    return (
-                      <div
-                        key={`${c.boardLocalId}-${c.statusKey}`}
-                        className="flex items-center gap-2 rounded border border-slate-100 p-2 text-sm"
-                        onDragOver={(event) => {
-                          if (!dragColumnKey.current) return;
-                          event.preventDefault();
-                        }}
-                        onDrop={(event) => {
-                          const from = dragColumnKey.current;
-                          dragColumnKey.current = null;
-                          if (!from || from === c.statusKey) return;
-                          void saveBoardGroups(board.id, placeColumn(boardColumns, from, c.statusKey), boardGroups).catch(
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-slate-500">Группы колонок</span>
+                    <button
+                      type="button"
+                      className="text-sm text-emerald-700 underline disabled:opacity-50"
+                      disabled={busy}
+                      onClick={() =>
+                        void saveBoardGroups(board.id, boardColumns, [
+                          ...boardGroups,
+                          {
+                            id: 0,
+                            boardLocalId: board.id,
+                            name: 'Группа',
+                            color: '#64748b',
+                            sortOrder: boardGroups.length,
+                            collapsed: false,
+                          },
+                        ]).catch((error: unknown) => publishErr('boards', error))
+                      }
+                    >
+                      Новая группа
+                    </button>
+                  </div>
+                  {columnSections(boardColumns, boardGroups).map((section) =>
+                    section.kind === 'column' ? (
+                      <ColumnEditorRow
+                        key={`${section.column.boardLocalId}-${section.column.statusKey}`}
+                        column={section.column}
+                        columns={boardColumns}
+                        busy={busy}
+                        dragKey={dragColumnKey}
+                        onChange={(next) =>
+                          setColDraft((prev) =>
+                            prev.map((item) =>
+                              item.boardLocalId === next.boardLocalId && item.statusKey === next.statusKey
+                                ? next
+                                : item,
+                            ),
+                          )
+                        }
+                        onMove={(from, to) =>
+                          void saveBoardGroups(board.id, placeColumn(boardColumns, from, to), boardGroups).catch(
                             (error: unknown) => publishErr('boards', error),
-                          );
-                        }}
+                          )
+                        }
+                      />
+                    ) : (
+                      <ColumnGroupCard
+                        key={`group-${section.group.id}`}
+                        group={section.group}
+                        columns={boardColumns}
+                        groups={boardGroups}
+                        busy={busy}
+                        dragGroupId={dragGroupId}
+                        onSave={(nextColumns, nextGroups) =>
+                          saveBoardGroups(board.id, nextColumns, nextGroups)
+                        }
+                        onError={(error) => publishErr('boards', error)}
                       >
-                        <span
-                          draggable={!busy}
-                          title="Перетащить"
-                          className="cursor-grab select-none px-0.5 text-slate-400"
-                          onDragStart={(event) => {
-                            dragColumnKey.current = c.statusKey;
-                            event.dataTransfer.effectAllowed = 'move';
-                            event.dataTransfer.setData('text/plain', c.statusKey);
-                          }}
-                          onDragEnd={() => {
-                            dragColumnKey.current = null;
-                          }}
-                        >
-                          ☰
-                        </span>
-                        <ColorField
-                          value={c.color}
-                          onChange={(hex) => {
-                            const next = [...colDraft];
-                            next[index] = { ...c, color: hex };
-                            setColDraft(next);
-                          }}
-                        />
-                        <input
-                          className="h-8 w-56 shrink-0 rounded border border-slate-300 px-2"
-                          value={c.alias}
-                          onChange={(e) => {
-                            const next = [...colDraft];
-                            next[index] = { ...c, alias: e.target.value };
-                            setColDraft(next);
-                          }}
-                        />
-                        <select
-                          className="h-8 w-32 shrink-0 rounded border border-slate-300 bg-white px-1 text-xs text-slate-700"
-                          value={c.duty || ''}
-                          title="Тег колонки"
-                          onChange={(e) => {
-                            const duty =
-                              e.target.value === 'review' ||
-                              e.target.value === 'testing' ||
-                              e.target.value === 'development' ||
-                              e.target.value === 'ai'
-                                ? e.target.value
-                                : '';
-                            const next = [...colDraft];
-                            next[index] = { ...c, duty };
-                            setColDraft(next);
-                          }}
-                        >
-                          <option value="">Без тега</option>
-                          <option value="development">Разработка</option>
-                          <option value="review">Ревью</option>
-                          <option value="testing">Тесты</option>
-                          <option value="ai">ИИ</option>
-                        </select>
-                        <select
-                          className="h-8 w-36 shrink-0 rounded border border-slate-300 bg-white px-1 text-xs text-slate-700"
-                          value={c.ownerRole || ''}
-                          title="Ответственная роль: колонка значит, что задача сейчас в активной работе"
-                          onChange={(e) => {
-                            const ownerRole = e.target.value === 'developer' || e.target.value === 'qa' ? e.target.value : '';
-                            const next = [...colDraft];
-                            next[index] = { ...c, ownerRole };
-                            setColDraft(next);
-                          }}
-                        >
-                          <option value="">Без роли</option>
-                          <option value="developer">Разработчик</option>
-                          <option value="qa">Тестировщик</option>
-                        </select>
-                        <div className="min-w-0 flex-1 text-slate-600">
-                          <div className="truncate" title={c.columnName}>
-                            {c.columnName}
-                          </div>
-                          {c.sourceStatuses.length > 0 ? (
-                            <div
-                              className="truncate text-xs text-slate-500"
-                              title={c.sourceStatuses.map((status) => status.display).join(', ')}
-                            >
-                              {c.sourceStatuses.map((status) => status.display).join(', ')}
-                            </div>
-                          ) : c.statusDisplay && c.statusDisplay !== c.columnName ? (
-                            <div className="truncate text-xs text-slate-500">{c.statusDisplay}</div>
-                          ) : null}
-                        </div>
-                      </div>
-                    );
-                  })}
+                        {section.columns.map((column) => (
+                          <ColumnEditorRow
+                            key={`${column.boardLocalId}-${column.statusKey}`}
+                            column={column}
+                            columns={boardColumns}
+                            busy={busy}
+                            dragKey={dragColumnKey}
+                            onChange={(next) =>
+                              setColDraft((prev) =>
+                                prev.map((item) =>
+                                  item.boardLocalId === next.boardLocalId && item.statusKey === next.statusKey
+                                    ? next
+                                    : item,
+                                ),
+                              )
+                            }
+                            onMove={(from, to) =>
+                              void saveBoardGroups(board.id, placeColumn(boardColumns, from, to), boardGroups).catch(
+                                (error: unknown) => publishErr('boards', error),
+                              )
+                            }
+                            onLeaveGroup={() =>
+                              void saveBoardGroups(
+                                board.id,
+                                coalesceColumns(
+                                  boardColumns.map((item) =>
+                                    item.statusKey === column.statusKey ? { ...item, groupId: null } : item,
+                                  ),
+                                ),
+                                boardGroups,
+                              ).catch((error: unknown) => publishErr('boards', error))
+                            }
+                          />
+                        ))}
+                      </ColumnGroupCard>
+                    ),
+                  )}
                   {!boardColumns.length && (
                     <div className="text-sm text-slate-500">Колонки ещё не загружены</div>
                   )}
@@ -1857,16 +1837,51 @@ function sameColumnStructure(saved: BoardColumnConfig[], next: BoardColumnConfig
   return true;
 }
 
-function ColumnGroupList(props: {
-  boardId: number;
+function columnSections(
+  columns: BoardColumnConfig[],
+  groups: ColumnGroup[],
+): Array<
+  | { kind: 'column'; column: BoardColumnConfig }
+  | { kind: 'group'; group: ColumnGroup; columns: BoardColumnConfig[] }
+> {
+  const byId = new Map(groups.map((group) => [group.id, group]));
+  const seen = new Set<number>();
+  const sections: Array<
+    | { kind: 'column'; column: BoardColumnConfig }
+    | { kind: 'group'; group: ColumnGroup; columns: BoardColumnConfig[] }
+  > = [];
+  for (const column of columns) {
+    const group = column.groupId != null ? byId.get(column.groupId) : undefined;
+    if (!group) {
+      sections.push({ kind: 'column', column });
+      continue;
+    }
+    if (seen.has(group.id)) continue;
+    seen.add(group.id);
+    sections.push({
+      kind: 'group',
+      group,
+      columns: columns.filter((item) => item.groupId === group.id),
+    });
+  }
+  for (const group of groups) {
+    if (!seen.has(group.id)) sections.push({ kind: 'group', group, columns: [] });
+  }
+  return sections;
+}
+
+function ColumnGroupCard(props: {
+  group: ColumnGroup;
   columns: BoardColumnConfig[];
   groups: ColumnGroup[];
   busy: boolean;
+  dragGroupId: RefObject<number | null>;
   onSave: (columns: BoardColumnConfig[], groups: ColumnGroup[]) => Promise<void>;
   onError: (error: unknown) => void;
+  children: ReactNode;
 }) {
-  const dragGroupId = useRef<number | null>(null);
-  const [names, setNames] = useState<Record<number, string>>({});
+  const [name, setName] = useState<string | null>(null);
+  const group = props.group;
   async function save(columns: BoardColumnConfig[], groups: ColumnGroup[]) {
     try {
       await props.onSave(columns, groups);
@@ -1874,45 +1889,18 @@ function ColumnGroupList(props: {
       props.onError(error);
     }
   }
+  const free = props.columns.filter((column) => column.groupId !== group.id);
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-3">
-        <span className="text-xs text-slate-500">Группы колонок</span>
-        <button
-          type="button"
-          className="text-sm text-emerald-700 underline disabled:opacity-50"
-          disabled={props.busy}
-          onClick={() =>
-            void save(props.columns, [
-              ...props.groups,
-              {
-                id: 0,
-                boardLocalId: props.boardId,
-                name: 'Группа',
-                color: '#64748b',
-                sortOrder: props.groups.length,
-                collapsed: false,
-              },
-            ])
-          }
-        >
-          Новая группа
-        </button>
-      </div>
-      {props.groups.map((group) => {
-        const members = props.columns.filter((column) => column.groupId === group.id);
-        const free = props.columns.filter((column) => column.groupId !== group.id);
-        return (
           <div
-            key={group.id}
-            className="space-y-2 rounded border border-slate-100 p-2"
+            className="space-y-2 rounded border-2 p-2"
+            style={{ borderColor: group.color || '#64748b' }}
             onDragOver={(event) => {
-              if (dragGroupId.current == null) return;
+              if (props.dragGroupId.current == null) return;
               event.preventDefault();
             }}
             onDrop={(event) => {
-              const fromId = dragGroupId.current;
-              dragGroupId.current = null;
+              const fromId = props.dragGroupId.current;
+              props.dragGroupId.current = null;
               if (fromId == null || fromId === group.id) return;
               const from = props.groups.findIndex((item) => item.id === fromId);
               const to = props.groups.findIndex((item) => item.id === group.id);
@@ -1944,12 +1932,12 @@ function ColumnGroupList(props: {
                 title="Перетащить"
                 className="cursor-grab select-none px-0.5 text-slate-400"
                 onDragStart={(event: DragEvent) => {
-                  dragGroupId.current = group.id;
+                  props.dragGroupId.current = group.id;
                   event.dataTransfer.effectAllowed = 'move';
                   event.dataTransfer.setData('text/plain', String(group.id));
                 }}
                 onDragEnd={() => {
-                  dragGroupId.current = null;
+                  props.dragGroupId.current = null;
                 }}
               >
                 ☰
@@ -1965,14 +1953,14 @@ function ColumnGroupList(props: {
               />
               <input
                 className="h-8 min-w-0 flex-1 rounded border border-slate-300 px-2 text-sm"
-                value={names[group.id] ?? group.name}
-                onChange={(event) => setNames((prev) => ({ ...prev, [group.id]: event.target.value }))}
+                value={name ?? group.name}
+                onChange={(event) => setName(event.target.value)}
                 onBlur={() => {
-                  const name = (names[group.id] ?? group.name).trim() || 'Группа';
-                  if (name === group.name) return;
+                  const nextName = (name ?? group.name).trim() || 'Группа';
+                  if (nextName === group.name) return;
                   void save(
                     props.columns,
-                    props.groups.map((item) => (item.id === group.id ? { ...item, name } : item)),
+                    props.groups.map((item) => (item.id === group.id ? { ...item, name: nextName } : item)),
                   );
                 }}
               />
@@ -1992,27 +1980,8 @@ function ColumnGroupList(props: {
                 <TrashIcon className="h-4 w-4" />
               </button>
             </div>
+            <div className="space-y-1">{props.children}</div>
             <div className="flex flex-wrap items-center gap-1">
-              {members.map((column) => (
-                <button
-                  key={column.statusKey}
-                  type="button"
-                  className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-700"
-                  title="Убрать из группы"
-                  onClick={() =>
-                    void save(
-                      coalesceColumns(
-                        props.columns.map((item) =>
-                          item.statusKey === column.statusKey ? { ...item, groupId: null } : item,
-                        ),
-                      ),
-                      props.groups,
-                    )
-                  }
-                >
-                  {(column.alias || '').trim() || column.columnName} ×
-                </button>
-              ))}
               <select
                 className="h-7 rounded border border-slate-300 bg-white px-1 text-xs text-slate-700"
                 value=""
@@ -2038,8 +2007,118 @@ function ColumnGroupList(props: {
               </select>
             </div>
           </div>
-        );
-      })}
+  );
+}
+
+function ColumnEditorRow(props: {
+  column: BoardColumnConfig;
+  columns: BoardColumnConfig[];
+  busy: boolean;
+  dragKey: { current: string | null };
+  onChange: (column: BoardColumnConfig) => void;
+  onMove: (from: string, to: string) => void;
+  onLeaveGroup?: () => void;
+}) {
+  const c = props.column;
+  return (
+    <div
+      className="flex items-center gap-2 rounded border border-slate-100 bg-white p-2 text-sm"
+      onDragOver={(event) => {
+        const from = props.dragKey.current;
+        if (!from) return;
+        const source = props.columns.find((item) => item.statusKey === from);
+        if (!source || (source.groupId ?? null) !== (c.groupId ?? null)) return;
+        event.preventDefault();
+      }}
+      onDrop={(event) => {
+        const from = props.dragKey.current;
+        props.dragKey.current = null;
+        if (!from || from === c.statusKey) return;
+        const source = props.columns.find((item) => item.statusKey === from);
+        if (!source || (source.groupId ?? null) !== (c.groupId ?? null)) return;
+        props.onMove(from, c.statusKey);
+      }}
+    >
+      <span
+        draggable={!props.busy}
+        title="Перетащить"
+        className="cursor-grab select-none px-0.5 text-slate-400"
+        onDragStart={(event) => {
+          props.dragKey.current = c.statusKey;
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('text/plain', c.statusKey);
+        }}
+        onDragEnd={() => {
+          props.dragKey.current = null;
+        }}
+      >
+        ☰
+      </span>
+      <ColorField value={c.color} onChange={(hex) => props.onChange({ ...c, color: hex })} />
+      <input
+        className="h-8 w-56 shrink-0 rounded border border-slate-300 px-2"
+        value={c.alias}
+        onChange={(event) => props.onChange({ ...c, alias: event.target.value })}
+      />
+      <select
+        className="h-8 w-32 shrink-0 rounded border border-slate-300 bg-white px-1 text-xs text-slate-700"
+        value={c.duty || ''}
+        title="Тег колонки"
+        onChange={(event) => {
+          const duty =
+            event.target.value === 'review' ||
+            event.target.value === 'testing' ||
+            event.target.value === 'development' ||
+            event.target.value === 'ai'
+              ? event.target.value
+              : '';
+          props.onChange({ ...c, duty });
+        }}
+      >
+        <option value="">Без тега</option>
+        <option value="development">Разработка</option>
+        <option value="review">Ревью</option>
+        <option value="testing">Тесты</option>
+        <option value="ai">ИИ</option>
+      </select>
+      <select
+        className="h-8 w-36 shrink-0 rounded border border-slate-300 bg-white px-1 text-xs text-slate-700"
+        value={c.ownerRole || ''}
+        title="Ответственная роль: колонка значит, что задача сейчас в активной работе"
+        onChange={(event) => {
+          const ownerRole = event.target.value === 'developer' || event.target.value === 'qa' ? event.target.value : '';
+          props.onChange({ ...c, ownerRole });
+        }}
+      >
+        <option value="">Без роли</option>
+        <option value="developer">Разработчик</option>
+        <option value="qa">Тестировщик</option>
+      </select>
+      <div className="min-w-0 flex-1 text-slate-600">
+        <div className="truncate" title={c.columnName}>
+          {c.columnName}
+        </div>
+        {c.sourceStatuses.length > 0 ? (
+          <div
+            className="truncate text-xs text-slate-500"
+            title={c.sourceStatuses.map((status) => status.display).join(', ')}
+          >
+            {c.sourceStatuses.map((status) => status.display).join(', ')}
+          </div>
+        ) : c.statusDisplay && c.statusDisplay !== c.columnName ? (
+          <div className="truncate text-xs text-slate-500">{c.statusDisplay}</div>
+        ) : null}
+      </div>
+      {props.onLeaveGroup && (
+        <button
+          type="button"
+          title="Убрать из группы"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-slate-300 text-slate-500 hover:bg-slate-50"
+          onClick={props.onLeaveGroup}
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 }

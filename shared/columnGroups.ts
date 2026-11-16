@@ -24,7 +24,7 @@ export function coalesceColumns(columns: BoardColumnConfig[]): BoardColumnConfig
   return result.map((column, index) => ({ ...column, sortOrder: index }));
 }
 
-/** Drop a column onto another. It joins that column's group, or leaves the group. */
+/** Reorder a column inside its own group. A drop on another group does nothing. */
 export function placeColumn(
   columns: BoardColumnConfig[],
   fromKey: string,
@@ -35,9 +35,9 @@ export function placeColumn(
   const from = list.findIndex((column) => column.statusKey === fromKey);
   const to = list.findIndex((column) => column.statusKey === toKey);
   if (from < 0 || to < 0) return columns;
-  const target = list[to];
+  if ((list[from].groupId ?? null) !== (list[to].groupId ?? null)) return columns;
   const [item] = list.splice(from, 1);
-  list.splice(to, 0, { ...item, groupId: target.groupId ?? null });
+  list.splice(to, 0, item);
   return coalesceColumns(list);
 }
 

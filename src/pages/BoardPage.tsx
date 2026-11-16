@@ -2755,7 +2755,26 @@ export default function BoardPage(props: Props) {
     const next = fromKey.startsWith('group:')
       ? moveGroupBefore(columns, Number(fromKey.slice('group:'.length)), toKey)
       : placeColumn(columns, fromKey, toKey);
+    if (next === columns) return;
     void persistLayout(next);
+  }
+
+  function toggleGroupAutoSkip(group: ColumnGroup) {
+    if (props.activeBoardId == null) return;
+    const keys = columns.filter((column) => column.groupId === group.id).map((column) => column.statusKey);
+    if (!keys.length) return;
+    const boardKey = String(props.activeBoardId);
+    setColumnAutoSkip((prev) => {
+      const current = new Set(prev[boardKey] || []);
+      const allOn = keys.every((key) => current.has(key));
+      for (const key of keys) {
+        if (allOn) current.delete(key);
+        else current.add(key);
+      }
+      const next = { ...prev, [boardKey]: [...current] };
+      saveColumnAutoSkip(next);
+      return next;
+    });
   }
 
   async function toggleGroup(group: ColumnGroup) {
@@ -2944,7 +2963,13 @@ export default function BoardPage(props: Props) {
     return from < to ? 'bro-insert-below' : 'bro-insert-above';
   }
   function allowColumnDrop(event: DragEvent, statusKey: string) {
-    if (!dragColKey.current || readOnly) return;
+    const from = dragColKey.current;
+    if (!from || readOnly) return;
+    if (!from.startsWith('group:')) {
+      const source = columns.find((column) => column.statusKey === from);
+      const target = columns.find((column) => column.statusKey === statusKey);
+      if (!source || !target || (source.groupId ?? null) !== (target.groupId ?? null)) return;
+    }
     event.preventDefault();
     if (dropColKey !== statusKey) setDropColKey(statusKey);
   }
@@ -3823,7 +3848,7 @@ export default function BoardPage(props: Props) {
                           className="sticky top-0 z-10 border-b border-r border-slate-200 bg-slate-50 px-1 text-left"
                         >
                           {cell.kind === 'group' && (
-                            <span className="flex items-center gap-1">
+                            <span className="flex w-full items-center gap-1">
                               <button
                                 type="button"
                                 className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-500"
@@ -3858,6 +3883,30 @@ export default function BoardPage(props: Props) {
                               >
                                 {cell.group.name}
                               </span>
+                              {reorderMode && !readOnly && (
+                                <button
+                                  type="button"
+                                  title={
+                                    columns
+                                      .filter((column) => column.groupId === cell.group.id)
+                                      .every((column) => autoSkipColumns.has(column.statusKey))
+                                      ? 'Выключить автопропуск изменений'
+                                      : 'Автопропуск изменений для всей группы'
+                                  }
+                                  className={
+                                    columns.some((column) => column.groupId === cell.group.id) &&
+                                    columns
+                                      .filter((column) => column.groupId === cell.group.id)
+                                      .every((column) => autoSkipColumns.has(column.statusKey))
+                                      ? 'ml-auto inline-flex h-4 w-4 shrink-0 items-center justify-center text-red-600 hover:text-red-800'
+                                      : 'ml-auto inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-300 hover:text-slate-500'
+                                  }
+                                  onMouseDown={(event) => event.stopPropagation()}
+                                  onClick={() => toggleGroupAutoSkip(cell.group)}
+                                >
+                                  <BellOffIcon className="h-3 w-3" />
+                                </button>
+                              )}
                             </span>
                           )}
                         </th>
@@ -3904,27 +3953,6 @@ export default function BoardPage(props: Props) {
                       className={`sticky ${headSticky} z-10 bg-slate-50 ${numColW} px-1 py-1 text-left border-b border-r border-slate-300 font-semibold text-[11px] leading-tight text-black ${shade('head', c.statusKey)} ${columnDropMark(c.statusKey)}`}
                     >
                       <span className="flex min-w-0 flex-col gap-0.5">
-                        <span
-                          className={`min-w-0 truncate ${reorderMode && !readOnly ? 'cursor-grab active:cursor-grabbing' : ''}`}
-                          draggable={reorderMode && !readOnly}
-                          onDragStart={(e) => {
-                            if (!reorderMode || readOnly) return;
-                            dragDevId.current = null;
-                            dragColKey.current = c.statusKey;
-                            setDraggingDev(null);
-                            setDraggingCol(c.statusKey);
-                            e.dataTransfer.effectAllowed = 'move';
-                            e.dataTransfer.setData('text/plain', c.statusKey);
-                            setMoveGhost(e, c.alias);
-                          }}
-                          onDragEnd={() => {
-                            dragColKey.current = null;
-                            setDraggingCol(null);
-                            setDropColKey(null);
-                          }}
-                        >
-                          <ColumnAliasLabel alias={c.alias} color={c.color} />
-                        </span>
                         <span className="flex items-center gap-0.5">
                         <button
                           type="button"
@@ -3958,6 +3986,27 @@ export default function BoardPage(props: Props) {
                             <EyeOffIcon className="h-3 w-3" />
                           </button>
                         )}
+                        </span>
+                        <span
+                          className={`min-w-0 truncate ${reorderMode && !readOnly ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                          draggable={reorderMode && !readOnly}
+                          onDragStart={(e) => {
+                            if (!reorderMode || readOnly) return;
+                            dragDevId.current = null;
+                            dragColKey.current = c.statusKey;
+                            setDraggingDev(null);
+                            setDraggingCol(c.statusKey);
+                            e.dataTransfer.effectAllowed = 'move';
+                            e.dataTransfer.setData('text/plain', c.statusKey);
+                            setMoveGhost(e, c.alias);
+                          }}
+                          onDragEnd={() => {
+                            dragColKey.current = null;
+                            setDraggingCol(null);
+                            setDropColKey(null);
+                          }}
+                        >
+                          <ColumnAliasLabel alias={c.alias} color={c.color} />
                         </span>
                       </span>
                     </th>
