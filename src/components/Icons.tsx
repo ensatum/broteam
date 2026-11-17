@@ -759,6 +759,16 @@ export function EditIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) 
   );
 }
 
+/** Feather: battery — clear story points. */
+export function BatteryIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" {...strokeCrisp} aria-hidden>
+      <rect x="1" y="6" width="18" height="12" rx="2" ry="2" />
+      <line x1="23" y1="13" x2="23" y2="11" />
+    </svg>
+  );
+}
+
 /** Feather: battery-charging — task without story points. */
 export function BatteryChargingIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
   return (

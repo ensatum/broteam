@@ -4,3 +4,4 @@ Included changes since last build:
 - fix(board): frame column headers inside the cells
 - feat(board): change assignee reviewer and tester on a task card
 - feat(board): set story points from the task card
+- fix(board): use a plain battery to clear story points
