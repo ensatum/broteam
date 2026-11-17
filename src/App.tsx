@@ -12,7 +12,7 @@ import { DEFAULT_BOARD, DEFAULT_CONNECTION } from '@shared/types';
 import { isCrossQueueIssue } from '@shared/issueSearch';
 import type { BoardHeaderModel } from './pages/BoardPage';
 import { MenuIcon, RefreshIcon, ToggleLeftIcon, ToggleRightIcon, TrashIcon } from './components/Icons';
-import { InstantTip } from './components/InstantTip';
+import { InstantTip, InstantTitleLayer } from './components/InstantTip';
 import {
   autoSaveStamp,
   loadAutoRefresh,
@@ -543,6 +543,7 @@ export default function App() {
 
   return (
     <div className="h-dvh overflow-hidden flex flex-col">
+      <InstantTitleLayer />
       <header className="grid h-12 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-slate-200 bg-white px-3">
         <div className="flex min-w-0 items-center gap-2">
           <div ref={menuRef} className="relative shrink-0">

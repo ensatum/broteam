@@ -966,29 +966,11 @@ export function NoteEditorPopup(props: {
 }
 
 function StatusMark(props: { color: string; name: string }) {
-  const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
   return (
-    <>
-      <span
-        className="inline-flex shrink-0 items-center justify-center p-1 -m-1"
-        onMouseEnter={(event) => {
-          const box = event.currentTarget.getBoundingClientRect();
-          setTip({ x: box.left + box.width / 2, y: box.top - 4 });
-        }}
-        onMouseLeave={() => setTip(null)}
-      >
+    <InstantTip text={props.name} className="inline-flex shrink-0">
+      <span className="inline-flex items-center justify-center p-1 -m-1">
         <span className="h-2 w-2 rounded-full" style={{ backgroundColor: props.color }} />
       </span>
-      {tip &&
-        createPortal(
-          <span
-            className="pointer-events-none fixed z-[9999] -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-slate-800 px-2 py-1 text-[11px] font-medium text-white shadow-lg"
-            style={{ left: tip.x, top: tip.y }}
-          >
-            {props.name}
-          </span>,
-          document.body,
-        )}
-    </>
+    </InstantTip>
   );
 }
