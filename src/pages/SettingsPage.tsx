@@ -13,17 +13,25 @@ import type {
 } from '@shared/types';
 import type { AppUpdateProgress } from '@shared/appUpdate';
 import { freshBoardColumns } from '@shared/boardColumns';
-import { coalesceColumns, columnSections, moveGroupSection, placeColumn, placeColumnBesideGroup } from '@shared/columnGroups';
+import {
+  coalesceColumns,
+  columnSections,
+  moveColumnIntoGroup,
+  moveGroupSection,
+  placeColumnBesideGroup,
+  placeColumnFree,
+} from '@shared/columnGroups';
 import { excludedTypeKeys, typeIsExcluded } from '@shared/issueTypeFilter';
 import { DEFAULT_GITHUB, DEVELOPER_TONE_PRESETS, PARTICIPANT_ROLES, normalizeDeveloperTone } from '@shared/types';
 import { sessionLog } from '../sessionLog';
 import ColorField from '../components/ColorField';
-import { ActivityIcon, ArrowDownIcon, ArrowRightIcon, BellOffIcon, DownloadIcon, InfoIcon, MoveIcon, PlusIcon, RefreshIcon, TrashIcon, UploadIcon } from '../components/Icons';
+import { ActivityIcon, ArrowDownIcon, ArrowRightIcon, BellOffIcon, DownloadIcon, InfoIcon, MoveIcon, PlusCircleIcon, PlusIcon, RefreshIcon, TrashIcon, UploadIcon } from '../components/Icons';
 import { DEFAULT_WORK_SCHEDULE, type WorkSchedule } from '../autoRefresh';
 
 type SectionDrop =
   | { target: 'column'; key: string; where: 'above' | 'below' }
-  | { target: 'group'; id: number; where: 'above' | 'below' };
+  | { target: 'group'; id: number; where: 'above' | 'below' }
+  | { target: 'into'; id: number };
 
 type SettingsTab = 'app' | 'integrations' | 'people' | 'boards' | 'backup';
 type BackupChoice = {
@@ -79,6 +87,8 @@ export default function SettingsPage(props: Props) {
     props.developers,
   );
   const [colDraft, setColDraft] = useState(props.columns);
+  const [groupDraft, setGroupDraft] = useState(props.groups);
+  const nextGroupId = useRef(-1);
   const columnDraftHold = useRef<BoardColumnConfig[] | null>(null);
   const dragColumnKey = useRef<string | null>(null);
   const dragGroupId = useRef<number | null>(null);
@@ -172,6 +182,7 @@ export default function SettingsPage(props: Props) {
     }
     setColDraft(props.columns);
   }, [props.columns]);
+  useEffect(() => setGroupDraft(props.groups), [props.groups]);
   useEffect(() => {
     void window.api.getAppInfo().then(setAppInfo).catch(() => undefined);
     void window.api.getGithub().then((value) => {
@@ -597,6 +608,11 @@ export default function SettingsPage(props: Props) {
     }
   }
 
+  function stageBoardLayout(boardId: number, nextBoardColumns: BoardColumnConfig[], nextGroups: ColumnGroup[]) {
+    setColDraft((prev) => [...prev.filter((column) => column.boardLocalId !== boardId), ...nextBoardColumns]);
+    setGroupDraft((prev) => [...prev.filter((group) => group.boardLocalId !== boardId), ...nextGroups]);
+  }
+
   async function saveBoardGroups(boardId: number, nextBoardColumns: BoardColumnConfig[], nextGroups: ColumnGroup[]) {
     const saved = await window.api.saveColumnGroups(
       boardId,
@@ -612,23 +628,7 @@ export default function SettingsPage(props: Props) {
       })),
       nextBoardColumns.map((column) => column.statusKey),
     );
-    const merged = saved.columns.map((column) => {
-      const edited = colDraft.find(
-        (item) => item.boardLocalId === column.boardLocalId && item.statusKey === column.statusKey,
-      );
-      if (!edited) return column;
-      return {
-        ...column,
-        alias: edited.alias,
-        color: edited.color,
-        duty: edited.duty,
-        ownerRole: edited.ownerRole,
-      };
-    });
-    columnDraftHold.current = merged;
-    props.onColumnsChange(saved.columns);
-    props.onGroupsChange(saved.groups);
-    setColDraft(merged);
+    return saved;
   }
 
   async function saveBoardSettings() {
@@ -654,11 +654,51 @@ export default function SettingsPage(props: Props) {
         qaFilterNames: [],
       };
       const savedBoard = await window.api.saveBoard(cleaned);
-      const savedCols = await window.api.replaceColumns(colDraft);
+      const boardIds = new Set<number>();
+      for (const column of colDraft) if (column.boardLocalId) boardIds.add(column.boardLocalId);
+      for (const group of groupDraft) boardIds.add(group.boardLocalId);
+      for (const group of props.groups) boardIds.add(group.boardLocalId);
+      let stagedColumns = colDraft;
+      let stagedGroups = groupDraft.filter((group) => !boardIds.has(group.boardLocalId));
+      for (const boardId of boardIds) {
+        const saved = await saveBoardGroups(
+          boardId,
+          stagedColumns.filter((column) => column.boardLocalId === boardId),
+          groupDraft.filter((group) => group.boardLocalId === boardId),
+        );
+        const draftByKey = new Map(
+          stagedColumns
+            .filter((column) => column.boardLocalId === boardId)
+            .map((column) => [column.statusKey, column]),
+        );
+        const merged = saved.columns.map((column) => {
+          const edited = draftByKey.get(column.statusKey);
+          if (!edited) return column;
+          return {
+            ...column,
+            alias: edited.alias,
+            color: edited.color,
+            duty: edited.duty,
+            ownerRole: edited.ownerRole,
+          };
+        });
+        stagedColumns = [
+          ...stagedColumns.filter((column) => column.boardLocalId !== boardId),
+          ...merged.filter((column) => column.boardLocalId === boardId),
+        ];
+        stagedGroups = [
+          ...stagedGroups,
+          ...saved.groups.filter((group) => group.boardLocalId === boardId),
+        ];
+      }
+      const savedCols = await window.api.replaceColumns(stagedColumns);
       props.onBoardChange(savedBoard);
+      columnDraftHold.current = savedCols;
       props.onColumnsChange(savedCols);
+      props.onGroupsChange(stagedGroups);
       setBoardDraft(savedBoard);
       setColDraft(savedCols);
+      setGroupDraft(stagedGroups);
       publishOk('boards', 'Настройки доски сохранены');
     } catch (e) {
       publishErr('boards', e);
@@ -684,7 +724,8 @@ export default function SettingsPage(props: Props) {
         alias: board.alias || '',
         color: board.color || '',
         issueTypeFilter: board.issueTypeFilter || '',
-      })));
+      }))) ||
+    JSON.stringify(groupDraft) !== JSON.stringify(props.groups);
 
   return (
     <div className="flex w-full items-start gap-6">
@@ -1099,7 +1140,7 @@ export default function SettingsPage(props: Props) {
               .filter((c) => c.boardLocalId === board.id)
               .slice()
               .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
-            const boardGroups = props.groups
+            const boardGroups = groupDraft
               .filter((group) => group.boardLocalId === board.id)
               .slice()
               .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
@@ -1149,12 +1190,6 @@ export default function SettingsPage(props: Props) {
                       const alias = event.target.value;
                       setSavedBoards((prev) =>
                         prev.map((item) => (item.id === board.id ? { ...item, alias } : item)),
-                      );
-                    }}
-                    onBlur={(event) => {
-                      const alias = event.target.value;
-                      void patchBoards(
-                        savedBoards.map((item) => (item.id === board.id ? { ...item, alias } : item)),
                       );
                     }}
                   />
@@ -1216,29 +1251,29 @@ export default function SettingsPage(props: Props) {
                       По умолчанию отмечены все. Снятый тип убирает его статусы из колонок.
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-slate-500">Группы колонок</span>
-                    <button
-                      type="button"
-                      className="text-sm text-emerald-700 underline disabled:opacity-50"
-                      disabled={busy}
-                      onClick={() =>
-                        void saveBoardGroups(board.id, boardColumns, [
-                          {
-                            id: 0,
-                            boardLocalId: board.id,
-                            name: 'Группа',
-                            color: '#64748b',
-                            sortOrder: 0,
-                            collapsed: false,
-                          },
-                          ...boardGroups,
-                        ]).catch((error: unknown) => publishErr('boards', error))
-                      }
-                    >
-                      Новая группа
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    className="inline-flex h-8 items-center gap-1.5 rounded border border-slate-300 px-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    disabled={busy}
+                    onClick={() => {
+                      const id = nextGroupId.current;
+                      nextGroupId.current -= 1;
+                      stageBoardLayout(board.id, boardColumns, [
+                        {
+                          id,
+                          boardLocalId: board.id,
+                          name: 'Группа',
+                          color: '#64748b',
+                          sortOrder: 0,
+                          collapsed: false,
+                        },
+                        ...boardGroups,
+                      ]);
+                    }}
+                  >
+                    <PlusCircleIcon className="h-4 w-4" />
+                    Добавить группу
+                  </button>
                   {columnSections(boardColumns, boardGroups).map((section) =>
                     section.kind === 'column' ? (
                       <ColumnEditorRow
@@ -1252,19 +1287,6 @@ export default function SettingsPage(props: Props) {
                         dragGroupId={dragGroupId}
                         onDragState={setDraggingColumn}
                         onHover={setSectionDrop}
-                        onMoveGroup={(fromId, where) => {
-                          const moved = moveGroupSection(
-                            boardColumns,
-                            boardGroups,
-                            fromId,
-                            { kind: 'column', key: section.column.statusKey },
-                            where,
-                          );
-                          if (!moved) return;
-                          void saveBoardGroups(board.id, moved.columns, moved.groups).catch((error: unknown) =>
-                            publishErr('boards', error),
-                          );
-                        }}
                         onChange={(next) =>
                           setColDraft((prev) =>
                             prev.map((item) =>
@@ -1275,9 +1297,7 @@ export default function SettingsPage(props: Props) {
                           )
                         }
                         onMove={(from, to) =>
-                          void saveBoardGroups(board.id, placeColumn(boardColumns, from, to), boardGroups).catch(
-                            (error: unknown) => publishErr('boards', error),
-                          )
+                          stageBoardLayout(board.id, placeColumnFree(boardColumns, from, to), boardGroups)
                         }
                       />
                     ) : (
@@ -1293,9 +1313,9 @@ export default function SettingsPage(props: Props) {
                         dragging={draggingGroup === section.group.id}
                         onHover={setSectionDrop}
                         onDragState={setDraggingGroup}
-                        onSave={(nextColumns, nextGroups) =>
-                          saveBoardGroups(board.id, nextColumns, nextGroups)
-                        }
+                        onSave={async (nextColumns, nextGroups) => {
+                          stageBoardLayout(board.id, nextColumns, nextGroups);
+                        }}
                         onError={(error) => publishErr('boards', error)}
                       >
                         {section.columns.map((column) => (
@@ -1320,12 +1340,10 @@ export default function SettingsPage(props: Props) {
                               )
                             }
                             onMove={(from, to) =>
-                              void saveBoardGroups(board.id, placeColumn(boardColumns, from, to), boardGroups).catch(
-                                (error: unknown) => publishErr('boards', error),
-                              )
+                              stageBoardLayout(board.id, placeColumnFree(boardColumns, from, to), boardGroups)
                             }
                             onLeaveGroup={() =>
-                              void saveBoardGroups(
+                              stageBoardLayout(
                                 board.id,
                                 coalesceColumns(
                                   boardColumns.map((item) =>
@@ -1333,7 +1351,7 @@ export default function SettingsPage(props: Props) {
                                   ),
                                 ),
                                 boardGroups,
-                              ).catch((error: unknown) => publishErr('boards', error))
+                              )
                             }
                           />
                         ))}
@@ -1360,6 +1378,7 @@ export default function SettingsPage(props: Props) {
           onCancel={() => {
             setBoardDraft(props.board);
             setColDraft(props.columns);
+            setGroupDraft(props.groups);
             setSavedBoards(props.boards);
           }}
         />
@@ -1892,7 +1911,6 @@ function ColumnGroupCard(props: {
   onError: (error: unknown) => void;
   children: ReactNode;
 }) {
-  const [name, setName] = useState<string | null>(null);
   const group = props.group;
   async function save(columns: BoardColumnConfig[], groups: ColumnGroup[]) {
     try {
@@ -1901,9 +1919,11 @@ function ColumnGroupCard(props: {
       props.onError(error);
     }
   }
-  const free = props.columns.filter((column) => column.groupId == null);
-  const mark =
-    props.dropMark?.target === 'group' && props.dropMark.id === group.id
+  const hasMembers = props.columns.some((column) => column.groupId === group.id);
+  const into = props.dropMark?.target === 'into' && props.dropMark.id === group.id;
+  const mark = into
+    ? 'ring-2 ring-inset ring-sky-500'
+    : props.dropMark?.target === 'group' && props.dropMark.id === group.id
       ? props.dropMark.where === 'below'
         ? 'bro-insert-below'
         : 'bro-insert-above'
@@ -1920,11 +1940,14 @@ function ColumnGroupCard(props: {
                 props.onHover({ target: 'group', id: group.id, where });
                 return;
               }
-              const from = props.dragColumnKey.current;
-              const source = from ? props.columns.find((column) => column.statusKey === from) : undefined;
-              if (!source || source.groupId != null) return;
+              if (!props.dragColumnKey.current) return;
+              if ((event.target as HTMLElement).closest('[data-column-row]')) return;
               event.preventDefault();
-              props.onHover({ target: 'group', id: group.id, where });
+              props.onHover(
+                hasMembers
+                  ? { target: 'group', id: group.id, where }
+                  : { target: 'into', id: group.id },
+              );
             }}
             onDrop={(event) => {
               const where =
@@ -1945,10 +1968,13 @@ function ColumnGroupCard(props: {
               const fromColumn = props.dragColumnKey.current;
               props.dragColumnKey.current = null;
               if (!fromColumn) return;
-              const source = props.columns.find((column) => column.statusKey === fromColumn);
-              if (!source || source.groupId != null) return;
+              if ((event.target as HTMLElement).closest('[data-column-row]')) return;
               event.preventDefault();
-              const moved = placeColumnBesideGroup(props.columns, props.groups, fromColumn, group.id, where);
+              const intoGroup =
+                !hasMembers || (props.dropMark?.target === 'into' && props.dropMark.id === group.id);
+              const moved = intoGroup
+                ? moveColumnIntoGroup(props.columns, props.groups, fromColumn, group.id)
+                : placeColumnBesideGroup(props.columns, props.groups, fromColumn, group.id, where);
               if (moved) void save(moved.columns, moved.groups);
             }}
           >
@@ -1997,16 +2023,15 @@ function ColumnGroupCard(props: {
               />
               <input
                 className="h-8 min-w-0 flex-1 rounded border border-slate-300 px-2 text-sm"
-                value={name ?? group.name}
-                onChange={(event) => setName(event.target.value)}
-                onBlur={() => {
-                  const nextName = (name ?? group.name).trim() || 'Группа';
-                  if (nextName === group.name) return;
+                value={group.name}
+                onChange={(event) =>
                   void save(
                     props.columns,
-                    props.groups.map((item) => (item.id === group.id ? { ...item, name: nextName } : item)),
-                  );
-                }}
+                    props.groups.map((item) =>
+                      item.id === group.id ? { ...item, name: event.target.value } : item,
+                    ),
+                  )
+                }
               />
               <button
                 type="button"
@@ -2025,33 +2050,6 @@ function ColumnGroupCard(props: {
               </button>
             </div>
             {!group.collapsed && <div className="space-y-1">{props.children}</div>}
-            {!group.collapsed && (
-            <div className="flex flex-wrap items-center gap-1">
-              <select
-                className="h-7 rounded border border-slate-300 bg-white px-1 text-xs text-slate-700"
-                value=""
-                onChange={(event) => {
-                  const statusKey = event.target.value;
-                  if (!statusKey) return;
-                  void save(
-                    coalesceColumns(
-                      props.columns.map((column) =>
-                        column.statusKey === statusKey ? { ...column, groupId: group.id } : column,
-                      ),
-                    ),
-                    props.groups,
-                  );
-                }}
-              >
-                <option value="">Добавить колонку</option>
-                {free.map((column) => (
-                  <option key={column.statusKey} value={column.statusKey}>
-                    {(column.alias || '').trim() || column.columnName}
-                  </option>
-                ))}
-              </select>
-            </div>
-            )}
           </div>
   );
 }
@@ -2068,7 +2066,6 @@ function ColumnEditorRow(props: {
   onHover: (mark: SectionDrop | null) => void;
   onChange: (column: BoardColumnConfig) => void;
   onMove: (from: string, to: string) => void;
-  onMoveGroup?: (fromId: number, where: 'above' | 'below') => void;
   onLeaveGroup?: () => void;
 }) {
   const c = props.column;
@@ -2080,28 +2077,16 @@ function ColumnEditorRow(props: {
       : '';
   return (
     <div
+      data-column-row
       className={`flex items-center gap-2 rounded border border-slate-100 bg-white p-2 text-sm ${mark} ${
         props.dragging ? 'bro-drag-source' : ''
       }`}
       onDragOver={(event) => {
-        if (props.dragGroupId.current != null) {
-          if (c.groupId != null) return;
-          event.preventDefault();
-          event.stopPropagation();
-          props.onHover({
-            target: 'column',
-            key: c.statusKey,
-            where: dropHalf(event.currentTarget, event.clientY),
-          });
-          return;
-        }
+        if (props.dragGroupId.current != null) return;
         const from = props.dragKey.current;
         if (!from || from === c.statusKey) return;
         const source = props.columns.find((item) => item.statusKey === from);
         if (!source) return;
-        const sourceGroup = source.groupId ?? null;
-        const targetGroup = c.groupId ?? null;
-        if (sourceGroup !== targetGroup && sourceGroup != null) return;
         event.preventDefault();
         event.stopPropagation();
         const fromIndex = props.columns.findIndex((item) => item.statusKey === from);
@@ -2109,30 +2094,12 @@ function ColumnEditorRow(props: {
         props.onHover({ target: 'column', key: c.statusKey, where: fromIndex < toIndex ? 'below' : 'above' });
       }}
       onDrop={(event) => {
-        if (props.dragGroupId.current != null) {
-          const fromId = props.dragGroupId.current;
-          const where =
-            props.dropMark?.target === 'column' && props.dropMark.key === c.statusKey
-              ? props.dropMark.where
-              : dropHalf(event.currentTarget, event.clientY);
-          props.dragGroupId.current = null;
-          props.onHover(null);
-          if (c.groupId != null) return;
-          event.preventDefault();
-          event.stopPropagation();
-          props.onMoveGroup?.(fromId, where);
-          return;
-        }
+        if (props.dragGroupId.current != null) return;
         const from = props.dragKey.current;
         props.dragKey.current = null;
         props.onHover(null);
         props.onDragState(null);
         if (!from || from === c.statusKey) return;
-        const source = props.columns.find((item) => item.statusKey === from);
-        if (!source) return;
-        const sourceGroup = source.groupId ?? null;
-        const targetGroup = c.groupId ?? null;
-        if (sourceGroup !== targetGroup && sourceGroup != null) return;
         event.preventDefault();
         event.stopPropagation();
         props.onMove(from, c.statusKey);

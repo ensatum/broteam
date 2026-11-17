@@ -44,6 +44,24 @@ export function placeColumn(
   return coalesceColumns(list);
 }
 
+/** Put a column next to any other column. It takes that column's group, or leaves the group. */
+export function placeColumnFree(
+  columns: BoardColumnConfig[],
+  fromKey: string,
+  toKey: string,
+): BoardColumnConfig[] {
+  if (fromKey === toKey) return columns;
+  const list = [...columns];
+  const from = list.findIndex((column) => column.statusKey === fromKey);
+  const to = list.findIndex((column) => column.statusKey === toKey);
+  if (from < 0 || to < 0) return columns;
+  const targetGroup = list[to].groupId ?? null;
+  const [item] = list.splice(from, 1);
+  const insertAt = from < to ? to - 1 : to;
+  list.splice(insertAt, 0, { ...item, groupId: targetGroup });
+  return coalesceColumns(list);
+}
+
 export type ColumnSection =
   | { kind: 'column'; column: BoardColumnConfig }
   | { kind: 'group'; group: ColumnGroup; columns: BoardColumnConfig[] };
@@ -105,7 +123,27 @@ function shiftSection(sections: ColumnSection[], fromAt: number, toAt: number, w
   return next;
 }
 
-/** Keep an ungrouped column ungrouped and seat it before or after a whole group. */
+function takeColumn(sections: ColumnSection[], fromKey: string): { sections: ColumnSection[]; column: BoardColumnConfig } | null {
+  const next = sections.map((section) =>
+    section.kind === 'column' ? section : { ...section, columns: [...section.columns] },
+  );
+  for (const section of next) {
+    if (section.kind === 'column' && section.column.statusKey === fromKey) {
+      return {
+        column: section.column,
+        sections: next.filter((item) => item.kind !== 'column' || item.column.statusKey !== fromKey),
+      };
+    }
+    if (section.kind !== 'group') continue;
+    const index = section.columns.findIndex((column) => column.statusKey === fromKey);
+    if (index < 0) continue;
+    const [column] = section.columns.splice(index, 1);
+    return { column, sections: next };
+  }
+  return null;
+}
+
+/** Seat a column before or after a whole group and take it out of any group. */
 export function placeColumnBesideGroup(
   columns: BoardColumnConfig[],
   groups: ColumnGroup[],
@@ -113,13 +151,29 @@ export function placeColumnBesideGroup(
   groupId: number,
   where: 'above' | 'below',
 ): { columns: BoardColumnConfig[]; groups: ColumnGroup[] } | null {
-  const sections = columnSections(columns, groups);
-  const fromAt = sections.findIndex((section) => section.kind === 'column' && section.column.statusKey === fromKey);
-  const toAt = sections.findIndex((section) => section.kind === 'group' && section.group.id === groupId);
-  if (fromAt < 0 || toAt < 0) return null;
-  const source = sections[fromAt];
-  if (source.kind !== 'column' || source.column.groupId != null) return null;
-  return flattenSections(shiftSection(sections, fromAt, toAt, where));
+  const taken = takeColumn(columnSections(columns, groups), fromKey);
+  if (!taken) return null;
+  const toAt = taken.sections.findIndex((section) => section.kind === 'group' && section.group.id === groupId);
+  if (toAt < 0) return null;
+  const insertAt = where === 'below' ? toAt + 1 : toAt;
+  taken.sections.splice(insertAt, 0, { kind: 'column', column: { ...taken.column, groupId: null } });
+  return flattenSections(taken.sections);
+}
+
+/** Append a column to a group, including one that was in another group or in none. */
+export function moveColumnIntoGroup(
+  columns: BoardColumnConfig[],
+  groups: ColumnGroup[],
+  fromKey: string,
+  groupId: number,
+): { columns: BoardColumnConfig[]; groups: ColumnGroup[] } | null {
+  const taken = takeColumn(columnSections(columns, groups), fromKey);
+  if (!taken) return null;
+  const host = taken.sections.find((section) => section.kind === 'group' && section.group.id === groupId);
+  if (!host || host.kind !== 'group') return null;
+  if (taken.column.groupId === groupId) return null;
+  host.columns.push({ ...taken.column, groupId });
+  return flattenSections(taken.sections);
 }
 
 /** Move a group before or after another group, or before or after an ungrouped column. */
