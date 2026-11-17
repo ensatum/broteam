@@ -96,6 +96,7 @@ const TABLE_SHOWN_KEY = 'broteam.tableShown';
 const BOARD_SCALE_KEY = 'broteam.boardScale';
 const SHOW_DONE_KEY = 'broteam.showDoneIssues';
 const CROSS_BOARDS_KEY = 'broteam.crossBoards';
+const CROSS_PRIMED_KEY = 'broteam.crossPrimed';
 
 function loadCrossBoards(): Record<string, boolean> {
   try {
@@ -515,6 +516,7 @@ type Props = {
   changes: Array<{ issueKey: string; boardLocalId: number; text: string; at: string; seen: boolean }>;
   onDismissChanges: (keys: string[]) => void;
   onCrossChange?: () => void;
+  onPrepareCross?: () => Promise<boolean>;
   apiRequests: number;
   trayCue: { tick: number; boardId: number | null; bell: boolean };
   onBootstrapped?: () => void;
@@ -701,6 +703,8 @@ export default function BoardPage(props: Props) {
   }, []);
   const [reorderMode, setReorderMode] = useState(false);
   const [crossBoards, setCrossBoards] = useState<Record<string, boolean>>(loadCrossBoards);
+  const [crossBusy, setCrossBusy] = useState(false);
+  const crossLock = useRef(false);
   const crossOn = props.activeBoardId != null && Boolean(crossBoards[String(props.activeBoardId)]);
   const boardQueueKey =
     props.boards.find((board) => board.id === props.activeBoardId)?.queueKey || '';
@@ -2641,20 +2645,37 @@ export default function BoardPage(props: Props) {
           <button
             type="button"
             aria-pressed={crossOn}
+            disabled={crossBusy || props.refreshingBoardId != null}
             title="Учитывать задачи других досок, которые есть и на этой"
-            className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-medium ${
+            className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-medium disabled:opacity-50 ${
               crossOn
                 ? 'border-[#3647d2] bg-[#3647d2] text-white'
                 : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
             }`}
             onClick={() => {
-              if (props.activeBoardId == null) return;
-              setCrossBoards((prev) => {
-                const next = { ...prev, [String(props.activeBoardId)]: !prev[String(props.activeBoardId)] };
-                saveCrossBoards(next);
-                props.onCrossChange?.();
-                return next;
-              });
+              if (props.activeBoardId == null || crossLock.current) return;
+              const boardId = props.activeBoardId;
+              const turningOn = !crossBoards[String(boardId)];
+              crossLock.current = true;
+              setCrossBusy(true);
+              void (async () => {
+                try {
+                  if (turningOn && localStorage.getItem(CROSS_PRIMED_KEY) !== '1') {
+                    const ready = props.onPrepareCross ? await props.onPrepareCross() : false;
+                    if (!ready) return;
+                    localStorage.setItem(CROSS_PRIMED_KEY, '1');
+                  }
+                  setCrossBoards((prev) => {
+                    const next = { ...prev, [String(boardId)]: turningOn };
+                    saveCrossBoards(next);
+                    props.onCrossChange?.();
+                    return next;
+                  });
+                } finally {
+                  crossLock.current = false;
+                  setCrossBusy(false);
+                }
+              })();
             }}
           >
             <ShuffleIcon className="h-3.5 w-3.5" />

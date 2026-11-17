@@ -249,8 +249,8 @@ export default function App() {
   const viewRef = useRef(activeBoardId);
   viewRef.current = shownBoardId ?? activeBoardId;
 
-  const refreshBoards = useCallback(async (queue: SavedBoard[], snapshot: boolean) => {
-    if (refreshLock.current || refreshingBoardId != null || !queue.length) return;
+  const refreshBoards = useCallback(async (queue: SavedBoard[], snapshot: boolean): Promise<boolean> => {
+    if (refreshLock.current || refreshingBoardId != null || !queue.length) return false;
     refreshLock.current = true;
     await window.api.resetTrackerActivity();
     await window.api.beginBoardRefresh();
@@ -260,6 +260,7 @@ export default function App() {
     refreshButton?.querySelector('svg')?.classList.add('animate-spin');
     setError(null);
     let stopped = false;
+    let failed = false;
     const failures: string[] = [];
     try {
       for (const item of queue) {
@@ -296,6 +297,7 @@ export default function App() {
       }
     } catch (e) {
       stopped = e instanceof Error && e.message.includes('Запросы остановлены');
+      failed = !stopped;
       if (!stopped) setError(e instanceof Error ? e.message : String(e));
     } finally {
       try {
@@ -314,6 +316,7 @@ export default function App() {
       setRefreshingBoardId(null);
       setLoading(false);
     }
+    return !stopped && !failed && failures.length === 0;
   }, [refreshingBoardId]);
 
   const refreshBoard = useCallback(() => {
@@ -742,6 +745,7 @@ export default function App() {
             trayCue={trayCue}
             onBootstrapped={() => setBootDone(true)}
             onCrossChange={() => setCrossRev((value) => value + 1)}
+            onPrepareCross={() => refreshBoards(boards.filter((item) => item.enabled), false)}
             onDismissChanges={(keys) => {
               if (activeBoardId == null || !keys.length) return;
               void window.api.dismissIssueChanges(activeBoardId, keys).then(setChanges);
