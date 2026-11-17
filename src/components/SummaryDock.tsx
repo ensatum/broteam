@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { sourceStatusesOf } from '@shared/boardColumns';
-import { PARTICIPANT_ROLES, type BoardColumnConfig, type Developer, type SavedBoard } from '@shared/types';
+import { PARTICIPANT_ROLES, type BoardColumnConfig, type BoardMatrix, type Developer, type SavedBoard, type TrackerIssue } from '@shared/types';
+import { issueRoleLabel, trackerUserRef, type IssueRole } from '@shared/rolePick';
 import { applyMarkdownHotkey, handleRichHotkey, hotkeyId, htmlToMarkdown } from '../draftFormat';
 import { renderMarkdown } from '../markdown';
 import {
@@ -40,6 +41,7 @@ import { CopyIssueButton } from './IssuePanel';
 import { LoadBar } from './LoadBar';
 import { RunSpinner, stopMatchingRuns } from './ApiRunControls';
 import { InstantTip } from './InstantTip';
+import { RolePick } from './RolePick';
 import { SortMenu, type ListSortDir } from './ListSort';
 import {
   invalidateIssueStories,
@@ -92,6 +94,7 @@ export default function SummaryDock(props: {
   onOpenBoard: (boardLocalId: number) => void;
   onPeriod: (period: SummaryPeriod) => void;
   onIssueHover: (issueKey: string | null, boardLocalId: number | null) => void;
+  onMatrix?: (matrix: BoardMatrix) => void;
   onCached?: () => void;
 }) {
   const roster = props.participants.filter((person) => !person.hidden);
@@ -350,6 +353,27 @@ export default function SummaryDock(props: {
       saveSummaryPeopleOrder(next);
       return next;
     });
+  }
+
+  async function assignRole(row: SummaryRow, role: IssueRole, person: Developer | null) {
+    const login = person ? trackerUserRef(person) : null;
+    if (person && !login) {
+      setError('У участника нет логина Трекера.');
+      return;
+    }
+    setRefreshingKey(row.key);
+    setError(null);
+    try {
+      const matrix = await window.api.setIssueRole(row.key, role, login);
+      props.onMatrix?.(matrix);
+      const issue = findMatrixIssue(matrix, row.key);
+      const display = issue ? roleDisplay(issue, role) : person?.displayName || null;
+      setRows((prev) => prev.map((item) => (item.key === row.key ? patchSummaryRole(item, role, display) : item)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRefreshingKey((current) => (current === row.key ? null : current));
+    }
   }
 
   async function refreshRow(row: SummaryRow) {
@@ -659,6 +683,9 @@ export default function SummaryDock(props: {
               onHover={props.onIssueHover}
               refreshing={refreshingKey === row.key}
               onRefresh={() => void refreshRow(row)}
+              people={props.participants}
+              roleBusy={refreshingKey === row.key}
+              onAssignRole={(role, person) => void assignRole(row, role, person)}
               onNoteSave={(body) => {
                 setIssueNotes((prev) => ({ ...prev, [row.key]: body }));
                 if (props.boardLocalId == null || props.personId == null) return;
@@ -1177,6 +1204,9 @@ function SummaryCard(props: {
   onHover: (issueKey: string | null, boardLocalId: number | null) => void;
   refreshing: boolean;
   onRefresh: () => void;
+  people: Developer[];
+  roleBusy: boolean;
+  onAssignRole: (role: IssueRole, person: Developer | null) => void;
   onNoteSave: (body: string) => void;
   onOpenBoard: (boardLocalId: number) => void;
 }) {
@@ -1320,11 +1350,35 @@ function SummaryCard(props: {
       </div>
       {!props.open && (
         <div className="mt-0.5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1 px-2 pb-1 pl-5 text-[10px] text-slate-500">
-          <CollapsedRole role="Исполнитель" current={assigneeRole.current} past={assigneeRole.past} selected={props.personName} />
+          <CollapsedRole
+            role="assignee"
+            current={assigneeRole.current}
+            past={assigneeRole.past}
+            selected={props.personName}
+            people={props.people}
+            busy={props.roleBusy}
+            onChange={(person) => props.onAssignRole('assignee', person)}
+          />
           <span className="text-slate-300" aria-hidden>·</span>
-          <CollapsedRole role="Ревьюер" current={reviewerRole.current} past={reviewerRole.past} selected={props.personName} />
+          <CollapsedRole
+            role="reviewer"
+            current={reviewerRole.current}
+            past={reviewerRole.past}
+            selected={props.personName}
+            people={props.people}
+            busy={props.roleBusy}
+            onChange={(person) => props.onAssignRole('reviewer', person)}
+          />
           <span className="text-slate-300" aria-hidden>·</span>
-          <CollapsedRole role="Тестировщик" current={qaRole.current} past={qaRole.past} selected={props.personName} />
+          <CollapsedRole
+            role="qa"
+            current={qaRole.current}
+            past={qaRole.past}
+            selected={props.personName}
+            people={props.people}
+            busy={props.roleBusy}
+            onChange={(person) => props.onAssignRole('qa', person)}
+          />
           <span className="min-w-0 truncate text-right">
             {dayOf(taken)} - {dayOf(row.finalStatusAt)}
             {periodDayCount(taken, row.finalStatusAt) != null ? ` (${periodDayCount(taken, row.finalStatusAt)})` : ''}
@@ -1340,9 +1394,33 @@ function SummaryCard(props: {
           )}
           <div className="flex items-start gap-3 pl-3.5">
             <div className="min-w-0 flex-1 space-y-0.5">
-              <RoleLine label="Исполнитель" current={assigneeRole.current} past={assigneeRole.past} selected={props.personName} />
-              <RoleLine label="Тестировщик" current={qaRole.current} past={qaRole.past} selected={props.personName} />
-              <RoleLine label="Ревьюер" current={reviewerRole.current} past={reviewerRole.past} selected={props.personName} />
+              <RoleLine
+                role="assignee"
+                current={assigneeRole.current}
+                past={assigneeRole.past}
+                selected={props.personName}
+                people={props.people}
+                busy={props.roleBusy}
+                onChange={(person) => props.onAssignRole('assignee', person)}
+              />
+              <RoleLine
+                role="qa"
+                current={qaRole.current}
+                past={qaRole.past}
+                selected={props.personName}
+                people={props.people}
+                busy={props.roleBusy}
+                onChange={(person) => props.onAssignRole('qa', person)}
+              />
+              <RoleLine
+                role="reviewer"
+                current={reviewerRole.current}
+                past={reviewerRole.past}
+                selected={props.personName}
+                people={props.people}
+                busy={props.roleBusy}
+                onChange={(person) => props.onAssignRole('reviewer', person)}
+              />
               <div>
                 <span className="text-slate-500">Автор: </span>
                 <span className={owns([row.author], props.personName) ? 'font-bold' : ''}>{row.author || '—'}</span>
@@ -1481,11 +1559,34 @@ function actionStamp(iso: string | null | undefined): string {
   return `${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function RoleLine(props: { label: string; current: string; past: string[]; selected: string }) {
+function RoleLine(props: {
+  role: IssueRole;
+  current: string;
+  past: string[];
+  selected: string;
+  people: Developer[];
+  busy: boolean;
+  onChange: (person: Developer | null) => void;
+}) {
+  const label = issueRoleLabel(props.role);
+  const held = Boolean(props.current.trim());
   return (
     <div>
-      <span className="text-slate-500">{props.label}: </span>
-      <span className={sameName(props.current, props.selected) ? 'font-bold' : ''}>{props.current || '—'}</span>
+      <RolePick
+        role={props.role}
+        current={props.current}
+        people={props.people}
+        busy={props.busy}
+        onChange={props.onChange}
+      >
+        {held ? (
+          <span className="text-slate-500">
+            {label}: <span className={sameName(props.current, props.selected) ? 'font-bold text-slate-800' : 'text-slate-800'}>{props.current}</span>
+          </span>
+        ) : (
+          <span className="text-red-300 line-through">{label}</span>
+        )}
+      </RolePick>
       {props.past.length > 0 && (
         <span className="text-slate-400">
           {' ('}
@@ -1504,25 +1605,42 @@ function RoleLine(props: { label: string; current: string; past: string[]; selec
   );
 }
 
-function CollapsedRole(props: { role: string; current: string; past: string[]; selected: string }) {
+function CollapsedRole(props: {
+  role: IssueRole;
+  current: string;
+  past: string[];
+  selected: string;
+  people: Developer[];
+  busy: boolean;
+  onChange: (person: Developer | null) => void;
+}) {
   const pastHit = props.past.find((name) => sameName(name, props.selected));
-  if (pastHit) {
-    return (
-      <RoleName
-        role={props.role}
-        name={pastHit}
-        strike
-        tip={`${props.role}: ${props.current || '—'}`}
-        className="font-bold text-slate-500"
-      />
-    );
-  }
+  const label = issueRoleLabel(props.role);
   return (
-    <RoleName
+    <RolePick
       role={props.role}
-      name={props.current}
-      className={sameName(props.current, props.selected) ? 'font-bold text-slate-800' : ''}
-    />
+      current={props.current}
+      people={props.people}
+      busy={props.busy}
+      className="inline-flex w-fit max-w-full min-w-0 justify-self-start"
+      onChange={props.onChange}
+    >
+      {pastHit ? (
+        <RoleName
+          role={label}
+          name={pastHit}
+          strike
+          tip={`${label}: ${props.current || '—'}`}
+          className="font-bold text-slate-500"
+        />
+      ) : (
+        <RoleName
+          role={label}
+          name={props.current}
+          className={sameName(props.current, props.selected) ? 'font-bold text-slate-800' : ''}
+        />
+      )}
+    </RolePick>
   );
 }
 
@@ -1654,6 +1772,31 @@ function focusSummaryRow(row: SummaryRow, person: Developer): SummaryRow {
   };
 }
 
+function findMatrixIssue(matrix: BoardMatrix, issueKey: string): TrackerIssue | null {
+  for (const row of matrix.developers) {
+    for (const issues of Object.values(row.issuesByColumn)) {
+      const found = issues.find((issue) => issue.key === issueKey);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function roleDisplay(issue: TrackerIssue, role: IssueRole): string | null {
+  if (role === 'assignee') return issue.assigneeDisplay;
+  if (role === 'reviewer') return issue.reviewerDisplay;
+  return issue.qaDisplay;
+}
+
+function patchSummaryRole(row: SummaryRow, role: IssueRole, display: string | null): SummaryRow {
+  const next = (display || '').trim();
+  const field = role === 'assignee' ? 'assignee' : role === 'reviewer' ? 'reviewer' : 'qa';
+  const listField = role === 'assignee' ? 'assignees' : role === 'reviewer' ? 'reviewers' : 'qas';
+  const names = namesOf(row[listField], row[field]);
+  const list = next ? [...names.filter((name) => name !== next), next] : names;
+  return { ...row, [field]: next || '—', [listField]: list };
+}
+
 function namesOf(list: string[] | undefined, fallback: string): string[] {
   const names = (list || []).map((name) => name.trim()).filter((name) => name && name !== '—');
   if (names.length) return names;
@@ -1705,8 +1848,8 @@ function sameName(name: string | undefined, personName: string): boolean {
 function splitRole(list: string[] | undefined, current: string): { current: string; past: string[] } {
   const names = namesOf(list, current);
   const now = current.trim();
-  const actual = now && now !== '—' ? now : names[names.length - 1] || '';
-  return { current: actual, past: names.filter((name) => name !== actual) };
+  if (!now || now === '—') return { current: '', past: names };
+  return { current: now, past: names.filter((name) => name !== now) };
 }
 
 function summaryFrame(row: SummaryRow, person: Developer | null, columns: BoardColumnConfig[]): SummaryFrame {

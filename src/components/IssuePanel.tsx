@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { sourceStatusesOf, viewColumns } from '@shared/boardColumns';
 import type { BoardColumnConfig, BoardMatrix, Developer, SavedBoard, TrackerIssue } from '@shared/types';
 import { resolvePersonDisplayName } from '@shared/personDisplay';
+import { issueRoleLabel, trackerUserRef, type IssueRole } from '@shared/rolePick';
 import { trackerLastChange } from '@shared/issueChanges';
 import { issueSearchParts, textHit } from '@shared/issueSearch';
 import { renderMarkdown } from '../markdown';
@@ -27,6 +28,7 @@ import {
   CheckSquareIcon,
 } from './Icons';
 import IssuePeopleLines from './IssuePeopleLines';
+import { RolePick } from './RolePick';
 import { LoadBar } from './LoadBar';
 import { InstantTip } from './InstantTip';
 import { sortIssues, type ListSort } from './ListSort';
@@ -88,20 +90,35 @@ type Props = {
   onResetFilters?: () => void;
 };
 
-function RoleName(props: { role: string; name?: string | null; className?: string }) {
+function RoleName(props: {
+  role: IssueRole;
+  name?: string | null;
+  people: Developer[];
+  disabled?: boolean;
+  busy?: boolean;
+  className?: string;
+  onChange: (person: Developer | null) => void;
+}) {
   const value = (props.name || '').trim();
-  if (!value) {
-    return <span className="min-w-0 justify-self-start truncate text-red-300 line-through">{props.role}</span>;
-  }
+  const label = issueRoleLabel(props.role);
   return (
-    <InstantTip
-      text={props.role}
-      className={`inline-flex w-fit max-w-full min-w-0 cursor-help justify-self-start ${props.className || ''}`}
+    <RolePick
+      role={props.role}
+      current={value}
+      people={props.people}
+      disabled={props.disabled}
+      busy={props.busy}
+      className={`inline-flex w-fit max-w-full min-w-0 justify-self-start ${props.className || ''}`}
+      onChange={props.onChange}
     >
-      <span className="truncate" style={{ cursor: 'help' }}>
-        {value}
-      </span>
-    </InstantTip>
+      {value ? (
+        <InstantTip text={label} className="inline-flex w-fit max-w-full min-w-0">
+          <span className="truncate">{value}</span>
+        </InstantTip>
+      ) : (
+        <span className="truncate text-red-300 line-through">{label}</span>
+      )}
+    </RolePick>
   );
 }
 
@@ -343,6 +360,26 @@ export default function IssuePanel(props: Props) {
     setLinks((prev) => ({ ...prev, [issueKey]: saved }));
     setMenuKey(null);
     setMenuPos(null);
+  }
+
+  async function assignRole(issueKey: string, role: IssueRole, person: Developer | null) {
+    if (props.readOnly) return;
+    const login = person ? trackerUserRef(person) : null;
+    if (person && !login) {
+      props.onError('У участника нет логина Трекера.');
+      return;
+    }
+    setBusyKey(issueKey);
+    props.onError(null);
+    try {
+      const matrix = await window.api.setIssueRole(issueKey, role, login);
+      invalidateIssueStories(issueKey);
+      props.onIssueRefreshed(matrix);
+    } catch (e) {
+      props.onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyKey(null);
+    }
   }
 
   async function refreshFromTracker(issueKey: string) {
@@ -599,11 +636,32 @@ export default function IssuePanel(props: Props) {
                 {header}
                 <div className="mt-0.5 grid grid-cols-2 gap-2 px-2 pb-1 text-[10px] text-slate-500">
                   <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-1">
-                    <RoleName role="Исполнитель" name={issue.assigneeDisplay} />
+                    <RoleName
+                      role="assignee"
+                      name={issue.assigneeDisplay}
+                      people={people}
+                      disabled={props.readOnly}
+                      busy={busyKey === issue.key}
+                      onChange={(person) => void assignRole(issue.key, 'assignee', person)}
+                    />
                     <span className="text-slate-300" aria-hidden>·</span>
-                    <RoleName role="Ревьюер" name={issue.reviewerDisplay} />
+                    <RoleName
+                      role="reviewer"
+                      name={issue.reviewerDisplay}
+                      people={people}
+                      disabled={props.readOnly}
+                      busy={busyKey === issue.key}
+                      onChange={(person) => void assignRole(issue.key, 'reviewer', person)}
+                    />
                     <span className="text-slate-300" aria-hidden>·</span>
-                    <RoleName role="Тестировщик" name={issue.qaDisplay} />
+                    <RoleName
+                      role="qa"
+                      name={issue.qaDisplay}
+                      people={people}
+                      disabled={props.readOnly}
+                      busy={busyKey === issue.key}
+                      onChange={(person) => void assignRole(issue.key, 'qa', person)}
+                    />
                   </div>
                   <div className="flex min-w-0 items-center gap-1.5">
                     {shownChange ? (
@@ -644,7 +702,13 @@ export default function IssuePanel(props: Props) {
                       {col?.statusDisplay || issue.statusDisplay}
                       {issue.daysInStatus != null ? ` · ${formatDays(issue.daysInStatus)}` : ''}
                     </div>
-                    <IssuePeopleLines issue={issue} />
+                    <IssuePeopleLines
+                      issue={issue}
+                      people={people}
+                      disabled={props.readOnly}
+                      busy={busyKey === issue.key}
+                      onChange={(role, person) => void assignRole(issue.key, role, person)}
+                    />
                   </div>
                   <div className="min-w-0 flex-1">
                     {shownChange && (

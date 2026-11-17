@@ -701,6 +701,19 @@ export class TrackerClient {
     return mapTrackerIssue(issue, Date.now(), statusTypes);
   }
 
+  async setIssueRole(
+    issueId: string,
+    role: 'assignee' | 'reviewer' | 'qa',
+    login: string | null,
+  ): Promise<TrackerIssue> {
+    const field = role === 'assignee' ? 'assignee' : role === 'reviewer' ? 'kodRevu' : 'qaEngineer';
+    await this.request(`/v2/issues/${encodeURIComponent(issueId)}`, {
+      method: 'PATCH',
+      body: { [field]: login },
+    });
+    return this.getIssue(issueId);
+  }
+
   async getIssueStory(issueId: string): Promise<{
     description: string;
     commentText: string;

@@ -2957,6 +2957,10 @@ export default function BoardPage(props: Props) {
         props.onActiveBoard(id);
       }}
       onPeriod={setSummaryPeriod}
+      onMatrix={(next) => {
+        if (props.readOnly) return;
+        props.onMatrixChange(next);
+      }}
       onIssueHover={(issueKey, boardLocalId) => {
         if (!issueKey) {
           setHighlightIssueKey(null);

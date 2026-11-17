@@ -18,6 +18,7 @@ import {
   getSummarySource,
   listDevelopers,
   listSummarySourceBounds,
+  listSummarySources,
   saveSummaryCache,
   saveSummarySource,
   type StoredSummaryCache,
@@ -121,6 +122,45 @@ export async function buildSummaryReport(
     requests: trackerActivity().total,
     rows,
   };
+}
+
+export function writeIssuePeopleIntoSummaries(issue: {
+  key: string;
+  assigneeDisplay: string | null;
+  reviewerDisplay: string | null;
+  qaDisplay: string | null;
+}): void {
+  for (const stored of listSummarySources()) {
+    let payload: SummaryCachePayload;
+    try {
+      payload = JSON.parse(stored.payload) as SummaryCachePayload;
+    } catch {
+      continue;
+    }
+    const index = payload.issues.findIndex((item) => item.key === issue.key);
+    if (index < 0) continue;
+    const prev = payload.issues[index];
+    if (
+      prev.assigneeDisplay === issue.assigneeDisplay &&
+      prev.reviewerDisplay === issue.reviewerDisplay &&
+      prev.qaDisplay === issue.qaDisplay
+    ) {
+      continue;
+    }
+    payload.issues[index] = {
+      ...prev,
+      assigneeDisplay: issue.assigneeDisplay ?? '',
+      reviewerDisplay: issue.reviewerDisplay ?? '',
+      qaDisplay: issue.qaDisplay ?? '',
+    };
+    saveSummarySource(stored.boardLocalId, {
+      formedAt: stored.formedAt,
+      fromIso: stored.fromIso,
+      toIso: stored.toIso,
+      requests: stored.requests,
+      payload: JSON.stringify(payload),
+    });
+  }
 }
 
 export async function refreshSummaryIssue(
@@ -886,6 +926,8 @@ function interpretIssue(
   let finalStatusAt: string | null = null;
   let lastActivityAt = issue.updatedAt || issue.createdAt || null;
   const personLabel = (raw: string) => customPersonName(raw, developers);
+  const roleNow = (live: string | null | undefined, history: string) =>
+    live == null ? personLabel(history) : personLabel(live);
   const holds = (person: Developer, value: unknown) => {
     if (matchesPerson(person, asPerson(value))) return true;
     const display = valueDisplay(value);
@@ -1032,9 +1074,9 @@ function interpretIssue(
   if (!takenAt && isProgressStatus(issue.statusKey, issue.statusDisplay, statusTypes.get(issue.statusKey))) {
     takenAt = issue.statusStartTime;
   }
-  noteRole('assignee', personLabel(issue.assigneeDisplay || assignee));
-  noteRole('qa', personLabel(issue.qaDisplay || qa));
-  noteRole('reviewer', personLabel(issue.reviewerDisplay || reviewer));
+  noteRole('assignee', roleNow(issue.assigneeDisplay, assignee));
+  noteRole('qa', roleNow(issue.qaDisplay, qa));
+  noteRole('reviewer', roleNow(issue.reviewerDisplay, reviewer));
   noteSprint(issue.sprintName || '');
   const spanEvents = chronology?.length ? chronology : ordered;
   const columns = sumColumns(
@@ -1046,18 +1088,18 @@ function interpretIssue(
   const name = focus?.displayName.trim() || '';
   const shuffles: SummaryShuffle[] = [];
   if (focus) {
-    pushShuffle(shuffles, 'assignee', 'Исполнитель', first.assignee, last.assignee || personLabel(issue.assigneeDisplay || ''), name);
-    pushShuffle(shuffles, 'qa', 'Тестировщик', first.qa, last.qa || personLabel(issue.qaDisplay || ''), name);
-    pushShuffle(shuffles, 'reviewer', 'Ревьюер', first.reviewer, last.reviewer || personLabel(issue.reviewerDisplay || ''), name);
+    pushShuffle(shuffles, 'assignee', 'Исполнитель', first.assignee, last.assignee || roleNow(issue.assigneeDisplay, ''), name);
+    pushShuffle(shuffles, 'qa', 'Тестировщик', first.qa, last.qa || roleNow(issue.qaDisplay, ''), name);
+    pushShuffle(shuffles, 'reviewer', 'Ревьюер', first.reviewer, last.reviewer || roleNow(issue.reviewerDisplay, ''), name);
   }
   const role = focus?.role;
   return {
     key: issue.key,
     summary: issue.summary,
     url: issue.url,
-    assignee: personLabel(issue.assigneeDisplay || assignee) || '—',
-    reviewer: personLabel(issue.reviewerDisplay || reviewer) || '—',
-    qa: personLabel(issue.qaDisplay || qa) || '—',
+    assignee: roleNow(issue.assigneeDisplay, assignee) || '—',
+    reviewer: roleNow(issue.reviewerDisplay, reviewer) || '—',
+    qa: roleNow(issue.qaDisplay, qa) || '—',
     author: personLabel(issue.authorDisplay || '') || '—',
     createdAt: issue.createdAt || null,
     finalStatusAt,

@@ -95,7 +95,7 @@ import {
 } from './trackerActivity';
 import { readStorageStats } from './storageStats';
 import { consoleHistory } from './consoleFeed';
-import { buildSummaryReport, discardOverlappingSummary, refreshSummaryIssue, sliceStoredSummary } from './summaryReport';
+import { buildSummaryReport, discardOverlappingSummary, refreshSummaryIssue, sliceStoredSummary, writeIssuePeopleIntoSummaries } from './summaryReport';
 import { trayPng } from './trayIcon';
 import {
   abortTracker,
@@ -638,6 +638,29 @@ function registerIpc(): void {
     saveLastMatrix(matrix);
     return matrix;
   });
+  ipcMain.handle(
+    'tracker:setIssueRole',
+    async (_e, issueKey: string, role: 'assignee' | 'reviewer' | 'qa', login: string | null) => {
+      const issue = await getClient().setIssueRole(issueKey, role, login);
+      writeIssuePeopleIntoSummaries(issue);
+      const activeId = getActiveBoardLocalId();
+      const remembered =
+        latestMatrix && activeId != null && latestMatrix.sourceBoardLocalId === activeId
+          ? latestMatrix
+          : getLastMatrix<BoardMatrix>();
+      const current =
+        remembered && activeId != null && remembered.sourceBoardLocalId === activeId ? remembered : null;
+      if (!current) {
+        const matrix = await buildLiveMatrix();
+        latestMatrix = matrix;
+        return matrix;
+      }
+      const matrix = patchIssueInMatrix(current, issue);
+      latestMatrix = matrix;
+      saveLastMatrix(matrix);
+      return matrix;
+    },
+  );
   ipcMain.handle(
     'tracker:executeTransition',
     async (_e, issueKey: string, transitionId: string) => {

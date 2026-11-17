@@ -1677,6 +1677,15 @@ export type StoredSummaryCache = {
   payload: string;
 };
 
+export function listSummarySources(): Array<{ boardLocalId: number } & StoredSummaryCache> {
+  return getDb()
+    .prepare(
+      `SELECT board_local_id as boardLocalId, formed_at as formedAt, from_iso as fromIso, to_iso as toIso, requests, payload
+       FROM summary_source`,
+    )
+    .all() as Array<{ boardLocalId: number } & StoredSummaryCache>;
+}
+
 export function getSummarySource(boardLocalId: number): StoredSummaryCache | null {
   const row = getDb()
     .prepare(
