@@ -22,7 +22,7 @@ import {
   placeColumnFree,
 } from '@shared/columnGroups';
 import { excludedTypeKeys, typeIsExcluded } from '@shared/issueTypeFilter';
-import { DEFAULT_GITHUB, DEVELOPER_TONE_PRESETS, PARTICIPANT_ROLES, normalizeDeveloperTone } from '@shared/types';
+import { DEFAULT_GITHUB, DEVELOPER_TONE_PRESETS, PARTICIPANT_ROLES, hexTint, normalizeDeveloperTone } from '@shared/types';
 import { sessionLog } from '../sessionLog';
 import ColorField from '../components/ColorField';
 import { ActivityIcon, ArrowDownIcon, ArrowRightIcon, BellOffIcon, DownloadIcon, InfoIcon, MoveIcon, PlusCircleIcon, PlusIcon, RefreshIcon, TrashIcon, UploadIcon } from '../components/Icons';
@@ -1931,7 +1931,10 @@ function ColumnGroupCard(props: {
   return (
           <div
             className={`space-y-2 rounded border-2 p-2 ${mark} ${props.dragging ? 'bro-drag-source' : ''}`}
-            style={{ borderColor: group.color || '#64748b' }}
+            style={{
+              borderColor: group.color || '#64748b',
+              backgroundImage: `linear-gradient(to right, ${hexTint(group.color || '#64748b')} 0%, #fff 20%, #fff 100%)`,
+            }}
             onDragOver={(event) => {
               const where = dropHalf(event.currentTarget, event.clientY);
               if (props.dragGroupId.current != null) {

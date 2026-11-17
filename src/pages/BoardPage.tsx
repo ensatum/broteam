@@ -11,7 +11,7 @@ import type {
 import { OTHERS_ROW_ID, UNASSIGNED_ROW_ID } from '@shared/types';
 import { reflowMatrix } from '@shared/reflowMatrix';
 import { groupHeaderCells, groupStatusKey, moveGroupBefore, placeColumn, tableSlots } from '@shared/columnGroups';
-import { resolveDeveloperRowColor, darkenHex } from '@shared/types';
+import { resolveDeveloperRowColor, darkenHex, hexTint } from '@shared/types';
 import { describeMatrix } from '@shared/matrixShape';
 import { sessionLog } from '../sessionLog';
 import { PENDING_COLUMN, cellMissingBadges, cellTimeWarn, issueIsDone, issueTimeWarn } from '@shared/columnMeta';
@@ -4811,16 +4811,6 @@ function ChangeBell(props: { show: boolean; count: number; heat?: number; onClic
       </InstantTip>
     </span>
   );
-}
-
-function hexTint(hex: string, alpha = 0.1): string {
-  const raw = hex.replace('#', '');
-  if (raw.length !== 6) return hex;
-  const r = Number.parseInt(raw.slice(0, 2), 16);
-  const g = Number.parseInt(raw.slice(2, 4), 16);
-  const b = Number.parseInt(raw.slice(4, 6), 16);
-  if ([r, g, b].some((part) => Number.isNaN(part))) return hex;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 function ColumnAliasLabel(props: { alias: string; color: string }) {

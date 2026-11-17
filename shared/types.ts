@@ -407,6 +407,16 @@ export function resolveDeveloperRowColor(
 }
 
 /** Darken `#rrggbb` by factor (0–1), e.g. 0.2 ≈ 20% darker. */
+export function hexTint(hex: string, alpha = 0.1): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 0xff;
+  const g = (n >> 8) & 0xff;
+  const b = n & 0xff;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export function darkenHex(hex: string, factor = 0.2): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return hex;
