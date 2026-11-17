@@ -834,17 +834,19 @@ export default function BoardPage(props: Props) {
   const centerRef = useRef<HTMLDivElement>(null);
   const boardRowRef = useRef<HTMLDivElement>(null);
   const tableHostObs = useRef<ResizeObserver | null>(null);
+  const tableHostEl = useRef<HTMLDivElement | null>(null);
   const [tableViewport, setTableViewport] = useState({ h: 0, header: 0 });
   const setTableHost = useCallback((node: HTMLDivElement | null) => {
     tableHostObs.current?.disconnect();
     tableHostObs.current = null;
+    tableHostEl.current = node;
     if (!node) {
       attachFadeHost('table', null);
       return;
     }
     const measure = () => {
-      const header = node.querySelector('thead')?.getBoundingClientRect().height ?? 0;
-      const h = node.clientHeight;
+      const header = Math.round(node.querySelector('thead')?.getBoundingClientRect().height ?? 0);
+      const h = Math.round(node.clientHeight);
       setTableViewport((prev) =>
         prev.h === h && prev.header === header ? prev : { h, header },
       );
@@ -852,6 +854,8 @@ export default function BoardPage(props: Props) {
     const observer = new ResizeObserver(measure);
     tableHostObs.current = observer;
     observer.observe(node);
+    const thead = node.querySelector('thead');
+    if (thead) observer.observe(thead);
     attachFadeHost('table', node);
     measure();
   }, []);
@@ -1733,6 +1737,16 @@ export default function BoardPage(props: Props) {
   const slots = tableSlots(shownColumns, boardGroups);
   const groupRow = groupHeaderCells(slots, boardGroups);
   const showGroupRow = groupRow.some((cell) => cell.kind === 'group');
+  const groupHeaderKey = showGroupRow
+    ? boardGroups.map((group) => `${group.id}:${group.collapsed ? 1 : 0}`).join('|')
+    : '';
+  useLayoutEffect(() => {
+    const node = tableHostEl.current;
+    if (!node) return;
+    const header = Math.round(node.querySelector('thead')?.getBoundingClientRect().height ?? 0);
+    const h = Math.round(node.clientHeight);
+    setTableViewport((prev) => (prev.h === h && prev.header === header ? prev : { h, header }));
+  }, [groupHeaderKey]);
   const headSticky = 'top-0';
   const shownStatusKeys = useMemo(
     () => new Set(shownColumns.map((column) => column.statusKey)),
@@ -1801,7 +1815,7 @@ export default function BoardPage(props: Props) {
       setTablePref(next);
       saveTableMode(next);
     }
-  }, [centerBox.w, centerBox.h, tableFraction, tableShown, issuesOpen, props.activeBoardId]);
+  }, [centerBox.w, centerBox.h, tableFraction, tableShown, issuesOpen, props.activeBoardId, showGroupRow]);
   useEffect(() => {
     if (!tableShown && !issuesOpen) setFiltersOpen(false);
   }, [tableShown, issuesOpen]);
@@ -3064,6 +3078,9 @@ export default function BoardPage(props: Props) {
     if (from != null) reorderDevelopers(from, devId);
   }
   const bodyRows = matrix.developers.length + 1;
+  const headerUnits = showGroupRow ? 2 : 1;
+  const fullHeaderPx = FULL_HEADER_PX * headerUnits;
+  const compactHeaderPx = COMPACT_HEADER_PX * headerUnits;
   const compactW = tableWidth(dataCols, COMPACT_COL_PX);
   const panelFloor = summaryOpen ? SUMMARY_MIN_PX : DRAFTS_MIN_PX;
   const panelWanted =
@@ -3080,9 +3097,9 @@ export default function BoardPage(props: Props) {
     ? Math.min(panelWidth, tableShown ? Math.max(0, panelRoom - compactW) : panelWidth)
     : panelWidth;
   const panelOverlap = Math.max(0, panelWidth - panelFlex);
-  const compactH = tableHeight(bodyRows, COMPACT_HEADER_PX, COMPACT_ROW_PX);
+  const compactH = tableHeight(bodyRows, compactHeaderPx, COMPACT_ROW_PX);
   const fullW = tableWidth(dataCols, FULL_COL_PX);
-  const fullNeedH = tableHeight(bodyRows, FULL_HEADER_PX, MAX_ROW_PX);
+  const fullNeedH = tableHeight(bodyRows, fullHeaderPx, MAX_ROW_PX);
   layoutRef.current = { filtersOpen, issuesOpen, compactW, compactH, filtersWidth, draftsOpen, tableShown, panelFloor };
   const slotHeight =
     centerBox.h <= 0
@@ -3101,17 +3118,19 @@ export default function BoardPage(props: Props) {
   });
   iconFit.current = {
     col: dataCols > 0 ? Math.max(0, (centerBox.w - NAME_COL_PX) / dataCols) : 0,
-    row: bodyRows > 0 && slotHeight > 0 ? (slotHeight - FULL_HEADER_PX) / bodyRows : 0,
+    row: bodyRows > 0 && slotHeight > 0 ? (slotHeight - fullHeaderPx) / bodyRows : 0,
     pref: tablePref,
     shown: tableShown,
     id: props.activeBoardId,
   };
   const compact = tableMode === 'mini';
+  const headerBudget = compact ? compactHeaderPx : fullHeaderPx;
+  const headerPx = Math.max(headerBudget, tableViewport.header);
   const fitRow =
-    bodyRows > 0 && slotHeight > 0 ? (slotHeight - FULL_HEADER_PX) / bodyRows : MAX_ROW_PX;
+    bodyRows > 0 && slotHeight > 0 ? (slotHeight - headerBudget) / bodyRows : MAX_ROW_PX;
   const measuredRow =
-    tableViewport.h > 0 && tableViewport.header > 0 && bodyRows > 0
-      ? (tableViewport.h - tableViewport.header - bodyRows) / bodyRows
+    tableViewport.h > 0 && bodyRows > 0
+      ? (tableViewport.h - headerPx - bodyRows) / bodyRows
       : fitRow;
   const rowPx = Math.max(1, measuredRow);
   const colPx =
@@ -3140,7 +3159,7 @@ export default function BoardPage(props: Props) {
 
   function chooseTableMode(mode: 'mini' | 'full') {
     const rowPx = mode === 'mini' ? COMPACT_ROW_PX : ICON_ROW_PX;
-    const headerPx = mode === 'mini' ? COMPACT_HEADER_PX : FULL_HEADER_PX;
+    const headerPx = (mode === 'mini' ? COMPACT_HEADER_PX : FULL_HEADER_PX) * headerUnits;
     const needH = tableHeight(bodyRows, headerPx, rowPx);
     modeExpect.current = mode;
     sizeSide.current = null;
