@@ -239,6 +239,24 @@ body.bro-drag-col * {
   container-name: cell;
 }
 
+.bro-group-head {
+  container-type: inline-size;
+}
+
+.bro-group-fold {
+  background-color: var(--fold-fill);
+}
+
+.bro-group-fold:hover {
+  background-color: transparent;
+}
+
+@container (max-width: 3.75rem) {
+  .bro-group-bell {
+    display: none;
+  }
+}
+
 .bro-badges-roomy {
   display: block;
 }

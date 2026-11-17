@@ -3980,7 +3980,7 @@ export default function BoardPage(props: Props) {
                             title={grouped.name}
                             className="sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-left align-bottom"
                           >
-                            <HeaderChip color={grouped.color || '#64748b'} className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-1 py-0.5">
+                            <HeaderChip color={grouped.color || '#64748b'} className="bro-group-head grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-1 py-0.5">
                               <span
                                 className={`min-w-0 truncate text-[11px] font-semibold ${reorderMode && !readOnly ? 'cursor-grab' : 'cursor-pointer'}`}
                                 draggable={reorderMode && !readOnly}
@@ -4006,7 +4006,7 @@ export default function BoardPage(props: Props) {
                               <InstantTip text="Свернуть группу" place="bottom" className="inline-flex justify-self-center">
                                 <button
                                   type="button"
-                                  className="inline-flex h-4 w-4 items-center justify-center rounded border hover:bg-black/10"
+                                  className="bro-group-fold inline-flex h-4 w-4 items-center justify-center rounded border"
                                   style={groupFoldStyle(grouped.color || '#64748b')}
                                   onClick={() => void toggleGroup(grouped)}
                                 >
@@ -4016,7 +4016,7 @@ export default function BoardPage(props: Props) {
                               <button
                                 type="button"
                                 title={skipped ? 'Выключить автопропуск изменений' : 'Автопропуск изменений для всей группы'}
-                                className={`justify-self-end inline-flex h-4 w-4 shrink-0 items-center justify-center ${
+                                className={`bro-group-bell justify-self-end inline-flex h-4 w-4 shrink-0 items-center justify-center ${
                                   skipped ? 'text-red-600 hover:text-red-800' : 'text-slate-300 hover:text-slate-500'
                                 }`}
                                 onMouseDown={(event) => event.stopPropagation()}
@@ -4043,12 +4043,12 @@ export default function BoardPage(props: Props) {
                             onDrop={(event) => dropColumn(event, dropKey)}
                             className={`sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-left ${columnDropMark(dropKey)}`}
                           >
-                            <HeaderChip color={slot.group.color || '#64748b'} className="flex flex-col justify-center gap-0.5 px-1 py-0.5">
+                            <HeaderChip color={slot.group.color || '#64748b'} className="bro-group-head flex flex-col justify-center gap-0.5 px-1 py-0.5">
                               <span className="grid grid-cols-[1rem_minmax(0,1fr)_1rem] items-center">
                                 <button
                                   type="button"
                                   title={skipped ? 'Выключить автопропуск изменений' : 'Автопропуск изменений для всей группы'}
-                                  className={`inline-flex h-4 w-4 shrink-0 items-center justify-center ${
+                                  className={`bro-group-bell inline-flex h-4 w-4 shrink-0 items-center justify-center ${
                                     skipped ? 'text-red-600 hover:text-red-800' : 'text-slate-300 hover:text-slate-500'
                                   }`}
                                   onMouseDown={(event) => event.stopPropagation()}
@@ -4059,7 +4059,7 @@ export default function BoardPage(props: Props) {
                                 <InstantTip text="Развернуть группу" place="bottom" className="inline-flex justify-self-center">
                                   <button
                                     type="button"
-                                    className="inline-flex h-4 w-4 items-center justify-center rounded border hover:bg-black/10"
+                                    className="bro-group-fold inline-flex h-4 w-4 items-center justify-center rounded border"
                                     style={groupFoldStyle(slot.group.color || '#64748b')}
                                     onClick={() => void toggleGroup(slot.group)}
                                   >
@@ -4867,7 +4867,11 @@ function ChangeBell(props: { show: boolean; count: number; heat?: number; onClic
 
 function groupFoldStyle(color: string): CSSProperties {
   const edge = darkenHex(color, 0.1);
-  return { color: edge, borderColor: hexTint(edge, 0.2) };
+  return {
+    color: darkenHex(edge, 0.2),
+    borderColor: hexTint(edge, 0.2),
+    ['--fold-fill' as string]: hexTint(edge, 0.18),
+  };
 }
 
 function headerChipStyle(color?: string | null): CSSProperties {
