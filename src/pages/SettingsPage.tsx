@@ -1313,6 +1313,7 @@ export default function SettingsPage(props: Props) {
                         dragging={draggingGroup === section.group.id}
                         onHover={setSectionDrop}
                         onDragState={setDraggingGroup}
+                        onColumnDragEnd={() => setDraggingColumn(null)}
                         onSave={async (nextColumns, nextGroups) => {
                           stageBoardLayout(board.id, nextColumns, nextGroups);
                         }}
@@ -1907,6 +1908,7 @@ function ColumnGroupCard(props: {
   dragging: boolean;
   onHover: (mark: SectionDrop | null) => void;
   onDragState: (id: number | null) => void;
+  onColumnDragEnd: () => void;
   onSave: (columns: BoardColumnConfig[], groups: ColumnGroup[]) => Promise<void>;
   onError: (error: unknown) => void;
   children: ReactNode;
@@ -1970,6 +1972,7 @@ function ColumnGroupCard(props: {
               }
               const fromColumn = props.dragColumnKey.current;
               props.dragColumnKey.current = null;
+              props.onColumnDragEnd();
               if (!fromColumn) return;
               if ((event.target as HTMLElement).closest('[data-column-row]')) return;
               event.preventDefault();
