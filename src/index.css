@@ -181,6 +181,28 @@ body.bro-drag-col * {
 .bro-insert-below {
   box-shadow: inset 0 -3px 0 #0284c7;
 }
+.bro-insert-above:not(td):not(th),
+.bro-insert-below:not(td):not(th) {
+  position: relative;
+  box-shadow: none;
+}
+.bro-insert-above:not(td):not(th)::before,
+.bro-insert-below:not(td):not(th)::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: #0284c7;
+  pointer-events: none;
+  z-index: 5;
+}
+.bro-insert-above:not(td):not(th)::before {
+  top: -4px;
+}
+.bro-insert-below:not(td):not(th)::after {
+  bottom: -4px;
+}
 
 @keyframes bro-save-progress {
   0% {

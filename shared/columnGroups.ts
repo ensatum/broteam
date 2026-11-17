@@ -39,8 +39,7 @@ export function placeColumn(
   const targetGroup = list[to].groupId ?? null;
   if (sourceGroup !== targetGroup && sourceGroup != null) return columns;
   const [item] = list.splice(from, 1);
-  const insertAt = from < to ? to - 1 : to;
-  list.splice(insertAt, 0, sourceGroup == null ? { ...item, groupId: targetGroup } : item);
+  list.splice(to, 0, sourceGroup == null ? { ...item, groupId: targetGroup } : item);
   return coalesceColumns(list);
 }
 
@@ -57,8 +56,7 @@ export function placeColumnFree(
   if (from < 0 || to < 0) return columns;
   const targetGroup = list[to].groupId ?? null;
   const [item] = list.splice(from, 1);
-  const insertAt = from < to ? to - 1 : to;
-  list.splice(insertAt, 0, { ...item, groupId: targetGroup });
+  list.splice(to, 0, { ...item, groupId: targetGroup });
   return coalesceColumns(list);
 }
 
