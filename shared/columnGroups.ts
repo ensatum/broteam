@@ -35,9 +35,12 @@ export function placeColumn(
   const from = list.findIndex((column) => column.statusKey === fromKey);
   const to = list.findIndex((column) => column.statusKey === toKey);
   if (from < 0 || to < 0) return columns;
-  if ((list[from].groupId ?? null) !== (list[to].groupId ?? null)) return columns;
+  const sourceGroup = list[from].groupId ?? null;
+  const targetGroup = list[to].groupId ?? null;
+  if (sourceGroup !== targetGroup && sourceGroup != null) return columns;
   const [item] = list.splice(from, 1);
-  list.splice(to, 0, item);
+  const insertAt = from < to ? to - 1 : to;
+  list.splice(insertAt, 0, sourceGroup == null ? { ...item, groupId: targetGroup } : item);
   return coalesceColumns(list);
 }
 

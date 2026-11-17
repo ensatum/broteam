@@ -49,6 +49,7 @@ type Props = {
   width: number;
   selection: Selection;
   columns: BoardColumnConfig[];
+  groupName?: string;
   people?: Developer[];
   boards?: SavedBoard[];
   issueNotes: Record<string, string>;
@@ -377,11 +378,13 @@ export default function IssuePanel(props: Props) {
           <span className="text-[11px] text-slate-500">
             {' · '}
             {selection.statusKey == null
-              ? 'Total'
+              ? 'TOTAL'
               : selection.statusKey === PENDING_COLUMN
-                ? 'Pending'
-                : columns.find((c) => c.statusKey === selection.statusKey)?.alias ||
-                  selection.statusKey}
+                ? 'FLOW'
+                : selection.statusKey.startsWith('group:')
+                  ? props.groupName || selection.statusKey
+                  : columns.find((c) => c.statusKey === selection.statusKey)?.alias ||
+                    selection.statusKey}
             {' · '}
           </span>
           <span className="text-[11px] font-semibold text-slate-900">{filteredIssues.length}</span>

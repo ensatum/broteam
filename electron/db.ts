@@ -1626,13 +1626,11 @@ export function deleteIssueChanges(boardLocalId: number, issueKeys: string[]): v
   tx();
 }
 
-export function dismissIssueChanges(boardLocalId: number, issueKeys: string[]): void {
+export function dismissIssueChanges(_boardLocalId: number, issueKeys: string[]): void {
   if (!issueKeys.length) return;
-  const stmt = getDb().prepare(
-    `UPDATE issue_changes SET seen = 1 WHERE board_local_id = ? AND issue_key = ?`,
-  );
+  const stmt = getDb().prepare(`UPDATE issue_changes SET seen = 1 WHERE issue_key = ?`);
   const tx = getDb().transaction(() => {
-    for (const key of issueKeys) stmt.run(boardLocalId, key);
+    for (const key of issueKeys) stmt.run(key);
   });
   tx();
 }

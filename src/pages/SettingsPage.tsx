@@ -78,6 +78,8 @@ export default function SettingsPage(props: Props) {
   const columnDraftHold = useRef<BoardColumnConfig[] | null>(null);
   const dragColumnKey = useRef<string | null>(null);
   const dragGroupId = useRef<number | null>(null);
+  const [columnDrop, setColumnDrop] = useState<{ key: string; where: 'above' | 'below' } | null>(null);
+  const [draggingColumn, setDraggingColumn] = useState<string | null>(null);
   const [userQuery, setUserQuery] = useState('');
   const [userResults, setUserResults] = useState<TrackerUser[]>([]);
   const [savedBoards, setSavedBoards] = useState<SavedBoard[]>(props.boards);
@@ -1240,6 +1242,10 @@ export default function SettingsPage(props: Props) {
                         columns={boardColumns}
                         busy={busy}
                         dragKey={dragColumnKey}
+                        dropMark={columnDrop}
+                        dragging={draggingColumn === section.column.statusKey}
+                        onDragState={setDraggingColumn}
+                        onHover={setColumnDrop}
                         onChange={(next) =>
                           setColDraft((prev) =>
                             prev.map((item) =>
@@ -1263,6 +1269,7 @@ export default function SettingsPage(props: Props) {
                         groups={boardGroups}
                         busy={busy}
                         dragGroupId={dragGroupId}
+                        dragColumnKey={dragColumnKey}
                         onSave={(nextColumns, nextGroups) =>
                           saveBoardGroups(board.id, nextColumns, nextGroups)
                         }
@@ -1275,6 +1282,10 @@ export default function SettingsPage(props: Props) {
                             columns={boardColumns}
                             busy={busy}
                             dragKey={dragColumnKey}
+                            dropMark={columnDrop}
+                            dragging={draggingColumn === column.statusKey}
+                            onDragState={setDraggingColumn}
+                            onHover={setColumnDrop}
                             onChange={(next) =>
                               setColDraft((prev) =>
                                 prev.map((item) =>
@@ -1850,6 +1861,12 @@ function columnSections(
     | { kind: 'column'; column: BoardColumnConfig }
     | { kind: 'group'; group: ColumnGroup; columns: BoardColumnConfig[] }
   > = [];
+  for (const group of groups) {
+    if (!columns.some((column) => column.groupId === group.id)) {
+      seen.add(group.id);
+      sections.push({ kind: 'group', group, columns: [] });
+    }
+  }
   for (const column of columns) {
     const group = column.groupId != null ? byId.get(column.groupId) : undefined;
     if (!group) {
@@ -1864,9 +1881,6 @@ function columnSections(
       columns: columns.filter((item) => item.groupId === group.id),
     });
   }
-  for (const group of groups) {
-    if (!seen.has(group.id)) sections.push({ kind: 'group', group, columns: [] });
-  }
   return sections;
 }
 
@@ -1876,6 +1890,7 @@ function ColumnGroupCard(props: {
   groups: ColumnGroup[];
   busy: boolean;
   dragGroupId: RefObject<number | null>;
+  dragColumnKey: { current: string | null };
   onSave: (columns: BoardColumnConfig[], groups: ColumnGroup[]) => Promise<void>;
   onError: (error: unknown) => void;
   children: ReactNode;
@@ -1889,16 +1904,39 @@ function ColumnGroupCard(props: {
       props.onError(error);
     }
   }
-  const free = props.columns.filter((column) => column.groupId !== group.id);
+  const free = props.columns.filter((column) => column.groupId == null);
   return (
           <div
             className="space-y-2 rounded border-2 p-2"
             style={{ borderColor: group.color || '#64748b' }}
             onDragOver={(event) => {
-              if (props.dragGroupId.current == null) return;
+              if (props.dragGroupId.current != null) {
+                event.preventDefault();
+                return;
+              }
+              const from = props.dragColumnKey.current;
+              const source = from ? props.columns.find((column) => column.statusKey === from) : undefined;
+              if (!source || source.groupId != null) return;
               event.preventDefault();
             }}
             onDrop={(event) => {
+              const fromColumn = props.dragColumnKey.current;
+              if (props.dragGroupId.current == null && fromColumn) {
+                const source = props.columns.find((column) => column.statusKey === fromColumn);
+                props.dragColumnKey.current = null;
+                if (!source || source.groupId != null || group.id === source.groupId) return;
+                event.preventDefault();
+                event.stopPropagation();
+                void save(
+                  coalesceColumns(
+                    props.columns.map((column) =>
+                      column.statusKey === fromColumn ? { ...column, groupId: group.id } : column,
+                    ),
+                  ),
+                  props.groups,
+                );
+                return;
+              }
               const fromId = props.dragGroupId.current;
               props.dragGroupId.current = null;
               if (fromId == null || fromId === group.id) return;
@@ -2015,27 +2053,53 @@ function ColumnEditorRow(props: {
   columns: BoardColumnConfig[];
   busy: boolean;
   dragKey: { current: string | null };
+  dropMark: { key: string; where: 'above' | 'below' } | null;
+  dragging: boolean;
+  onDragState: (key: string | null) => void;
+  onHover: (mark: { key: string; where: 'above' | 'below' } | null) => void;
   onChange: (column: BoardColumnConfig) => void;
   onMove: (from: string, to: string) => void;
   onLeaveGroup?: () => void;
 }) {
   const c = props.column;
+  const mark =
+    props.dropMark?.key === c.statusKey
+      ? props.dropMark.where === 'below'
+        ? 'bro-insert-below'
+        : 'bro-insert-above'
+      : '';
   return (
     <div
-      className="flex items-center gap-2 rounded border border-slate-100 bg-white p-2 text-sm"
+      className={`flex items-center gap-2 rounded border border-slate-100 bg-white p-2 text-sm ${mark} ${
+        props.dragging ? 'bro-drag-source' : ''
+      }`}
       onDragOver={(event) => {
         const from = props.dragKey.current;
-        if (!from) return;
+        if (!from || from === c.statusKey) return;
         const source = props.columns.find((item) => item.statusKey === from);
-        if (!source || (source.groupId ?? null) !== (c.groupId ?? null)) return;
+        if (!source) return;
+        const sourceGroup = source.groupId ?? null;
+        const targetGroup = c.groupId ?? null;
+        if (sourceGroup !== targetGroup && sourceGroup != null) return;
         event.preventDefault();
+        event.stopPropagation();
+        const fromIndex = props.columns.findIndex((item) => item.statusKey === from);
+        const toIndex = props.columns.findIndex((item) => item.statusKey === c.statusKey);
+        props.onHover({ key: c.statusKey, where: fromIndex < toIndex ? 'below' : 'above' });
       }}
       onDrop={(event) => {
         const from = props.dragKey.current;
         props.dragKey.current = null;
+        props.onHover(null);
+        props.onDragState(null);
         if (!from || from === c.statusKey) return;
         const source = props.columns.find((item) => item.statusKey === from);
-        if (!source || (source.groupId ?? null) !== (c.groupId ?? null)) return;
+        if (!source) return;
+        const sourceGroup = source.groupId ?? null;
+        const targetGroup = c.groupId ?? null;
+        if (sourceGroup !== targetGroup && sourceGroup != null) return;
+        event.preventDefault();
+        event.stopPropagation();
         props.onMove(from, c.statusKey);
       }}
     >
@@ -2045,11 +2109,14 @@ function ColumnEditorRow(props: {
         className="cursor-grab select-none px-0.5 text-slate-400"
         onDragStart={(event) => {
           props.dragKey.current = c.statusKey;
+          props.onDragState(c.statusKey);
           event.dataTransfer.effectAllowed = 'move';
           event.dataTransfer.setData('text/plain', c.statusKey);
         }}
         onDragEnd={() => {
           props.dragKey.current = null;
+          props.onDragState(null);
+          props.onHover(null);
         }}
       >
         ☰

@@ -380,8 +380,8 @@ export async function buildLiveMatrix(options?: {
   // or on this board in an open sprint of another saved board,
   // or on this board with no sprint and a status that is not done.
   // No-sprint tasks stay on the default view until «Без спринта» is excluded.
-  // It is drawn only on the board of its own queue: status columns differ
-  // between boards, so a task listed on several boards must not be copied.
+  // A task from another queue is kept when it is also on this board.
+  // The table counts it only while «Перекрёстные» is on.
   // Statuses that are not columns of this board are dropped below.
   // A failed sprint list must not fall through to every sprint of the board.
   const issues = await loadBoardIssues(client, {
@@ -403,7 +403,8 @@ export async function buildLiveMatrix(options?: {
     ) {
       continue;
     }
-    if (!belongsToBoardQueue(issue.key, board.queueKey)) continue;
+    // Tasks numbered in another queue stay in the matrix. The table hides them
+    // until «Перекрёстные» is on, and then counts them with this board.
     if (issue.sprintId != null) {
       const sprint = sprintById.get(issue.sprintId);
       if (sprint && !isOpenSprint(sprint)) continue;

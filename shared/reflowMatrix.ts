@@ -1,6 +1,7 @@
 import type { BoardColumnConfig, BoardMatrix, Developer, TrackerIssue } from './types';
 import { OTHERS_ROW_ID, UNASSIGNED_ROW_ID } from './types';
 import { sourceStatusesOf, statusColumnMap, viewColumns } from './boardColumns';
+import { isCrossQueueIssue } from './issueSearch';
 
 export type ReflowView = {
   matrix: BoardMatrix;
@@ -30,6 +31,7 @@ export function reflowMatrix(
   columns: BoardColumnConfig[],
   boardLocalId: number | null,
   visibleIds?: Set<number> | null,
+  cross?: { include: boolean; queueKey: string },
 ): ReflowView {
   const people = participants
     .filter((person) => {
@@ -74,6 +76,7 @@ export function reflowMatrix(
       for (const list of Object.values(row.issuesByColumn)) {
         for (const issue of list) {
           if (seen.has(issue.key)) continue;
+          if (!cross?.include && isCrossQueueIssue(issue.key, cross?.queueKey || '')) continue;
           seen.add(issue.key);
           issues.push(issue);
         }

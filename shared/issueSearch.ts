@@ -1,5 +1,14 @@
 import type { Developer, SavedBoard, TrackerIssue } from './types';
 
+/** A task whose key is numbered in another queue than this board's. */
+export function isCrossQueueIssue(issueKey: string, queueKey: string): boolean {
+  const queue = queueKey.trim().toLowerCase();
+  if (!queue) return false;
+  const dash = issueKey.lastIndexOf('-');
+  const prefix = (dash > 0 ? issueKey.slice(0, dash) : issueKey).trim().toLowerCase();
+  return prefix !== queue;
+}
+
 export function textHit(query: string, parts: Array<string | null | undefined>): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;

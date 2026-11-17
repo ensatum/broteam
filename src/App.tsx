@@ -9,6 +9,7 @@ import type {
   TrackerConnection,
 } from '@shared/types';
 import { DEFAULT_BOARD, DEFAULT_CONNECTION } from '@shared/types';
+import { isCrossQueueIssue } from '@shared/issueSearch';
 import type { BoardHeaderModel } from './pages/BoardPage';
 import { MenuIcon, RefreshIcon, ToggleLeftIcon, ToggleRightIcon, TrashIcon } from './components/Icons';
 import { InstantTip } from './components/InstantTip';
@@ -65,6 +66,7 @@ export default function App() {
   const [boards, setBoards] = useState<SavedBoard[]>([]);
   const [activeBoardId, setActiveBoardId] = useState<number | null>(null);
   const [shownBoardId, setShownBoardId] = useState<number | null>(null);
+  const [crossRev, setCrossRev] = useState(0);
   const [boardHeader, setBoardHeader] = useState<BoardHeaderModel>({
     title: '',
     period: null,
@@ -417,9 +419,20 @@ export default function App() {
   }, [matrix]);
 
   function boardHasOpenChange(boardId: number): boolean {
+    void crossRev;
     const onLoadedBoard = openChangeKeys.boardId === boardId;
+    const board = boards.find((item) => item.id === boardId);
+    let cross = false;
+    try {
+      const raw = localStorage.getItem('broteam.crossBoards');
+      const map = raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+      cross = Boolean(map[String(boardId)]);
+    } catch {
+      cross = false;
+    }
     return changes.some((change) => {
       if (change.boardLocalId !== boardId) return false;
+      if (!cross && isCrossQueueIssue(change.issueKey, board?.queueKey || '')) return false;
       if (onLoadedBoard && !openChangeKeys.keys.has(change.issueKey)) return false;
       const created = onLoadedBoard ? openChangeKeys.createdAt.get(change.issueKey) : undefined;
       return changeStillOpen(change, created);
@@ -599,6 +612,7 @@ export default function App() {
                   </button>
                 );
               })}
+              <div id="board-cross-anchor" className="shrink-0" />
             </div>
           ) : (
             <span className="font-semibold text-lg tracking-tight text-slate-900">Настройки</span>
@@ -728,6 +742,7 @@ export default function App() {
             apiRequests={apiRequests}
             trayCue={trayCue}
             onBootstrapped={() => setBootDone(true)}
+            onCrossChange={() => setCrossRev((value) => value + 1)}
             onDismissChanges={(keys) => {
               if (activeBoardId == null || !keys.length) return;
               void window.api.dismissIssueChanges(activeBoardId, keys).then(setChanges);
