@@ -29,6 +29,7 @@ import {
 } from './Icons';
 import IssuePeopleLines from './IssuePeopleLines';
 import { RolePick } from './RolePick';
+import { StoryPointsControl } from './StoryPointsControl';
 import { LoadBar } from './LoadBar';
 import { InstantTip } from './InstantTip';
 import { sortIssues, type ListSort } from './ListSort';
@@ -72,6 +73,7 @@ type Props = {
   onShowAll?: () => void;
   onlyWithNote?: boolean;
   onlyWithBookmark?: boolean;
+  onlyMissingPoints?: boolean;
   onlyMissingReviewer?: boolean;
   onlyMissingQa?: boolean;
   onlyTimeWarn?: boolean;
@@ -240,6 +242,9 @@ export default function IssuePanel(props: Props) {
     if (props.onlyWithBookmark) {
       matched = matched.filter((issue) => Boolean(props.issueBookmarks?.[issue.key]));
     }
+    if (props.onlyMissingPoints) {
+      matched = matched.filter((issue) => issue.storyPoints === null);
+    }
     if (props.onlyMissingReviewer) {
       matched = matched.filter((issue) => !issue.reviewerDisplay?.trim());
     }
@@ -274,6 +279,7 @@ export default function IssuePanel(props: Props) {
     props.listSort,
     props.onlyWithNote,
     props.onlyWithBookmark,
+    props.onlyMissingPoints,
     props.onlyMissingReviewer,
     props.onlyMissingQa,
     props.onlyTimeWarn,
@@ -360,6 +366,14 @@ export default function IssuePanel(props: Props) {
     setLinks((prev) => ({ ...prev, [issueKey]: saved }));
     setMenuKey(null);
     setMenuPos(null);
+  }
+
+  async function assignPoints(issueKey: string, points: number | null) {
+    if (props.readOnly) return;
+    props.onError(null);
+    const matrix = await window.api.setStoryPoints(issueKey, points);
+    invalidateIssueStories(issueKey);
+    props.onIssueRefreshed(matrix);
   }
 
   async function assignRole(issueKey: string, role: IssueRole, person: Developer | null) {
@@ -619,6 +633,12 @@ export default function IssuePanel(props: Props) {
               <CopyIssueButton issueKey={issue.key} url={issue.url} summary={issue.summary} />
               <span className="min-w-0 flex-1" />
               <div className="flex shrink-0 items-center gap-px">
+                <StoryPointsControl
+                  value={issue.storyPoints}
+                  disabled={readOnly}
+                  onApply={(points) => assignPoints(issue.key, points)}
+                  onError={props.onError}
+                />
                 {marks}
                 {traitButtons}
                 {refreshButton}

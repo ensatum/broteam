@@ -122,6 +122,8 @@ export type SummaryRow = {
   emphasizeTesting: boolean;
   emphasizeWork: boolean;
   emphasizeReview: boolean;
+  /** Agile story points. `null` is unset. Missing until the summary is collected again. */
+  storyPoints?: number | null;
 };
 
 export function isoDate(date: Date): string {

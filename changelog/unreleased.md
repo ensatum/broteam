@@ -3,3 +3,4 @@ Included changes since last build:
 - fix(board): keep tooltips inside the window
 - fix(board): frame column headers inside the cells
 - feat(board): change assignee reviewer and tester on a task card
+- feat(board): set story points from the task card

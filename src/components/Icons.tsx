@@ -759,6 +759,17 @@ export function EditIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) 
   );
 }
 
+/** Feather: battery-charging — task without story points. */
+export function BatteryChargingIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" {...strokeCrisp} aria-hidden>
+      <path d="M5 18H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.19M15 6h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-3.19" />
+      <line x1="23" y1="13" x2="23" y2="11" />
+      <polyline points="11 6 7 12 13 12 9 18" />
+    </svg>
+  );
+}
+
 /** Feather: check */
 export function CheckIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
   return (
@@ -1148,7 +1159,7 @@ export function PastSprintBadge({
   );
 }
 
-export type CellBadgeKind = 'bookmark' | 'note' | 'reviewer' | 'tester' | 'time' | 'sprint' | 'changes';
+export type CellBadgeKind = 'bookmark' | 'note' | 'points' | 'reviewer' | 'tester' | 'time' | 'sprint' | 'changes';
 
 function CellIconButton(props: {
   title: string;
@@ -1213,6 +1224,8 @@ export type CellBadgeModel = {
   timeCount?: number;
   sprintCount?: number;
   changeCount?: number;
+  missingPoints?: boolean;
+  pointsCount?: number;
   reviewerFilled?: boolean;
   testerFilled?: boolean;
 };
@@ -1295,7 +1308,7 @@ export function CellBadgeStack(props: {
       </CellIconButton>,
     );
   }
-  if (!topLeft.length && !topRight.length && !bottom.length) return null;
+  if (!topLeft.length && !topRight.length && !bottom.length && !model.missingPoints) return null;
 
   const micro: ReactNode[] = [];
   if (model.bookmarked) {
@@ -1371,6 +1384,18 @@ export function CellBadgeStack(props: {
         {bottom.length > 0 && (
           <div className="bro-corner-br absolute bottom-px right-px flex flex-row items-center gap-px">
             {bottom}
+          </div>
+        )}
+        {model.missingPoints && (
+          <div className="absolute right-px top-1/2 -translate-y-1/2">
+            <CellIconButton
+              title="Есть задачи без Story Points"
+              className="bro-heat-mark hover:brightness-75"
+              style={heatStyle(model.pointsCount || 1)}
+              onClick={() => pick('points')}
+            >
+              <BatteryChargingIcon className="h-3.5 w-3.5" />
+            </CellIconButton>
           </div>
         )}
       </div>

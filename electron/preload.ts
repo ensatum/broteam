@@ -102,6 +102,7 @@ export type ElectronApi = {
   }>;
   refreshIssue: (issueKey: string) => Promise<BoardMatrix>;
   setIssueRole: (issueKey: string, role: 'assignee' | 'reviewer' | 'qa', login: string | null) => Promise<BoardMatrix>;
+  setStoryPoints: (issueKey: string, points: number | null) => Promise<BoardMatrix>;
   executeTransition: (issueKey: string, transitionId: string) => Promise<boolean>;
   refreshBoard: (boardLocalId?: number) => Promise<BoardMatrix>;
   getLastBoard: (boardLocalId?: number) => Promise<BoardMatrix | null>;
@@ -292,6 +293,7 @@ const api: ElectronApi = {
   getIssueStory: (issueKey) => ipcRenderer.invoke('tracker:issueStory', issueKey),
     refreshIssue: (issueKey) => ipcRenderer.invoke('tracker:refreshIssue', issueKey),
     setIssueRole: (issueKey, role, login) => ipcRenderer.invoke('tracker:setIssueRole', issueKey, role, login),
+    setStoryPoints: (issueKey, points) => ipcRenderer.invoke('tracker:setStoryPoints', issueKey, points),
   executeTransition: (issueKey, transitionId) =>
     ipcRenderer.invoke('tracker:executeTransition', issueKey, transitionId),
   refreshBoard: (boardLocalId) => ipcRenderer.invoke('board:refresh', boardLocalId),

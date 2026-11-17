@@ -42,6 +42,7 @@ import { LoadBar } from './LoadBar';
 import { RunSpinner, stopMatchingRuns } from './ApiRunControls';
 import { InstantTip } from './InstantTip';
 import { RolePick } from './RolePick';
+import { StoryPointsControl } from './StoryPointsControl';
 import { SortMenu, type ListSortDir } from './ListSort';
 import {
   invalidateIssueStories,
@@ -353,6 +354,15 @@ export default function SummaryDock(props: {
       saveSummaryPeopleOrder(next);
       return next;
     });
+  }
+
+  async function assignPoints(row: SummaryRow, points: number | null) {
+    setError(null);
+    const matrix = await window.api.setStoryPoints(row.key, points);
+    props.onMatrix?.(matrix);
+    const issue = findMatrixIssue(matrix, row.key);
+    const next = issue && 'storyPoints' in issue ? issue.storyPoints ?? null : points;
+    setRows((prev) => prev.map((item) => (item.key === row.key ? { ...item, storyPoints: next } : item)));
   }
 
   async function assignRole(row: SummaryRow, role: IssueRole, person: Developer | null) {
@@ -686,6 +696,8 @@ export default function SummaryDock(props: {
               people={props.participants}
               roleBusy={refreshingKey === row.key}
               onAssignRole={(role, person) => void assignRole(row, role, person)}
+              onAssignPoints={(points) => assignPoints(row, points)}
+              onPointsError={setError}
               onNoteSave={(body) => {
                 setIssueNotes((prev) => ({ ...prev, [row.key]: body }));
                 if (props.boardLocalId == null || props.personId == null) return;
@@ -1207,6 +1219,8 @@ function SummaryCard(props: {
   people: Developer[];
   roleBusy: boolean;
   onAssignRole: (role: IssueRole, person: Developer | null) => void;
+  onAssignPoints: (points: number | null) => Promise<void>;
+  onPointsError: (message: string | null) => void;
   onNoteSave: (body: string) => void;
   onOpenBoard: (boardLocalId: number) => void;
 }) {
@@ -1326,6 +1340,11 @@ function SummaryCard(props: {
         <CopyIssueButton issueKey={row.key} url={row.url} summary={row.summary} />
         <span className="min-w-0 flex-1" />
         <div className="flex shrink-0 items-center gap-px">
+          <StoryPointsControl
+            value={row.storyPoints}
+            onApply={props.onAssignPoints}
+            onError={(message) => props.onPointsError(message || null)}
+          />
           <NoteClipboardButton
             hasNote={Boolean(props.note.trim())}
             onClick={(event) => {

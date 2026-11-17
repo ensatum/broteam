@@ -179,6 +179,11 @@ export type TrackerIssue = {
   lastCommentUpdatedAt: string | null;
   sprintId: number | null;
   sprintName: string | null;
+  /**
+   * Agile story points. `null` means Tracker returned the task without a value.
+   * Missing on a saved board that has not been loaded since this field was added.
+   */
+  storyPoints?: number | null;
   /** Agile board ids the issue is on (from Tracker `boards`) */
   boardIds?: number[];
 };

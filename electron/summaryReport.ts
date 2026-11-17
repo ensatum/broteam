@@ -129,6 +129,7 @@ export function writeIssuePeopleIntoSummaries(issue: {
   assigneeDisplay: string | null;
   reviewerDisplay: string | null;
   qaDisplay: string | null;
+  storyPoints?: number | null;
 }): void {
   for (const stored of listSummarySources()) {
     let payload: SummaryCachePayload;
@@ -140,10 +141,12 @@ export function writeIssuePeopleIntoSummaries(issue: {
     const index = payload.issues.findIndex((item) => item.key === issue.key);
     if (index < 0) continue;
     const prev = payload.issues[index];
+    const nextPoints = 'storyPoints' in issue ? issue.storyPoints ?? null : prev.storyPoints;
     if (
       prev.assigneeDisplay === issue.assigneeDisplay &&
       prev.reviewerDisplay === issue.reviewerDisplay &&
-      prev.qaDisplay === issue.qaDisplay
+      prev.qaDisplay === issue.qaDisplay &&
+      prev.storyPoints === nextPoints
     ) {
       continue;
     }
@@ -152,6 +155,7 @@ export function writeIssuePeopleIntoSummaries(issue: {
       assigneeDisplay: issue.assigneeDisplay ?? '',
       reviewerDisplay: issue.reviewerDisplay ?? '',
       qaDisplay: issue.qaDisplay ?? '',
+      ...('storyPoints' in issue ? { storyPoints: nextPoints } : {}),
     };
     saveSummarySource(stored.boardLocalId, {
       formedAt: stored.formedAt,
@@ -198,6 +202,7 @@ export async function refreshSummaryIssue(
     createdAt: issue.createdAt,
     updatedAt: issue.updatedAt,
     sprintName: issue.sprintName,
+    storyPoints: issue.storyPoints ?? null,
   });
   const index = payload.issues.findIndex((item) => item.key === issueKey);
   if (index >= 0) payload.issues[index] = snap;
@@ -615,6 +620,7 @@ type SummaryIssue = {
   createdAt?: string | null;
   updatedAt?: string | null;
   sprintName: string | null;
+  storyPoints?: number | null;
 };
 
 type SummaryCachePayload = {
@@ -641,6 +647,7 @@ function snapshotIssue(issue: SummaryIssue): SummaryIssue {
     createdAt: issue.createdAt || null,
     updatedAt: issue.updatedAt || null,
     sprintName: issue.sprintName,
+    ...('storyPoints' in issue ? { storyPoints: issue.storyPoints ?? null } : {}),
   };
 }
 
@@ -1135,6 +1142,7 @@ function interpretIssue(
     emphasizeTesting: role === 'qa',
     emphasizeWork: role === 'developer' && wasAssignee,
     emphasizeReview: role === 'developer' && wasReviewer,
+    ...('storyPoints' in issue ? { storyPoints: issue.storyPoints ?? null } : {}),
   };
 }
 

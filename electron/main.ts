@@ -81,6 +81,7 @@ import type {
   TrackerBoard,
   GithubSource,
   TrackerConnection,
+  TrackerIssue,
 } from '../shared/types';
 import { COLUMN_COLORS, DEVELOPER_TONE_PRESETS, normalizeDeveloperTone } from '../shared/types';
 import { describeMatrix } from '../shared/matrixShape';
@@ -638,28 +639,32 @@ function registerIpc(): void {
     saveLastMatrix(matrix);
     return matrix;
   });
+  const keepConfirmedIssue = async (issue: TrackerIssue): Promise<BoardMatrix> => {
+    writeIssuePeopleIntoSummaries(issue);
+    const activeId = getActiveBoardLocalId();
+    const remembered =
+      latestMatrix && activeId != null && latestMatrix.sourceBoardLocalId === activeId
+        ? latestMatrix
+        : getLastMatrix<BoardMatrix>();
+    const current =
+      remembered && activeId != null && remembered.sourceBoardLocalId === activeId ? remembered : null;
+    if (!current) {
+      const matrix = await buildLiveMatrix();
+      latestMatrix = matrix;
+      return matrix;
+    }
+    const matrix = patchIssueInMatrix(current, issue);
+    latestMatrix = matrix;
+    saveLastMatrix(matrix);
+    return matrix;
+  };
   ipcMain.handle(
     'tracker:setIssueRole',
-    async (_e, issueKey: string, role: 'assignee' | 'reviewer' | 'qa', login: string | null) => {
-      const issue = await getClient().setIssueRole(issueKey, role, login);
-      writeIssuePeopleIntoSummaries(issue);
-      const activeId = getActiveBoardLocalId();
-      const remembered =
-        latestMatrix && activeId != null && latestMatrix.sourceBoardLocalId === activeId
-          ? latestMatrix
-          : getLastMatrix<BoardMatrix>();
-      const current =
-        remembered && activeId != null && remembered.sourceBoardLocalId === activeId ? remembered : null;
-      if (!current) {
-        const matrix = await buildLiveMatrix();
-        latestMatrix = matrix;
-        return matrix;
-      }
-      const matrix = patchIssueInMatrix(current, issue);
-      latestMatrix = matrix;
-      saveLastMatrix(matrix);
-      return matrix;
-    },
+    async (_e, issueKey: string, role: 'assignee' | 'reviewer' | 'qa', login: string | null) =>
+      keepConfirmedIssue(await getClient().setIssueRole(issueKey, role, login)),
+  );
+  ipcMain.handle('tracker:setStoryPoints', async (_e, issueKey: string, points: number | null) =>
+    keepConfirmedIssue(await getClient().setStoryPoints(issueKey, points)),
   );
   ipcMain.handle(
     'tracker:executeTransition',

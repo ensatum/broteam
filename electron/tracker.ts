@@ -714,6 +714,14 @@ export class TrackerClient {
     return this.getIssue(issueId);
   }
 
+  async setStoryPoints(issueId: string, points: number | null): Promise<TrackerIssue> {
+    await this.request(`/v2/issues/${issueId}`, {
+      method: 'PATCH',
+      body: { storyPoints: points },
+    });
+    return this.getIssue(issueId);
+  }
+
   async getIssueStory(issueId: string): Promise<{
     description: string;
     commentText: string;
@@ -1034,6 +1042,7 @@ type RawTrackerIssue = {
   } | null;
   sprint?: Array<{ id?: string | number; display?: string }> | null;
   boards?: Array<{ id?: number | string; name?: string | null }> | null;
+  storyPoints?: number | null;
 };
 
 export function isReactionComment(text: string | null | undefined, type?: string | null): boolean {
@@ -1095,7 +1104,14 @@ function mapTrackerIssue(
     sprintId: Number.isFinite(sprintId) ? sprintId : null,
     sprintName: sprint?.display || null,
     boardIds,
+    storyPoints: storyPointsOf(issue.storyPoints),
   };
+}
+
+function storyPointsOf(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const points = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(points) ? points : null;
 }
 
 export function buildIssuesQuery(params: {

@@ -49,6 +49,7 @@ import {
   ToggleLeftIcon,
   ToggleRightIcon,
   ShieldIcon,
+  BatteryChargingIcon,
   UserCheckIcon,
   TableIcon,
   CheckIcon,
@@ -623,6 +624,7 @@ export default function BoardPage(props: Props) {
   const [pinnedIcons, setPinnedIcons] = useState<Set<CellBadgeKind>>(() => new Set());
   const noteOn = activeIcon === 'note' || pinnedIcons.has('note');
   const bookmarkOn = activeIcon === 'bookmark' || pinnedIcons.has('bookmark');
+  const missingPointsOn = activeIcon === 'points' || pinnedIcons.has('points');
   const missingReviewerOn = activeIcon === 'reviewer' || pinnedIcons.has('reviewer');
   const missingQaOn = activeIcon === 'tester' || pinnedIcons.has('tester');
   const timeWarnOn = activeIcon === 'time' || pinnedIcons.has('time');
@@ -678,6 +680,7 @@ export default function BoardPage(props: Props) {
   const [highlightBoardId, setHighlightBoardId] = useState<number | null>(null);
   const noteFilter = appliedIcon === 'note' || appliedPinnedIcons.has('note');
   const bookmarkFilter = appliedIcon === 'bookmark' || appliedPinnedIcons.has('bookmark');
+  const missingPointsFilter = appliedIcon === 'points' || appliedPinnedIcons.has('points');
   const missingReviewerFilter = appliedIcon === 'reviewer' || appliedPinnedIcons.has('reviewer');
   const missingQaFilter = appliedIcon === 'tester' || appliedPinnedIcons.has('tester');
   const timeWarnFilter = appliedIcon === 'time' || appliedPinnedIcons.has('time');
@@ -3258,6 +3261,7 @@ export default function BoardPage(props: Props) {
   const detailBookmarkCount = uniqueIssueCount(listedIssues, (issue) =>
     Boolean(sourceMatrix.issueBookmarks?.[issue.key]),
   );
+  const detailMissingPointsCount = uniqueIssueCount(listedIssues, (issue) => issue.storyPoints === null);
   const detailMissingReviewerCount = uniqueIssueCount(
     listedIssues,
     (issue) => !issue.reviewerDisplay?.trim(),
@@ -3305,6 +3309,7 @@ export default function BoardPage(props: Props) {
         .filter((issue) => {
           if (noteFilter && !sourceMatrix.issueNotes[issue.key]?.trim()) return false;
           if (bookmarkFilter && !sourceMatrix.issueBookmarks?.[issue.key]) return false;
+          if (missingPointsFilter && issue.storyPoints !== null) return false;
           if (missingReviewerFilter && issue.reviewerDisplay?.trim()) return false;
           if (missingQaFilter && issue.qaDisplay?.trim()) return false;
           if (
@@ -3354,6 +3359,7 @@ export default function BoardPage(props: Props) {
       bookmarkCount={detailBookmarkCount}
       noteFilter={noteOn}
       bookmarkFilter={bookmarkOn}
+      missingPointsFilter={missingPointsOn}
       missingReviewerFilter={missingReviewerOn}
       missingQaFilter={missingQaOn}
       timeWarnFilter={timeWarnOn}
@@ -3361,6 +3367,7 @@ export default function BoardPage(props: Props) {
       changesFilter={changesOn}
       listNoteFilter={noteFilter}
       listBookmarkFilter={bookmarkFilter}
+      listMissingPointsFilter={missingPointsFilter}
       listMissingReviewerFilter={missingReviewerFilter}
       listMissingQaFilter={missingQaFilter}
       listTimeWarnFilter={timeWarnFilter}
@@ -3369,18 +3376,21 @@ export default function BoardPage(props: Props) {
       changeByKey={changeByKey}
       changeCount={boardChanges.filter((change) => listedIssues.some((issue) => issue.key === change.issueKey)).length}
       onDismissChange={(issueKey) => props.onDismissChanges([issueKey])}
+      missingPointsCount={detailMissingPointsCount}
       missingReviewerCount={detailMissingReviewerCount}
       missingQaCount={detailMissingQaCount}
       timeWarnCount={detailTimeWarnCount}
       otherSprintCount={detailOtherSprintCount}
       notePinned={pinnedIcons.has('note')}
       bookmarkPinned={pinnedIcons.has('bookmark')}
+      pointsPinned={pinnedIcons.has('points')}
       reviewerPinned={pinnedIcons.has('reviewer')}
       qaPinned={pinnedIcons.has('tester')}
       timePinned={pinnedIcons.has('time')}
       sprintPinned={pinnedIcons.has('sprint')}
       onToggleNoteFilter={() => clickIconFilter('note')}
       onToggleBookmarkFilter={() => clickIconFilter('bookmark')}
+      onToggleMissingPoints={() => clickIconFilter('points')}
       onToggleMissingReviewer={() => clickIconFilter('reviewer')}
       onToggleMissingQa={() => clickIconFilter('tester')}
       onToggleTimeWarn={() => clickIconFilter('time')}
@@ -3389,6 +3399,7 @@ export default function BoardPage(props: Props) {
       changesPinned={pinnedIcons.has('changes')}
       onPinNoteFilter={() => pinIconFilter('note')}
       onPinBookmarkFilter={() => pinIconFilter('bookmark')}
+      onPinMissingPoints={() => pinIconFilter('points')}
       onPinMissingReviewer={() => pinIconFilter('reviewer')}
       onPinMissingQa={() => pinIconFilter('tester')}
       onPinTimeWarn={() => pinIconFilter('time')}
@@ -4437,6 +4448,8 @@ export default function BoardPage(props: Props) {
                             (issue) => issue.sprintId != null && issue.sprintId !== currentSprintId,
                           ).length,
                           changeCount,
+                          missingPoints: issues.some((issue) => issue.storyPoints === null),
+                          pointsCount: issues.filter((issue) => issue.storyPoints === null).length,
                           reviewerFilled: badges.reviewerTone === 'warn',
                           testerFilled: badges.testerTone === 'warn',
                         };
@@ -4937,6 +4950,7 @@ function TasksDock(props: {
   bookmarkCount: number;
   noteFilter: boolean;
   bookmarkFilter: boolean;
+  missingPointsFilter: boolean;
   missingReviewerFilter: boolean;
   missingQaFilter: boolean;
   timeWarnFilter: boolean;
@@ -4944,6 +4958,7 @@ function TasksDock(props: {
   changesFilter: boolean;
   listNoteFilter: boolean;
   listBookmarkFilter: boolean;
+  listMissingPointsFilter: boolean;
   listMissingReviewerFilter: boolean;
   listMissingQaFilter: boolean;
   listTimeWarnFilter: boolean;
@@ -4954,17 +4969,20 @@ function TasksDock(props: {
   onDismissChange: (issueKey: string) => void;
   notePinned: boolean;
   bookmarkPinned: boolean;
+  pointsPinned: boolean;
   reviewerPinned: boolean;
   qaPinned: boolean;
   timePinned: boolean;
   sprintPinned: boolean;
   changesPinned: boolean;
+  missingPointsCount: number;
   missingReviewerCount: number;
   missingQaCount: number;
   timeWarnCount: number;
   otherSprintCount: number;
   onToggleNoteFilter: () => void;
   onToggleBookmarkFilter: () => void;
+  onToggleMissingPoints: () => void;
   onToggleMissingReviewer: () => void;
   onToggleMissingQa: () => void;
   onToggleTimeWarn: () => void;
@@ -4973,6 +4991,7 @@ function TasksDock(props: {
   onPinChangesFilter: () => void;
   onPinNoteFilter: () => void;
   onPinBookmarkFilter: () => void;
+  onPinMissingPoints: () => void;
   onPinMissingReviewer: () => void;
   onPinMissingQa: () => void;
   onPinTimeWarn: () => void;
@@ -5087,6 +5106,21 @@ function TasksDock(props: {
             >
               <BookmarkIcon className={filterIconClass(props.bookmarkPinned)} filled={props.bookmarkFilter} />
               {props.bookmarkCount}
+            </FilterIconButton>
+            <FilterIconButton
+              title={
+                props.missingPointsFilter
+                  ? 'Показать все задачи'
+                  : 'Только задачи без Story Points'
+              }
+              active={props.missingPointsFilter}
+              pinned={props.pointsPinned}
+              className={filterButtonClass(props.missingPointsFilter, props.pointsPinned)}
+              onClick={props.onToggleMissingPoints}
+              onPin={props.onPinMissingPoints}
+            >
+              <BatteryChargingIcon className={filterIconClass(props.pointsPinned)} />
+              {props.missingPointsCount}
             </FilterIconButton>
             <FilterIconButton
               title={
@@ -5261,6 +5295,7 @@ function TasksDock(props: {
               onResetFilters={props.onResetFilters}
               onlyWithNote={props.listNoteFilter}
               onlyWithBookmark={props.listBookmarkFilter}
+              onlyMissingPoints={props.listMissingPointsFilter}
               onlyMissingReviewer={props.listMissingReviewerFilter}
               onlyMissingQa={props.listMissingQaFilter}
               onlyTimeWarn={props.listTimeWarnFilter}
