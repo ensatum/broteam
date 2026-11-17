@@ -1250,7 +1250,7 @@ function SummaryCard(props: {
   const showNote = props.open && (editingNote || Boolean(props.note.trim()));
   return (
     <div
-      className={`relative shrink-0 cursor-pointer overflow-hidden rounded border hover:bg-slate-50 ${FRAME_CLASS[props.frame]}`}
+      className={`relative shrink-0 cursor-pointer overflow-hidden rounded border shadow-[0_1px_3px_rgba(15,23,42,0.18)] hover:bg-slate-50 ${FRAME_CLASS[props.frame]}`}
       onClick={props.onToggle}
       onMouseEnter={() => props.onHover(row.key, row.boardLocalId ?? null)}
       onMouseLeave={() => props.onHover(null, null)}

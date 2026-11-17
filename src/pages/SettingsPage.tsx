@@ -2028,7 +2028,7 @@ function ColumnGroupCard(props: {
                 }
               />
               <input
-                className="h-8 min-w-0 flex-1 rounded border border-slate-300 px-2 text-sm"
+                className="h-8 min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 text-sm"
                 value={group.name}
                 onChange={(event) =>
                   void save(
@@ -2084,7 +2084,7 @@ function ColumnEditorRow(props: {
   return (
     <div
       data-column-row
-      className={`flex items-center gap-2 rounded border border-slate-100 bg-white p-2 text-sm ${mark} ${
+      className={`flex items-center gap-2 rounded border border-slate-300 bg-white p-2 text-sm shadow-[0_1px_3px_rgba(15,23,42,0.18)] ${mark} ${
         props.dragging ? 'bro-drag-source' : ''
       }`}
       onDragOver={(event) => {

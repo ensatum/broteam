@@ -3918,7 +3918,7 @@ export default function BoardPage(props: Props) {
                   <tr className="bg-slate-50">
                     <th
                       rowSpan={2}
-                      className={`sticky top-0 left-0 z-20 overflow-hidden border-b border-slate-200 bg-slate-50 ${nameColW} px-0 py-1 text-left ${nameColBorder} ${shade('head', 'name')}`}
+                      className={`sticky top-0 left-0 z-20 overflow-hidden border-b border-black bg-slate-50 ${nameColW} px-0 py-1 text-left ${nameColBorder} ${shade('head', 'name')}`}
                       onMouseEnter={() => setTableHover({ row: 'head', col: 'name' })}
                     >
                       {tableCorner()}
@@ -3944,8 +3944,8 @@ export default function BoardPage(props: Props) {
                             key={`group-${grouped.id}`}
                             colSpan={members.length}
                             title={grouped.name}
-                            className="sticky top-0 z-10 border-b border-r border-slate-200 px-1 py-1 text-left align-bottom"
-                            style={{ backgroundColor: hexTint(grouped.color || '#64748b') }}
+                            className="sticky top-0 z-10 border-r border-slate-200 px-1 py-1 text-left align-bottom"
+                            style={{ backgroundColor: hexTint(grouped.color || '#64748b'), ...headerEdge(grouped.color) }}
                           >
                             <span className="flex w-full items-center gap-1">
                               <button
@@ -4005,8 +4005,8 @@ export default function BoardPage(props: Props) {
                             title={slot.group.name}
                             onDragOver={(event) => allowColumnDrop(event, dropKey)}
                             onDrop={(event) => dropColumn(event, dropKey)}
-                            className={`sticky top-0 z-10 border-b border-r border-slate-200 px-1 text-left ${columnDropMark(dropKey)}`}
-                            style={{ backgroundColor: hexTint(slot.group.color || '#64748b') }}
+                            className={`sticky top-0 z-10 border-r border-slate-200 px-1 text-left ${columnDropMark(dropKey)}`}
+                            style={{ backgroundColor: hexTint(slot.group.color || '#64748b'), ...headerEdge(slot.group.color) }}
                           >
                             <span className="flex w-full items-center gap-1">
                               <button
@@ -4060,7 +4060,8 @@ export default function BoardPage(props: Props) {
                           title={c.alias}
                           onDragOver={(event) => allowColumnDrop(event, c.statusKey)}
                           onDrop={(event) => dropColumn(event, c.statusKey)}
-                          className={`sticky top-0 z-10 bg-slate-50 ${numColW} px-1 py-1 text-left border-b border-r border-slate-300 font-semibold text-[11px] leading-tight text-black ${columnDropMark(c.statusKey)}`}
+                          className={`sticky top-0 z-10 bg-slate-50 ${numColW} px-1 py-1 text-left border-r border-slate-300 font-semibold text-[11px] leading-tight text-black ${columnDropMark(c.statusKey)}`}
+                          style={headerEdge(c.color)}
                         >
                           <span className="flex min-w-0 flex-col gap-0.5">
                             <span className="flex items-center gap-0.5">
@@ -4138,7 +4139,7 @@ export default function BoardPage(props: Props) {
                 <tr className="bg-slate-50">
                   {!showGroupRow && (
                   <th
-                    className={`sticky ${headSticky} left-0 z-20 overflow-hidden border-b border-slate-200 bg-slate-50 ${nameColW} px-0 py-1 text-left ${nameColBorder} ${shade('head', 'name')}`}
+                    className={`sticky ${headSticky} left-0 z-20 overflow-hidden border-b border-black bg-slate-50 ${nameColW} px-0 py-1 text-left ${nameColBorder} ${shade('head', 'name')}`}
                     onMouseEnter={() => setTableHover({ row: 'head', col: 'name' })}
                   >
                     {tableCorner()}
@@ -4156,7 +4157,8 @@ export default function BoardPage(props: Props) {
                           onDragOver={(e) => allowColumnDrop(e, dropKey)}
                           onDrop={(e) => dropColumn(e, dropKey)}
                           onMouseEnter={() => setTableHover({ row: 'head', col: key })}
-                          className={`sticky ${headSticky} z-10 bg-slate-50 ${numColW} px-1 py-1 text-left border-b border-r border-slate-300 font-semibold text-[11px] leading-tight ${shade('head', key)} ${columnDropMark(dropKey)}`}
+                          className={`sticky ${headSticky} z-10 bg-slate-50 ${numColW} px-1 py-1 text-left border-r border-slate-300 font-semibold text-[11px] leading-tight ${shade('head', key)} ${columnDropMark(dropKey)}`}
+                          style={headerEdge(slot.group.color)}
                         >
                           <span className="block truncate" style={{ color: slot.group.color }}>
                             {slot.group.name}
@@ -4172,7 +4174,8 @@ export default function BoardPage(props: Props) {
                       onDragOver={(e) => allowColumnDrop(e, c.statusKey)}
                       onDrop={(e) => dropColumn(e, c.statusKey)}
                       onMouseEnter={() => setTableHover({ row: 'head', col: c.statusKey })}
-                      className={`sticky ${headSticky} z-10 bg-slate-50 align-top ${numColW} px-1 py-1 text-left border-b border-r border-slate-300 font-semibold text-[11px] leading-tight text-black ${shade('head', c.statusKey)} ${columnDropMark(c.statusKey)}`}
+                      className={`sticky ${headSticky} z-10 bg-slate-50 align-top ${numColW} px-1 py-1 text-left border-r border-slate-300 font-semibold text-[11px] leading-tight text-black ${shade('head', c.statusKey)} ${columnDropMark(c.statusKey)}`}
+                      style={headerEdge(c.color)}
                     >
                       <span className="flex min-w-0 flex-col gap-0.5">
                         <span className="flex items-center gap-0.5">
@@ -4278,7 +4281,7 @@ export default function BoardPage(props: Props) {
                         onDragOver={(e) => allowRowDrop(e, row.developer.id)}
                         onDrop={(e) => dropRow(e, row.developer.id)}
                         onMouseEnter={() => setTableHover({ row: row.developer.id, col: 'name' })}
-                        className={`sticky left-0 z-10 relative h-px border-b border-white p-0 ${nameColBorder} ${nameColW} ${shade(row.developer.id, 'name')} ${rowDropMark(row.developer.id)}`}
+                        className={`sticky left-0 z-10 relative h-px border-b border-black p-0 ${nameColBorder} ${nameColW} ${shade(row.developer.id, 'name')} ${rowDropMark(row.developer.id)}`}
                         style={{ backgroundColor: away ? '#e5e7eb' : nameColor }}
                       >
                         <div className="relative h-full w-full">
@@ -4547,7 +4550,7 @@ export default function BoardPage(props: Props) {
                 <tr>
                   <td
                     onMouseEnter={() => setTableHover({ row: 'total', col: 'name' })}
-                    className={`sticky left-0 z-10 relative h-px border-t border-slate-200 bg-slate-100 p-0 ${nameColBorder} font-bold text-base ${nameColW} ${shade('total', 'name')}`}
+                    className={`sticky left-0 z-10 relative h-px border-t border-black bg-slate-100 p-0 ${nameColBorder} font-bold text-base ${nameColW} ${shade('total', 'name')}`}
                   >
                     <div className="relative h-full w-full">
                       <div
@@ -4811,6 +4814,11 @@ function ChangeBell(props: { show: boolean; count: number; heat?: number; onClic
       </InstantTip>
     </span>
   );
+}
+
+function headerEdge(color: string): CSSProperties {
+  const edge = darkenHex(color || '#64748b', 0.5);
+  return { borderLeft: `3px solid ${edge}`, borderBottom: `1px solid ${edge}` };
 }
 
 function ColumnAliasLabel(props: { alias: string; color: string }) {
