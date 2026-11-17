@@ -705,10 +705,8 @@ export default function BoardPage(props: Props) {
   const boardQueueKey =
     props.boards.find((board) => board.id === props.activeBoardId)?.queueKey || '';
   const [editSlot, setEditSlot] = useState<HTMLElement | null>(null);
-  const [crossSlot, setCrossSlot] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
     setEditSlot(document.getElementById('board-edit-anchor'));
-    setCrossSlot(document.getElementById('board-cross-anchor'));
   }, []);
   const editSnap = useRef<{
     filtersOpen: boolean;
@@ -1731,7 +1729,7 @@ export default function BoardPage(props: Props) {
   const slots = tableSlots(shownColumns, boardGroups);
   const groupRow = groupHeaderCells(slots, boardGroups);
   const showGroupRow = groupRow.some((cell) => cell.kind === 'group');
-  const headSticky = showGroupRow ? 'top-7' : 'top-0';
+  const headSticky = 'top-0';
   const shownStatusKeys = useMemo(
     () => new Set(shownColumns.map((column) => column.statusKey)),
     [shownColumns],
@@ -2622,51 +2620,48 @@ export default function BoardPage(props: Props) {
   const editMuted = !tableShown && !reorderMode;
   const editButton = editSlot
     ? createPortal(
-        <button
-          type="button"
-          aria-pressed={reorderMode}
-          disabled={editMuted}
-          title="Редактировать таблицу"
-          className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-medium ${
-            reorderMode
-              ? 'border-[#3647d2] bg-[#3647d2] text-white hover:border-[#2a38b0] hover:bg-[#2a38b0]'
-              : editMuted
-                ? 'cursor-default border-slate-200 bg-slate-50 text-slate-400'
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            aria-pressed={reorderMode}
+            disabled={editMuted}
+            title="Редактировать таблицу"
+            className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-medium ${
+              reorderMode
+                ? 'border-[#3647d2] bg-[#3647d2] text-white hover:border-[#2a38b0] hover:bg-[#2a38b0]'
+                : editMuted
+                  ? 'cursor-default border-slate-200 bg-slate-50 text-slate-400'
+                  : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+            }`}
+            onClick={toggleEdit}
+          >
+            <TableIcon className="h-3.5 w-3.5" />
+            Редактировать таблицу
+          </button>
+          <button
+            type="button"
+            aria-pressed={crossOn}
+            title="Учитывать задачи других досок, которые есть и на этой"
+            className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-medium ${
+              crossOn
+                ? 'border-[#3647d2] bg-[#3647d2] text-white'
                 : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
-          }`}
-          onClick={toggleEdit}
-        >
-          <TableIcon className="h-3.5 w-3.5" />
-          Редактировать таблицу
-        </button>,
+            }`}
+            onClick={() => {
+              if (props.activeBoardId == null) return;
+              setCrossBoards((prev) => {
+                const next = { ...prev, [String(props.activeBoardId)]: !prev[String(props.activeBoardId)] };
+                saveCrossBoards(next);
+                props.onCrossChange?.();
+                return next;
+              });
+            }}
+          >
+            <ShuffleIcon className="h-3.5 w-3.5" />
+            Перекрёстные задачи
+          </button>
+        </div>,
         editSlot,
-      )
-    : null;
-  const crossButton = crossSlot
-    ? createPortal(
-        <button
-          type="button"
-          aria-pressed={crossOn}
-          title="Учитывать задачи других досок, которые есть и на этой"
-          className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-medium ${
-            crossOn
-              ? 'border-[#3647d2] bg-[#3647d2] text-white'
-              : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
-          }`}
-          onClick={() => {
-            if (props.activeBoardId == null) return;
-            setCrossBoards((prev) => {
-              const next = { ...prev, [String(props.activeBoardId)]: !prev[String(props.activeBoardId)] };
-              saveCrossBoards(next);
-              props.onCrossChange?.();
-              return next;
-            });
-          }}
-        >
-          <ShuffleIcon className="h-3.5 w-3.5" />
-          Перекрёстные
-        </button>,
-        crossSlot,
       )
     : null;
 
@@ -3408,7 +3403,6 @@ export default function BoardPage(props: Props) {
   return (
     <>
       {editButton}
-      {crossButton}
       {modeMenuOpen &&
         createPortal(
           <div
@@ -3929,7 +3923,7 @@ export default function BoardPage(props: Props) {
                             key={`group-${grouped.id}`}
                             colSpan={members.length}
                             title={grouped.name}
-                            className="sticky top-0 z-10 border-b border-r border-slate-200 px-1 text-left"
+                            className="sticky top-0 z-10 border-b border-r border-slate-200 px-1 py-1 text-left align-bottom"
                             style={{ backgroundColor: hexTint(grouped.color || '#64748b') }}
                           >
                             <span className="flex w-full items-center gap-1">
@@ -4157,7 +4151,7 @@ export default function BoardPage(props: Props) {
                       onDragOver={(e) => allowColumnDrop(e, c.statusKey)}
                       onDrop={(e) => dropColumn(e, c.statusKey)}
                       onMouseEnter={() => setTableHover({ row: 'head', col: c.statusKey })}
-                      className={`sticky ${showGroupRow ? 'top-7' : headSticky} z-10 bg-slate-50 ${numColW} px-1 py-1 text-left border-b border-r border-slate-300 font-semibold text-[11px] leading-tight text-black ${shade('head', c.statusKey)} ${columnDropMark(c.statusKey)}`}
+                      className={`sticky ${headSticky} z-10 bg-slate-50 align-top ${numColW} px-1 py-1 text-left border-b border-r border-slate-300 font-semibold text-[11px] leading-tight text-black ${shade('head', c.statusKey)} ${columnDropMark(c.statusKey)}`}
                     >
                       <span className="flex min-w-0 flex-col gap-0.5">
                         <span className="flex items-center gap-0.5">

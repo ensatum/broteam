@@ -44,6 +44,103 @@ export function placeColumn(
   return coalesceColumns(list);
 }
 
+export type ColumnSection =
+  | { kind: 'column'; column: BoardColumnConfig }
+  | { kind: 'group'; group: ColumnGroup; columns: BoardColumnConfig[] };
+
+/** Settings list: column order, with an empty group inserted at its own sort position. */
+export function columnSections(columns: BoardColumnConfig[], groups: ColumnGroup[]): ColumnSection[] {
+  const byId = new Map(groups.map((group) => [group.id, group]));
+  const seen = new Set<number>();
+  const sections: ColumnSection[] = [];
+  const sorted = [...columns].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  for (const column of sorted) {
+    const group = column.groupId != null ? byId.get(column.groupId) : undefined;
+    if (!group) {
+      sections.push({ kind: 'column', column });
+      continue;
+    }
+    if (seen.has(group.id)) continue;
+    seen.add(group.id);
+    sections.push({
+      kind: 'group',
+      group,
+      columns: sorted.filter((item) => item.groupId === group.id),
+    });
+  }
+  const empty = groups
+    .filter((group) => !seen.has(group.id))
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  for (const group of empty) {
+    const at = Math.max(0, Math.min(group.sortOrder, sections.length));
+    sections.splice(at, 0, { kind: 'group', group, columns: [] });
+  }
+  return sections;
+}
+
+function flattenSections(sections: ColumnSection[]): { columns: BoardColumnConfig[]; groups: ColumnGroup[] } {
+  const columns: BoardColumnConfig[] = [];
+  const groups: ColumnGroup[] = [];
+  for (const section of sections) {
+    if (section.kind === 'column') {
+      columns.push({ ...section.column, groupId: null });
+      continue;
+    }
+    groups.push(section.group);
+    columns.push(...section.columns);
+  }
+  return {
+    columns: columns.map((column, index) => ({ ...column, sortOrder: index })),
+    groups: groups.map((group, index) => ({ ...group, sortOrder: index })),
+  };
+}
+
+function shiftSection(sections: ColumnSection[], fromAt: number, toAt: number, where: 'above' | 'below'): ColumnSection[] {
+  const next = [...sections];
+  const [item] = next.splice(fromAt, 1);
+  let insertAt = toAt;
+  if (fromAt < toAt) insertAt -= 1;
+  if (where === 'below') insertAt += 1;
+  next.splice(insertAt, 0, item);
+  return next;
+}
+
+/** Keep an ungrouped column ungrouped and seat it before or after a whole group. */
+export function placeColumnBesideGroup(
+  columns: BoardColumnConfig[],
+  groups: ColumnGroup[],
+  fromKey: string,
+  groupId: number,
+  where: 'above' | 'below',
+): { columns: BoardColumnConfig[]; groups: ColumnGroup[] } | null {
+  const sections = columnSections(columns, groups);
+  const fromAt = sections.findIndex((section) => section.kind === 'column' && section.column.statusKey === fromKey);
+  const toAt = sections.findIndex((section) => section.kind === 'group' && section.group.id === groupId);
+  if (fromAt < 0 || toAt < 0) return null;
+  const source = sections[fromAt];
+  if (source.kind !== 'column' || source.column.groupId != null) return null;
+  return flattenSections(shiftSection(sections, fromAt, toAt, where));
+}
+
+/** Move a group before or after another group, or before or after an ungrouped column. */
+export function moveGroupSection(
+  columns: BoardColumnConfig[],
+  groups: ColumnGroup[],
+  fromId: number,
+  target: { kind: 'group'; id: number } | { kind: 'column'; key: string },
+  where: 'above' | 'below',
+): { columns: BoardColumnConfig[]; groups: ColumnGroup[] } | null {
+  const sections = columnSections(columns, groups);
+  const fromAt = sections.findIndex((section) => section.kind === 'group' && section.group.id === fromId);
+  const toAt = sections.findIndex((section) => {
+    if (target.kind === 'group') return section.kind === 'group' && section.group.id === target.id;
+    if (section.kind === 'column' && section.column.statusKey === target.key) return true;
+    return section.kind === 'group' && section.columns.some((column) => column.statusKey === target.key);
+  });
+  if (fromAt < 0 || toAt < 0 || fromAt === toAt) return null;
+  return flattenSections(shiftSection(sections, fromAt, toAt, where));
+}
+
 /** Move a whole group so it sits just before the column it was dropped on. */
 export function moveGroupBefore(
   columns: BoardColumnConfig[],

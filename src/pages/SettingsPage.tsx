@@ -13,13 +13,17 @@ import type {
 } from '@shared/types';
 import type { AppUpdateProgress } from '@shared/appUpdate';
 import { freshBoardColumns } from '@shared/boardColumns';
-import { coalesceColumns, moveGroupBefore, placeColumn } from '@shared/columnGroups';
+import { coalesceColumns, columnSections, moveGroupSection, placeColumn, placeColumnBesideGroup } from '@shared/columnGroups';
 import { excludedTypeKeys, typeIsExcluded } from '@shared/issueTypeFilter';
 import { DEFAULT_GITHUB, DEVELOPER_TONE_PRESETS, PARTICIPANT_ROLES, normalizeDeveloperTone } from '@shared/types';
 import { sessionLog } from '../sessionLog';
 import ColorField from '../components/ColorField';
-import { ActivityIcon, BellOffIcon, DownloadIcon, InfoIcon, PlusIcon, RefreshIcon, TrashIcon, UploadIcon } from '../components/Icons';
+import { ActivityIcon, ArrowDownIcon, ArrowRightIcon, BellOffIcon, DownloadIcon, InfoIcon, MoveIcon, PlusIcon, RefreshIcon, TrashIcon, UploadIcon } from '../components/Icons';
 import { DEFAULT_WORK_SCHEDULE, type WorkSchedule } from '../autoRefresh';
+
+type SectionDrop =
+  | { target: 'column'; key: string; where: 'above' | 'below' }
+  | { target: 'group'; id: number; where: 'above' | 'below' };
 
 type SettingsTab = 'app' | 'integrations' | 'people' | 'boards' | 'backup';
 type BackupChoice = {
@@ -78,8 +82,9 @@ export default function SettingsPage(props: Props) {
   const columnDraftHold = useRef<BoardColumnConfig[] | null>(null);
   const dragColumnKey = useRef<string | null>(null);
   const dragGroupId = useRef<number | null>(null);
-  const [columnDrop, setColumnDrop] = useState<{ key: string; where: 'above' | 'below' } | null>(null);
+  const [sectionDrop, setSectionDrop] = useState<SectionDrop | null>(null);
   const [draggingColumn, setDraggingColumn] = useState<string | null>(null);
+  const [draggingGroup, setDraggingGroup] = useState<number | null>(null);
   const [userQuery, setUserQuery] = useState('');
   const [userResults, setUserResults] = useState<TrackerUser[]>([]);
   const [savedBoards, setSavedBoards] = useState<SavedBoard[]>(props.boards);
@@ -1219,15 +1224,15 @@ export default function SettingsPage(props: Props) {
                       disabled={busy}
                       onClick={() =>
                         void saveBoardGroups(board.id, boardColumns, [
-                          ...boardGroups,
                           {
                             id: 0,
                             boardLocalId: board.id,
                             name: 'Группа',
                             color: '#64748b',
-                            sortOrder: boardGroups.length,
+                            sortOrder: 0,
                             collapsed: false,
                           },
+                          ...boardGroups,
                         ]).catch((error: unknown) => publishErr('boards', error))
                       }
                     >
@@ -1242,10 +1247,24 @@ export default function SettingsPage(props: Props) {
                         columns={boardColumns}
                         busy={busy}
                         dragKey={dragColumnKey}
-                        dropMark={columnDrop}
+                        dropMark={sectionDrop}
                         dragging={draggingColumn === section.column.statusKey}
+                        dragGroupId={dragGroupId}
                         onDragState={setDraggingColumn}
-                        onHover={setColumnDrop}
+                        onHover={setSectionDrop}
+                        onMoveGroup={(fromId, where) => {
+                          const moved = moveGroupSection(
+                            boardColumns,
+                            boardGroups,
+                            fromId,
+                            { kind: 'column', key: section.column.statusKey },
+                            where,
+                          );
+                          if (!moved) return;
+                          void saveBoardGroups(board.id, moved.columns, moved.groups).catch((error: unknown) =>
+                            publishErr('boards', error),
+                          );
+                        }}
                         onChange={(next) =>
                           setColDraft((prev) =>
                             prev.map((item) =>
@@ -1270,6 +1289,10 @@ export default function SettingsPage(props: Props) {
                         busy={busy}
                         dragGroupId={dragGroupId}
                         dragColumnKey={dragColumnKey}
+                        dropMark={sectionDrop}
+                        dragging={draggingGroup === section.group.id}
+                        onHover={setSectionDrop}
+                        onDragState={setDraggingGroup}
                         onSave={(nextColumns, nextGroups) =>
                           saveBoardGroups(board.id, nextColumns, nextGroups)
                         }
@@ -1282,10 +1305,11 @@ export default function SettingsPage(props: Props) {
                             columns={boardColumns}
                             busy={busy}
                             dragKey={dragColumnKey}
-                            dropMark={columnDrop}
+                            dropMark={sectionDrop}
                             dragging={draggingColumn === column.statusKey}
+                            dragGroupId={dragGroupId}
                             onDragState={setDraggingColumn}
-                            onHover={setColumnDrop}
+                            onHover={setSectionDrop}
                             onChange={(next) =>
                               setColDraft((prev) =>
                                 prev.map((item) =>
@@ -1848,40 +1872,9 @@ function sameColumnStructure(saved: BoardColumnConfig[], next: BoardColumnConfig
   return true;
 }
 
-function columnSections(
-  columns: BoardColumnConfig[],
-  groups: ColumnGroup[],
-): Array<
-  | { kind: 'column'; column: BoardColumnConfig }
-  | { kind: 'group'; group: ColumnGroup; columns: BoardColumnConfig[] }
-> {
-  const byId = new Map(groups.map((group) => [group.id, group]));
-  const seen = new Set<number>();
-  const sections: Array<
-    | { kind: 'column'; column: BoardColumnConfig }
-    | { kind: 'group'; group: ColumnGroup; columns: BoardColumnConfig[] }
-  > = [];
-  for (const group of groups) {
-    if (!columns.some((column) => column.groupId === group.id)) {
-      seen.add(group.id);
-      sections.push({ kind: 'group', group, columns: [] });
-    }
-  }
-  for (const column of columns) {
-    const group = column.groupId != null ? byId.get(column.groupId) : undefined;
-    if (!group) {
-      sections.push({ kind: 'column', column });
-      continue;
-    }
-    if (seen.has(group.id)) continue;
-    seen.add(group.id);
-    sections.push({
-      kind: 'group',
-      group,
-      columns: columns.filter((item) => item.groupId === group.id),
-    });
-  }
-  return sections;
+function dropHalf(node: HTMLElement, clientY: number): 'above' | 'below' {
+  const rect = node.getBoundingClientRect();
+  return clientY < rect.top + rect.height / 2 ? 'above' : 'below';
 }
 
 function ColumnGroupCard(props: {
@@ -1891,6 +1884,10 @@ function ColumnGroupCard(props: {
   busy: boolean;
   dragGroupId: RefObject<number | null>;
   dragColumnKey: { current: string | null };
+  dropMark: SectionDrop | null;
+  dragging: boolean;
+  onHover: (mark: SectionDrop | null) => void;
+  onDragState: (id: number | null) => void;
   onSave: (columns: BoardColumnConfig[], groups: ColumnGroup[]) => Promise<void>;
   onError: (error: unknown) => void;
   children: ReactNode;
@@ -1905,81 +1902,90 @@ function ColumnGroupCard(props: {
     }
   }
   const free = props.columns.filter((column) => column.groupId == null);
+  const mark =
+    props.dropMark?.target === 'group' && props.dropMark.id === group.id
+      ? props.dropMark.where === 'below'
+        ? 'bro-insert-below'
+        : 'bro-insert-above'
+      : '';
   return (
           <div
-            className="space-y-2 rounded border-2 p-2"
+            className={`space-y-2 rounded border-2 p-2 ${mark} ${props.dragging ? 'bro-drag-source' : ''}`}
             style={{ borderColor: group.color || '#64748b' }}
             onDragOver={(event) => {
+              const where = dropHalf(event.currentTarget, event.clientY);
               if (props.dragGroupId.current != null) {
+                if (props.dragGroupId.current === group.id) return;
                 event.preventDefault();
+                props.onHover({ target: 'group', id: group.id, where });
                 return;
               }
               const from = props.dragColumnKey.current;
               const source = from ? props.columns.find((column) => column.statusKey === from) : undefined;
               if (!source || source.groupId != null) return;
               event.preventDefault();
+              props.onHover({ target: 'group', id: group.id, where });
             }}
             onDrop={(event) => {
-              const fromColumn = props.dragColumnKey.current;
-              if (props.dragGroupId.current == null && fromColumn) {
-                const source = props.columns.find((column) => column.statusKey === fromColumn);
-                props.dragColumnKey.current = null;
-                if (!source || source.groupId != null || group.id === source.groupId) return;
-                event.preventDefault();
-                event.stopPropagation();
-                void save(
-                  coalesceColumns(
-                    props.columns.map((column) =>
-                      column.statusKey === fromColumn ? { ...column, groupId: group.id } : column,
-                    ),
-                  ),
-                  props.groups,
-                );
-                return;
-              }
+              const where =
+                props.dropMark?.target === 'group' && props.dropMark.id === group.id
+                  ? props.dropMark.where
+                  : dropHalf(event.currentTarget, event.clientY);
+              props.onHover(null);
               const fromId = props.dragGroupId.current;
               props.dragGroupId.current = null;
-              if (fromId == null || fromId === group.id) return;
-              const from = props.groups.findIndex((item) => item.id === fromId);
-              const to = props.groups.findIndex((item) => item.id === group.id);
-              if (from < 0 || to < 0) return;
-              const anchor = props.columns.find((column) => column.groupId === group.id);
-              const nextColumns = anchor
-                ? moveGroupBefore(props.columns, fromId, anchor.statusKey)
-                : props.columns;
-              const rank = new Map<number, number>();
-              nextColumns.forEach((column, index) => {
-                if (column.groupId != null && !rank.has(column.groupId)) rank.set(column.groupId, index);
-              });
-              const nextGroups = anchor
-                ? [...props.groups].sort(
-                    (a, b) => (rank.get(a.id) ?? a.sortOrder) - (rank.get(b.id) ?? b.sortOrder) || a.id - b.id,
-                  )
-                : (() => {
-                    const copy = [...props.groups];
-                    const [moved] = copy.splice(from, 1);
-                    copy.splice(to, 0, moved);
-                    return copy;
-                  })();
-              void save(nextColumns, nextGroups);
+              props.onDragState(null);
+              if (fromId != null) {
+                if (fromId === group.id) return;
+                event.preventDefault();
+                const moved = moveGroupSection(props.columns, props.groups, fromId, { kind: 'group', id: group.id }, where);
+                if (moved) void save(moved.columns, moved.groups);
+                return;
+              }
+              const fromColumn = props.dragColumnKey.current;
+              props.dragColumnKey.current = null;
+              if (!fromColumn) return;
+              const source = props.columns.find((column) => column.statusKey === fromColumn);
+              if (!source || source.groupId != null) return;
+              event.preventDefault();
+              const moved = placeColumnBesideGroup(props.columns, props.groups, fromColumn, group.id, where);
+              if (moved) void save(moved.columns, moved.groups);
             }}
           >
             <div className="flex items-center gap-2">
               <span
                 draggable={!props.busy}
                 title="Перетащить"
-                className="cursor-grab select-none px-0.5 text-slate-400"
+                className="inline-flex cursor-grab text-slate-400"
                 onDragStart={(event: DragEvent) => {
                   props.dragGroupId.current = group.id;
+                  props.onDragState(group.id);
                   event.dataTransfer.effectAllowed = 'move';
                   event.dataTransfer.setData('text/plain', String(group.id));
                 }}
                 onDragEnd={() => {
                   props.dragGroupId.current = null;
+                  props.onDragState(null);
+                  props.onHover(null);
                 }}
               >
-                ☰
+                <MoveIcon className="h-4 w-4" />
               </span>
+              <button
+                type="button"
+                title={group.collapsed ? 'Развернуть' : 'Свернуть'}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100"
+                onClick={() =>
+                  void save(
+                    props.columns,
+                    props.groups.map((item) =>
+                      item.id === group.id ? { ...item, collapsed: !item.collapsed } : item,
+                    ),
+                  )
+                }
+              >
+                {group.collapsed ? <ArrowRightIcon className="h-4 w-4" /> : <ArrowDownIcon className="h-4 w-4" />}
+              </button>
               <ColorField
                 value={group.color || '#64748b'}
                 onChange={(hex) =>
@@ -2018,7 +2024,8 @@ function ColumnGroupCard(props: {
                 <TrashIcon className="h-4 w-4" />
               </button>
             </div>
-            <div className="space-y-1">{props.children}</div>
+            {!group.collapsed && <div className="space-y-1">{props.children}</div>}
+            {!group.collapsed && (
             <div className="flex flex-wrap items-center gap-1">
               <select
                 className="h-7 rounded border border-slate-300 bg-white px-1 text-xs text-slate-700"
@@ -2044,6 +2051,7 @@ function ColumnGroupCard(props: {
                 ))}
               </select>
             </div>
+            )}
           </div>
   );
 }
@@ -2053,17 +2061,19 @@ function ColumnEditorRow(props: {
   columns: BoardColumnConfig[];
   busy: boolean;
   dragKey: { current: string | null };
-  dropMark: { key: string; where: 'above' | 'below' } | null;
+  dragGroupId: RefObject<number | null>;
+  dropMark: SectionDrop | null;
   dragging: boolean;
   onDragState: (key: string | null) => void;
-  onHover: (mark: { key: string; where: 'above' | 'below' } | null) => void;
+  onHover: (mark: SectionDrop | null) => void;
   onChange: (column: BoardColumnConfig) => void;
   onMove: (from: string, to: string) => void;
+  onMoveGroup?: (fromId: number, where: 'above' | 'below') => void;
   onLeaveGroup?: () => void;
 }) {
   const c = props.column;
   const mark =
-    props.dropMark?.key === c.statusKey
+    props.dropMark?.target === 'column' && props.dropMark.key === c.statusKey
       ? props.dropMark.where === 'below'
         ? 'bro-insert-below'
         : 'bro-insert-above'
@@ -2074,6 +2084,17 @@ function ColumnEditorRow(props: {
         props.dragging ? 'bro-drag-source' : ''
       }`}
       onDragOver={(event) => {
+        if (props.dragGroupId.current != null) {
+          if (c.groupId != null) return;
+          event.preventDefault();
+          event.stopPropagation();
+          props.onHover({
+            target: 'column',
+            key: c.statusKey,
+            where: dropHalf(event.currentTarget, event.clientY),
+          });
+          return;
+        }
         const from = props.dragKey.current;
         if (!from || from === c.statusKey) return;
         const source = props.columns.find((item) => item.statusKey === from);
@@ -2085,9 +2106,23 @@ function ColumnEditorRow(props: {
         event.stopPropagation();
         const fromIndex = props.columns.findIndex((item) => item.statusKey === from);
         const toIndex = props.columns.findIndex((item) => item.statusKey === c.statusKey);
-        props.onHover({ key: c.statusKey, where: fromIndex < toIndex ? 'below' : 'above' });
+        props.onHover({ target: 'column', key: c.statusKey, where: fromIndex < toIndex ? 'below' : 'above' });
       }}
       onDrop={(event) => {
+        if (props.dragGroupId.current != null) {
+          const fromId = props.dragGroupId.current;
+          const where =
+            props.dropMark?.target === 'column' && props.dropMark.key === c.statusKey
+              ? props.dropMark.where
+              : dropHalf(event.currentTarget, event.clientY);
+          props.dragGroupId.current = null;
+          props.onHover(null);
+          if (c.groupId != null) return;
+          event.preventDefault();
+          event.stopPropagation();
+          props.onMoveGroup?.(fromId, where);
+          return;
+        }
         const from = props.dragKey.current;
         props.dragKey.current = null;
         props.onHover(null);
@@ -2106,7 +2141,7 @@ function ColumnEditorRow(props: {
       <span
         draggable={!props.busy}
         title="Перетащить"
-        className="cursor-grab select-none px-0.5 text-slate-400"
+        className="inline-flex cursor-grab text-slate-400"
         onDragStart={(event) => {
           props.dragKey.current = c.statusKey;
           props.onDragState(c.statusKey);
@@ -2119,7 +2154,7 @@ function ColumnEditorRow(props: {
           props.onHover(null);
         }}
       >
-        ☰
+        <MoveIcon className="h-4 w-4" />
       </span>
       <ColorField value={c.color} onChange={(hex) => props.onChange({ ...c, color: hex })} />
       <input

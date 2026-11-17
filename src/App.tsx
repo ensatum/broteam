@@ -612,7 +612,6 @@ export default function App() {
                   </button>
                 );
               })}
-              <div id="board-cross-anchor" className="shrink-0" />
             </div>
           ) : (
             <span className="font-semibold text-lg tracking-tight text-slate-900">Настройки</span>
