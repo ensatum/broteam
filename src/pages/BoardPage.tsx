@@ -4003,7 +4003,7 @@ export default function BoardPage(props: Props) {
                               >
                                 <ColumnAliasLabel alias={grouped.name} color={grouped.color} />
                               </span>
-                              <InstantTip text="Свернуть группу" className="inline-flex justify-self-center">
+                              <InstantTip text="Свернуть группу" place="bottom" className="inline-flex justify-self-center">
                                 <button
                                   type="button"
                                   className="inline-flex h-4 w-4 items-center justify-center text-black"
@@ -4055,7 +4055,7 @@ export default function BoardPage(props: Props) {
                                 >
                                   <BellOffIcon className="h-3 w-3" />
                                 </button>
-                                <InstantTip text="Развернуть группу" className="ml-auto inline-flex">
+                                <InstantTip text="Развернуть группу" place="bottom" className="ml-auto inline-flex">
                                   <button
                                     type="button"
                                     className="inline-flex h-4 w-4 items-center justify-center text-black"
