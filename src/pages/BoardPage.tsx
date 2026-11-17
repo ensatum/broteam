@@ -4006,7 +4006,8 @@ export default function BoardPage(props: Props) {
                               <InstantTip text="Свернуть группу" place="bottom" className="inline-flex justify-self-center">
                                 <button
                                   type="button"
-                                  className="inline-flex h-4 w-4 items-center justify-center rounded border border-slate-600 text-black hover:bg-black/10"
+                                  className="inline-flex h-4 w-4 items-center justify-center rounded border hover:bg-black/10"
+                                  style={groupFoldStyle(grouped.color || '#64748b')}
                                   onClick={() => void toggleGroup(grouped)}
                                 >
                                   <ChevronUpIcon className="h-3 w-3" />
@@ -4058,7 +4059,8 @@ export default function BoardPage(props: Props) {
                                 <InstantTip text="Развернуть группу" place="bottom" className="inline-flex justify-self-center">
                                   <button
                                     type="button"
-                                    className="inline-flex h-4 w-4 items-center justify-center rounded border border-slate-600 text-black hover:bg-black/10"
+                                    className="inline-flex h-4 w-4 items-center justify-center rounded border hover:bg-black/10"
+                                    style={groupFoldStyle(slot.group.color || '#64748b')}
                                     onClick={() => void toggleGroup(slot.group)}
                                   >
                                     <ChevronDownIcon className="h-3 w-3" />
@@ -4861,6 +4863,11 @@ function ChangeBell(props: { show: boolean; count: number; heat?: number; onClic
       </InstantTip>
     </span>
   );
+}
+
+function groupFoldStyle(color: string): CSSProperties {
+  const edge = darkenHex(color, 0.1);
+  return { color: edge, borderColor: hexTint(edge, 0.2) };
 }
 
 function headerChipStyle(color?: string | null): CSSProperties {
