@@ -4006,7 +4006,7 @@ export default function BoardPage(props: Props) {
                               <InstantTip text="Свернуть группу" place="bottom" className="inline-flex justify-self-center">
                                 <button
                                   type="button"
-                                  className="inline-flex h-4 w-4 items-center justify-center text-black"
+                                  className="inline-flex h-4 w-4 items-center justify-center rounded border border-slate-600 text-black hover:bg-black/10"
                                   onClick={() => void toggleGroup(grouped)}
                                 >
                                   <ChevronUpIcon className="h-3 w-3" />
@@ -4043,7 +4043,7 @@ export default function BoardPage(props: Props) {
                             className={`sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-left ${columnDropMark(dropKey)}`}
                           >
                             <HeaderChip color={slot.group.color || '#64748b'} className="flex flex-col justify-center gap-0.5 px-1 py-0.5">
-                              <span className="flex items-center">
+                              <span className="grid grid-cols-[1rem_minmax(0,1fr)_1rem] items-center">
                                 <button
                                   type="button"
                                   title={skipped ? 'Выключить автопропуск изменений' : 'Автопропуск изменений для всей группы'}
@@ -4055,10 +4055,10 @@ export default function BoardPage(props: Props) {
                                 >
                                   <BellOffIcon className="h-3 w-3" />
                                 </button>
-                                <InstantTip text="Развернуть группу" place="bottom" className="ml-auto inline-flex">
+                                <InstantTip text="Развернуть группу" place="bottom" className="inline-flex justify-self-center">
                                   <button
                                     type="button"
-                                    className="inline-flex h-4 w-4 items-center justify-center text-black"
+                                    className="inline-flex h-4 w-4 items-center justify-center rounded border border-slate-600 text-black hover:bg-black/10"
                                     onClick={() => void toggleGroup(slot.group)}
                                   >
                                     <ChevronDownIcon className="h-3 w-3" />
