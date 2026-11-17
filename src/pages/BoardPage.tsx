@@ -34,12 +34,12 @@ import {
   CellBadgeStack,
   type CellBadgeKind,
   type CellBadgeModel,
-  ArrowRightIcon,
   InboxIcon,
   ActivityIcon,
   TerminalIcon,
   BellIcon,
-  ArrowDownIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   BellOffIcon,
   ShuffleIcon,
   FilterIcon,
@@ -3980,18 +3980,11 @@ export default function BoardPage(props: Props) {
                             title={grouped.name}
                             className="sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-left align-bottom"
                           >
-                            <HeaderChip color={grouped.color || '#64748b'} className="flex items-center gap-1 px-1 py-0.5">
-                              <button
-                                type="button"
-                                className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-500"
-                                title="Свернуть группу"
-                                onClick={() => void toggleGroup(grouped)}
-                              >
-                                <ArrowDownIcon className="h-3 w-3" />
-                              </button>
+                            <HeaderChip color={grouped.color || '#64748b'} className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-1 py-0.5">
                               <span
-                                className={`min-w-0 flex-1 truncate text-[11px] font-semibold ${reorderMode && !readOnly ? 'cursor-grab' : ''}`}
+                                className={`min-w-0 truncate text-[11px] font-semibold ${reorderMode && !readOnly ? 'cursor-grab' : 'cursor-pointer'}`}
                                 draggable={reorderMode && !readOnly}
+                                onClick={() => void toggleGroup(grouped)}
                                 onDragStart={(event) => {
                                   if (!reorderMode || readOnly) return;
                                   const key = groupStatusKey(grouped.id);
@@ -4010,10 +4003,19 @@ export default function BoardPage(props: Props) {
                               >
                                 <ColumnAliasLabel alias={grouped.name} color={grouped.color} />
                               </span>
+                              <InstantTip text="Свернуть группу" className="inline-flex justify-self-center">
+                                <button
+                                  type="button"
+                                  className="inline-flex h-4 w-4 items-center justify-center text-black"
+                                  onClick={() => void toggleGroup(grouped)}
+                                >
+                                  <ChevronUpIcon className="h-3 w-3" />
+                                </button>
+                              </InstantTip>
                               <button
                                 type="button"
                                 title={skipped ? 'Выключить автопропуск изменений' : 'Автопропуск изменений для всей группы'}
-                                className={`ml-auto inline-flex h-4 w-4 shrink-0 items-center justify-center ${
+                                className={`justify-self-end inline-flex h-4 w-4 shrink-0 items-center justify-center ${
                                   skipped ? 'text-red-600 hover:text-red-800' : 'text-slate-300 hover:text-slate-500'
                                 }`}
                                 onMouseDown={(event) => event.stopPropagation()}
@@ -4040,18 +4042,33 @@ export default function BoardPage(props: Props) {
                             onDrop={(event) => dropColumn(event, dropKey)}
                             className={`sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-left ${columnDropMark(dropKey)}`}
                           >
-                            <HeaderChip color={slot.group.color || '#64748b'} className="flex items-center gap-1 px-1 py-0.5">
-                              <button
-                                type="button"
-                                className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-500"
-                                title="Развернуть группу"
-                                onClick={() => void toggleGroup(slot.group)}
-                              >
-                                <ArrowRightIcon className="h-3 w-3" />
-                              </button>
+                            <HeaderChip color={slot.group.color || '#64748b'} className="flex flex-col justify-center gap-0.5 px-1 py-0.5">
+                              <span className="flex items-center">
+                                <button
+                                  type="button"
+                                  title={skipped ? 'Выключить автопропуск изменений' : 'Автопропуск изменений для всей группы'}
+                                  className={`inline-flex h-4 w-4 shrink-0 items-center justify-center ${
+                                    skipped ? 'text-red-600 hover:text-red-800' : 'text-slate-300 hover:text-slate-500'
+                                  }`}
+                                  onMouseDown={(event) => event.stopPropagation()}
+                                  onClick={() => toggleGroupAutoSkip(slot.group)}
+                                >
+                                  <BellOffIcon className="h-3 w-3" />
+                                </button>
+                                <InstantTip text="Развернуть группу" className="ml-auto inline-flex">
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-4 w-4 items-center justify-center text-black"
+                                    onClick={() => void toggleGroup(slot.group)}
+                                  >
+                                    <ChevronDownIcon className="h-3 w-3" />
+                                  </button>
+                                </InstantTip>
+                              </span>
                               <span
-                                className={`min-w-0 flex-1 truncate text-[11px] font-semibold ${reorderMode && !readOnly ? 'cursor-grab' : ''}`}
+                                className={`min-w-0 truncate text-[11px] font-semibold ${reorderMode && !readOnly ? 'cursor-grab' : 'cursor-pointer'}`}
                                 draggable={reorderMode && !readOnly}
+                                onClick={() => void toggleGroup(slot.group)}
                                 onDragStart={(event) => {
                                   if (!reorderMode || readOnly) return;
                                   dragDevId.current = null;
@@ -4069,17 +4086,6 @@ export default function BoardPage(props: Props) {
                               >
                                 <ColumnAliasLabel alias={slot.group.name} color={slot.group.color} />
                               </span>
-                              <button
-                                type="button"
-                                title={skipped ? 'Выключить автопропуск изменений' : 'Автопропуск изменений для всей группы'}
-                                className={`ml-auto inline-flex h-4 w-4 shrink-0 items-center justify-center ${
-                                  skipped ? 'text-red-600 hover:text-red-800' : 'text-slate-300 hover:text-slate-500'
-                                }`}
-                                onMouseDown={(event) => event.stopPropagation()}
-                                onClick={() => toggleGroupAutoSkip(slot.group)}
-                              >
-                                <BellOffIcon className="h-3 w-3" />
-                              </button>
                             </HeaderChip>
                           </th>
                         );

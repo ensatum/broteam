@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { nearestStoryPoint, STORY_POINT_MARKS } from '@shared/storyPoints';
+import { nearestStoryPoint, storyPointColor, STORY_POINT_MARKS } from '@shared/storyPoints';
 import { BatteryChargingIcon, BatteryIcon, CheckIcon, heatStyle } from './Icons';
 
 const EDGE = 8;
@@ -63,10 +63,10 @@ export function StoryPointsControl(props: {
       setDraft(nearestStoryPoint(props.value));
       setOpen(false);
     };
-    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('mousedown', onDoc, true);
     document.addEventListener('keydown', onKey);
     return () => {
-      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('mousedown', onDoc, true);
       document.removeEventListener('keydown', onKey);
     };
   }, [open, busy, props.value]);
@@ -92,23 +92,24 @@ export function StoryPointsControl(props: {
   const mark = saved == null ? (
     <BatteryChargingIcon className="h-3.5 w-3.5" />
   ) : (
-    <span className="inline-flex h-4 min-w-4 items-center justify-center rounded bg-slate-50 px-1 text-[11px] font-bold leading-none text-slate-600">
+    <span
+      className="inline-flex h-4 min-w-4 items-center justify-center rounded bg-slate-50 px-1 text-[11px] font-bold leading-none"
+      style={{ color: storyPointColor(saved) }}
+    >
       {saved}
     </span>
   );
 
   if (props.disabled) {
-    return <span className="inline-flex h-4 shrink-0 items-center justify-center">{mark}</span>;
+    return <span className="mr-1 inline-flex h-4 shrink-0 items-center justify-center">{mark}</span>;
   }
-
-  const index = Math.max(0, STORY_POINT_MARKS.indexOf(draft as (typeof STORY_POINT_MARKS)[number]));
 
   return (
     <>
       <button
         ref={anchorRef}
         type="button"
-        className="inline-flex h-4 shrink-0 cursor-pointer items-center justify-center bg-transparent p-0"
+        className="mr-1 inline-flex h-4 shrink-0 cursor-pointer items-center justify-center bg-transparent p-0"
         style={saved == null ? heatStyle(1) : undefined}
         onMouseDown={(event) => event.stopPropagation()}
         onClick={(event) => {
@@ -143,31 +144,7 @@ export function StoryPointsControl(props: {
             >
               <BatteryIcon className="h-3.5 w-3.5" />
             </button>
-            <div className="w-40">
-              <input
-                type="range"
-                min={0}
-                max={STORY_POINT_MARKS.length - 1}
-                step={1}
-                value={index}
-                disabled={busy}
-                aria-valuetext={String(draft)}
-                className="block h-4 w-full cursor-pointer accent-slate-600"
-                onChange={(event) => setDraft(STORY_POINT_MARKS[Number(event.target.value)] ?? STORY_POINT_MARKS[0])}
-              />
-              <div className="flex justify-between px-0.5 text-[9px] leading-none text-slate-400">
-                {STORY_POINT_MARKS.map((point) => (
-                  <button
-                    key={point}
-                    type="button"
-                    className={`bg-transparent p-0 ${point === draft ? 'font-bold text-slate-700' : ''}`}
-                    onClick={() => setDraft(point)}
-                  >
-                    {point}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <StorySlider value={draft} disabled={busy} onChange={setDraft} />
             <button
               type="button"
               aria-label="Записать Story Points"
@@ -181,5 +158,57 @@ export function StoryPointsControl(props: {
           document.body,
         )}
     </>
+  );
+}
+
+function StorySlider(props: { value: number; disabled?: boolean; onChange: (point: number) => void }) {
+  const count = STORY_POINT_MARKS.length;
+  const index = Math.max(0, STORY_POINT_MARKS.indexOf(props.value as (typeof STORY_POINT_MARKS)[number]));
+  const color = storyPointColor(props.value);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const pick = (clientX: number) => {
+    const rect = trackRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return;
+    const next = Math.round(((clientX - rect.left) / rect.width) * count - 0.5);
+    const clamped = Math.max(0, Math.min(count - 1, next));
+    props.onChange(STORY_POINT_MARKS[clamped] ?? STORY_POINT_MARKS[0]);
+  };
+  return (
+    <div
+      ref={trackRef}
+      className="relative w-44 select-none"
+      onPointerDown={(event) => {
+        if (props.disabled) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        pick(event.clientX);
+      }}
+      onPointerMove={(event) => {
+        if (props.disabled || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+        pick(event.clientX);
+      }}
+    >
+      <div
+        className="pointer-events-none absolute top-[5px] h-1 rounded bg-slate-200"
+        style={{ left: `${50 / count}%`, right: `${50 / count}%` }}
+      >
+        <div className="h-full rounded" style={{ width: `${(index / (count - 1)) * 100}%`, backgroundColor: color }} />
+      </div>
+      <div className="relative grid" style={{ gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` }}>
+        {STORY_POINT_MARKS.map((point, item) => (
+          <div key={point} className="flex flex-col items-center">
+            <span
+              className={`h-3 w-3 rounded-full ${item === index ? 'border border-white' : ''}`}
+              style={item === index ? { backgroundColor: color } : undefined}
+            />
+            <span
+              className={`mt-0.5 text-[9px] leading-none ${point === props.value ? 'font-bold' : 'text-slate-400'}`}
+              style={point === props.value ? { color } : undefined}
+            >
+              {point}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

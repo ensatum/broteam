@@ -61,7 +61,7 @@ function RoleLine(props: {
       people={props.people}
       disabled={props.disabled}
       busy={props.busy}
-      className={value ? props.filledClass || 'text-slate-400' : 'text-red-600'}
+      className={`block w-full ${value ? props.filledClass || 'text-slate-400' : 'text-red-600'}`}
       onChange={props.onChange}
     >
       {value ? (

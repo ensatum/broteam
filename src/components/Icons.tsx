@@ -720,6 +720,15 @@ export function ChevronRightIcon({ className = 'h-3.5 w-3.5' }: { className?: st
   );
 }
 
+/** Feather: chevron-up */
+export function ChevronUpIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" {...strokeCrisp} aria-hidden>
+      <polyline points="18 15 12 9 6 15" />
+    </svg>
+  );
+}
+
 /** Feather: chevron-down */
 export function ChevronDownIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
   return (
