@@ -3937,10 +3937,10 @@ export default function BoardPage(props: Props) {
                   <tr className="bg-slate-50">
                     <th
                       rowSpan={2}
-                      className={`sticky top-0 left-0 z-20 overflow-hidden border-b border-black bg-slate-50 ${nameColW} px-0 py-1 text-left ${nameColBorder} ${shade('head', 'name')}`}
+                      className={`sticky top-0 left-0 z-20 relative h-px overflow-hidden border-0 bg-slate-50 p-px ${nameColW} text-left ${shade('head', 'name')}`}
                       onMouseEnter={() => setTableHover({ row: 'head', col: 'name' })}
                     >
-                      {tableCorner()}
+                      <HeaderChip className="flex items-center justify-center">{tableCorner()}</HeaderChip>
                     </th>
                     {slots.map((slot) => {
                       const grouped =
@@ -3963,10 +3963,9 @@ export default function BoardPage(props: Props) {
                             key={`group-${grouped.id}`}
                             colSpan={members.length}
                             title={grouped.name}
-                            className="sticky top-0 z-10 border-r border-slate-200 px-1 py-1 text-left align-bottom"
-                            style={{ backgroundColor: hexTint(grouped.color || '#64748b'), ...headerEdge(grouped.color) }}
+                            className="sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-left align-bottom"
                           >
-                            <span className="flex w-full items-center gap-1">
+                            <HeaderChip color={grouped.color || '#64748b'} className="flex items-center gap-1 px-1 py-0.5">
                               <button
                                 type="button"
                                 className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-500"
@@ -4007,7 +4006,7 @@ export default function BoardPage(props: Props) {
                               >
                                 <BellOffIcon className="h-3 w-3" />
                               </button>
-                            </span>
+                            </HeaderChip>
                           </th>
                         );
                       }
@@ -4024,10 +4023,9 @@ export default function BoardPage(props: Props) {
                             title={slot.group.name}
                             onDragOver={(event) => allowColumnDrop(event, dropKey)}
                             onDrop={(event) => dropColumn(event, dropKey)}
-                            className={`sticky top-0 z-10 border-r border-slate-200 px-1 text-left ${columnDropMark(dropKey)}`}
-                            style={{ backgroundColor: hexTint(slot.group.color || '#64748b'), ...headerEdge(slot.group.color) }}
+                            className={`sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-left ${columnDropMark(dropKey)}`}
                           >
-                            <span className="flex w-full items-center gap-1">
+                            <HeaderChip color={slot.group.color || '#64748b'} className="flex items-center gap-1 px-1 py-0.5">
                               <button
                                 type="button"
                                 className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-500"
@@ -4067,7 +4065,7 @@ export default function BoardPage(props: Props) {
                               >
                                 <BellOffIcon className="h-3 w-3" />
                               </button>
-                            </span>
+                            </HeaderChip>
                           </th>
                         );
                       }
@@ -4079,10 +4077,9 @@ export default function BoardPage(props: Props) {
                           title={c.alias}
                           onDragOver={(event) => allowColumnDrop(event, c.statusKey)}
                           onDrop={(event) => dropColumn(event, c.statusKey)}
-                          className={`sticky top-0 z-10 bg-slate-50 ${numColW} px-1 py-1 text-left border-r border-slate-300 font-semibold text-[11px] leading-tight text-black ${columnDropMark(c.statusKey)}`}
-                          style={headerEdge(c.color)}
+                          className={`sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-left font-semibold text-[11px] leading-tight text-black ${columnDropMark(c.statusKey)}`}
                         >
-                          <span className="flex min-w-0 flex-col gap-0.5">
+                          <HeaderChip color={c.color} className="flex flex-col justify-center gap-0.5 px-1 py-0.5">
                             <span className="flex items-center gap-0.5">
                               <button
                                 type="button"
@@ -4133,7 +4130,7 @@ export default function BoardPage(props: Props) {
                             >
                               <ColumnAliasLabel alias={c.alias} color={c.color} />
                             </span>
-                          </span>
+                          </HeaderChip>
                         </th>
                       );
                     })}
@@ -4141,27 +4138,31 @@ export default function BoardPage(props: Props) {
                       <th
                         rowSpan={2}
                         title="Задачи не в финальном статусе"
-                        className={`sticky top-0 z-10 bg-slate-50 ${numColW} px-1 py-1.5 text-center border-b border-r border-slate-300 font-bold text-[11px] whitespace-nowrap`}
+                        className="sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-center font-bold text-[11px] whitespace-nowrap"
                       >
-                        <span className="block truncate">FLOW</span>
+                        <HeaderChip className="flex items-center justify-center px-1 py-0.5">
+                          <span className="block truncate">FLOW</span>
+                        </HeaderChip>
                       </th>
                     )}
                     <th
                       rowSpan={2}
                       title="Все задачи"
-                      className={`sticky top-0 z-10 bg-slate-50 ${numColW} px-1 py-1.5 text-center border-b border-r border-slate-300 font-bold text-[11px] whitespace-nowrap`}
+                      className="sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-center font-bold text-[11px] whitespace-nowrap"
                     >
-                      <span className="block truncate">TOTAL</span>
+                      <HeaderChip className="flex items-center justify-center px-1 py-0.5">
+                        <span className="block truncate">TOTAL</span>
+                      </HeaderChip>
                     </th>
                   </tr>
                 )}
                 <tr className="bg-slate-50">
                   {!showGroupRow && (
                   <th
-                    className={`sticky ${headSticky} left-0 z-20 overflow-hidden border-b border-black bg-slate-50 ${nameColW} px-0 py-1 text-left ${nameColBorder} ${shade('head', 'name')}`}
+                    className={`sticky ${headSticky} left-0 z-20 relative h-px overflow-hidden border-0 bg-slate-50 p-px ${nameColW} text-left ${shade('head', 'name')}`}
                     onMouseEnter={() => setTableHover({ row: 'head', col: 'name' })}
                   >
-                    {tableCorner()}
+                    <HeaderChip className="flex items-center justify-center">{tableCorner()}</HeaderChip>
                   </th>
                   )}
                   {slots.map((slot) => {
@@ -4176,12 +4177,13 @@ export default function BoardPage(props: Props) {
                           onDragOver={(e) => allowColumnDrop(e, dropKey)}
                           onDrop={(e) => dropColumn(e, dropKey)}
                           onMouseEnter={() => setTableHover({ row: 'head', col: key })}
-                          className={`sticky ${headSticky} z-10 bg-slate-50 ${numColW} px-1 py-1 text-left border-r border-slate-300 font-semibold text-[11px] leading-tight ${shade('head', key)} ${columnDropMark(dropKey)}`}
-                          style={headerEdge(slot.group.color)}
+                          className={`relative sticky ${headSticky} z-10 h-px border-0 bg-slate-50 p-px text-left font-semibold text-[11px] leading-tight ${shade('head', key)} ${columnDropMark(dropKey)}`}
                         >
-                          <span className="block truncate" style={{ color: slot.group.color }}>
-                            {slot.group.name}
-                          </span>
+                          <HeaderChip color={slot.group.color} className="flex items-center px-1 py-0.5">
+                            <span className="block truncate" style={{ color: slot.group.color }}>
+                              {slot.group.name}
+                            </span>
+                          </HeaderChip>
                         </th>
                       );
                     }
@@ -4193,10 +4195,9 @@ export default function BoardPage(props: Props) {
                       onDragOver={(e) => allowColumnDrop(e, c.statusKey)}
                       onDrop={(e) => dropColumn(e, c.statusKey)}
                       onMouseEnter={() => setTableHover({ row: 'head', col: c.statusKey })}
-                      className={`sticky ${headSticky} z-10 bg-slate-50 align-top ${numColW} px-1 py-1 text-left border-r border-slate-300 font-semibold text-[11px] leading-tight text-black ${shade('head', c.statusKey)} ${columnDropMark(c.statusKey)}`}
-                      style={headerEdge(c.color)}
+                      className={`relative sticky ${headSticky} z-10 h-px border-0 bg-slate-50 p-px text-left font-semibold text-[11px] leading-tight text-black ${shade('head', c.statusKey)} ${columnDropMark(c.statusKey)}`}
                     >
-                      <span className="flex min-w-0 flex-col gap-0.5">
+                      <HeaderChip color={c.color} className="flex flex-col justify-center gap-0.5 px-1 py-0.5">
                         <span className="flex items-center gap-0.5">
                         <button
                           type="button"
@@ -4252,7 +4253,7 @@ export default function BoardPage(props: Props) {
                         >
                           <ColumnAliasLabel alias={c.alias} color={c.color} />
                         </span>
-                      </span>
+                      </HeaderChip>
                     </th>
                     );
                   })}
@@ -4260,18 +4261,22 @@ export default function BoardPage(props: Props) {
                   <th
                     title="Задачи не в финальном статусе"
                     onMouseEnter={() => setTableHover({ row: 'head', col: PENDING_COLUMN })}
-                    className={`sticky ${headSticky} z-10 bg-slate-50 ${numColW} px-1 py-1.5 text-center border-b border-r border-slate-300 font-bold text-[11px] whitespace-nowrap ${shade('head', PENDING_COLUMN)}`}
+                    className={`relative sticky ${headSticky} z-10 h-px border-0 bg-slate-50 p-px text-center font-bold text-[11px] whitespace-nowrap ${shade('head', PENDING_COLUMN)}`}
                   >
-                    <span className="block truncate">FLOW</span>
+                    <HeaderChip className="flex items-center justify-center px-1 py-0.5">
+                      <span className="block truncate">FLOW</span>
+                    </HeaderChip>
                   </th>
                   )}
                   {!showGroupRow && (
                   <th
                     title="Все задачи"
                     onMouseEnter={() => setTableHover({ row: 'head', col: 'total' })}
-                    className={`sticky ${headSticky} z-10 bg-slate-50 ${numColW} px-1 py-1.5 text-center border-b border-r border-slate-300 font-bold text-[11px] whitespace-nowrap ${shade('head', 'total')}`}
+                    className={`relative sticky ${headSticky} z-10 h-px border-0 bg-slate-50 p-px text-center font-bold text-[11px] whitespace-nowrap ${shade('head', 'total')}`}
                   >
-                    <span className="block truncate">TOTAL</span>
+                    <HeaderChip className="flex items-center justify-center px-1 py-0.5">
+                      <span className="block truncate">TOTAL</span>
+                    </HeaderChip>
                   </th>
                   )}
                 </tr>
@@ -4835,9 +4840,35 @@ function ChangeBell(props: { show: boolean; count: number; heat?: number; onClic
   );
 }
 
-function headerEdge(color: string): CSSProperties {
-  const edge = darkenHex(color || '#64748b', 0.5);
-  return { borderLeft: `3px solid ${edge}`, borderBottom: `1px solid ${edge}` };
+function headerChipStyle(color?: string | null): CSSProperties {
+  if (!color) {
+    return {
+      backgroundColor: '#ffffff',
+      borderTop: '1px solid #cbd5e1',
+      borderRight: '2px solid #cbd5e1',
+      borderBottom: '1px solid #cbd5e1',
+      borderLeft: '2px solid #cbd5e1',
+    };
+  }
+  const edge = darkenHex(color, 0.1);
+  return {
+    backgroundColor: hexTint(color),
+    borderTop: `1px solid ${edge}`,
+    borderRight: `2px solid ${edge}`,
+    borderBottom: `1px solid ${edge}`,
+    borderLeft: `2px solid ${edge}`,
+  };
+}
+
+function HeaderChip(props: { color?: string | null; className?: string; children: ReactNode }) {
+  return (
+    <div
+      className={`box-border h-full min-h-full w-full min-w-0 overflow-hidden rounded ${props.className ?? ''}`}
+      style={headerChipStyle(props.color)}
+    >
+      {props.children}
+    </div>
+  );
 }
 
 function ColumnAliasLabel(props: { alias: string; color: string }) {
