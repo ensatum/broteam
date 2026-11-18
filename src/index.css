@@ -541,7 +541,7 @@ body.bro-drag-col * {
     display: none;
   }
 
-  .bro-cell-mini .bro-change-beside:has(.bro-points-cell) {
+  .bro-cell-mini .bro-change-beside {
     justify-content: flex-end;
     padding-right: 2px;
   }
