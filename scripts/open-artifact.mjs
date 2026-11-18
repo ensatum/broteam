@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * Open the newest packaged file.
+ * A running BroTeam is closed first.
  * AppImage is started. deb, mac zip and Windows zip are handed to the system.
  *
  * node scripts/open-artifact.mjs --what build|release --type appimage|deb|mac|win --arch x64
@@ -10,6 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compareVersions, versionIn } from './prune-artifacts.mjs';
+import { stopRunning } from './stop-running.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const types = ['appimage', 'deb', 'mac', 'win'];
@@ -62,7 +64,7 @@ function launch(file, type) {
   console.log(file);
 }
 
-function main() {
+async function main() {
   const what = arg('what') || 'build';
   const type = (arg('type') || 'appimage').toLowerCase();
   const arch = arg('arch') || process.arch;
@@ -73,15 +75,14 @@ function main() {
   const dir = path.join(root, what === 'build' ? 'builds' : 'release');
   const file = pick(dir, type, arch);
   if (!file) throw new Error(`Нет пакета ${type} в ${path.relative(root, dir)}/`);
+  await stopRunning();
   launch(file, type);
 }
 
 const isCli = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isCli) {
-  try {
-    main();
-  } catch (err) {
+  main().catch((err) => {
     console.error(err instanceof Error ? err.message : err);
     process.exit(1);
-  }
+  });
 }

@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help build release open
+.PHONY: help build release build-last live
 
 WHAT ?= build
 TYPE ?= appimage
@@ -11,11 +11,12 @@ help: ## эта справка
 		'make build                        билд: AppImage в builds/, коммит в develop' \
 		'make release                      релиз: пакеты в release/, тег' \
 		'' \
-		'make open                         запустить последний билд, AppImage' \
-		'make open WHAT=release            запустить последний релиз, AppImage' \
-		'make open TYPE=deb                открыть последний такой пакет' \
-		'make open WHAT=release TYPE=mac ARCH=arm64' \
-		'make open WHAT=release TYPE=win'
+		'make live                         текущий код; закрывает уже открытый BroTeam' \
+		'make build-last                   последний билд, AppImage; закрывает уже открытый' \
+		'make build-last WHAT=release      запустить последний релиз, AppImage' \
+		'make build-last TYPE=deb          открыть последний такой пакет' \
+		'make build-last WHAT=release TYPE=mac ARCH=arm64' \
+		'make build-last WHAT=release TYPE=win'
 
 build: ## билд: AppImage в builds/, коммит в develop
 	npm run build:dev
@@ -23,5 +24,8 @@ build: ## билд: AppImage в builds/, коммит в develop
 release: ## релиз: пакеты в release/, тег
 	npm run release
 
-open: ## открыть последний пакет (WHAT, TYPE, ARCH)
+live: ## текущий код; закрывает уже открытый BroTeam
+	node scripts/live.mjs
+
+build-last: ## открыть последний пакет (WHAT, TYPE, ARCH)
 	node scripts/open-artifact.mjs --what "$(WHAT)" --type "$(TYPE)" --arch "$(ARCH)"

@@ -82,8 +82,10 @@ Linux: AppImage и deb. macOS: zip для Intel и Apple Silicon, без под�
 
 ```bash
 npm install
-npm run dev
+make live
 ```
+
+`make live` запускает текущий код. Если BroTeam уже открыт, он сначала закрывается. `npm run dev` поднимает то же окно и предыдущую копию не закрывает.
 
 Проверка типов: `npm run typecheck`.
 
@@ -91,4 +93,4 @@ npm run dev
 
 `npm run release` собирает пакеты Linux, macOS и Windows в `release/` и ставит тег. `npm run build:dev` собирает Linux-билд. Локально, без тега: `npm run dist:linux`, `npm run dist:mac`, `npm run dist:win`. В пакет попадает бинарь только той системы, для которой он собран.
 
-`make` без цели печатает справку. `make build` и `make release` делают то же, что команды npm. `make open` запускает последний пакет. `WHAT=release` берёт релиз, `TYPE` выбирает `appimage`, `deb`, `mac` или `win`, `ARCH` — архитектуру macOS, если архивов два.
+`make` без цели печатает справку. `make build` и `make release` делают то же, что команды npm. `make live` запускает текущий код. `make build-last` запускает последний пакет. Если BroTeam уже открыт, обе команды сначала его закрывают. `WHAT=release` берёт релиз, `TYPE` выбирает `appimage`, `deb`, `mac` или `win`, `ARCH` — архитектуру macOS, если архивов два.

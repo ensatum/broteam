@@ -437,13 +437,16 @@ async function claimInstance(version: string): Promise<boolean> {
         buf += chunk.toString();
         if (!buf.includes('\n')) return;
         let incoming = '';
+        let takeover = false;
         try {
-          incoming = String((JSON.parse(buf) as { version?: string }).version || '');
+          const message = JSON.parse(buf) as { version?: string; takeover?: boolean };
+          incoming = String(message.version || '');
+          takeover = message.takeover === true;
         } catch {
           incoming = '';
         }
-        if (isNewerVersion(incoming, version)) {
-          sessionLog('info', 'instance yield', { version, incoming });
+        if (takeover || isNewerVersion(incoming, version)) {
+          sessionLog('info', 'instance yield', { version, incoming, takeover });
           socket.end('yield\n');
           allowQuit = true;
           setTimeout(() => app.quit(), 80);
