@@ -61,9 +61,41 @@ function placeInstantTip(anchor: Anchor, prefer: TipPlace, width: number, height
   };
 }
 
+const tipStack: number[] = [];
+const tipListeners = new Set<() => void>();
+let tipSeq = 0;
+
+function emitTips() {
+  tipListeners.forEach((listener) => listener());
+}
+
+function useTipLayer(): { opacity: number; zIndex: number } {
+  const idRef = useRef(0);
+  const [rev, setRev] = useState(0);
+  useEffect(() => {
+    const id = ++tipSeq;
+    idRef.current = id;
+    const onChange = () => setRev((n) => n + 1);
+    tipListeners.add(onChange);
+    tipStack.push(id);
+    emitTips();
+    return () => {
+      tipListeners.delete(onChange);
+      const index = tipStack.indexOf(id);
+      if (index >= 0) tipStack.splice(index, 1);
+      emitTips();
+    };
+  }, []);
+  void rev;
+  const index = tipStack.indexOf(idRef.current);
+  const behind = index < 0 ? 0 : tipStack.length - 1 - index;
+  return { opacity: Math.max(0, 1 - 0.2 * behind), zIndex: 10050 + Math.max(0, index) };
+}
+
 function TipBubble(props: { text: string; anchor: Anchor; place: TipPlace }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const layer = useTipLayer();
   useLayoutEffect(() => {
     const node = ref.current;
     if (!node) return;
@@ -73,8 +105,14 @@ function TipBubble(props: { text: string; anchor: Anchor; place: TipPlace }) {
   return createPortal(
     <span
       ref={ref}
-      className="pointer-events-none fixed z-[10050] max-h-[calc(100vh-16px)] max-w-[calc(100vw-16px)] overflow-hidden whitespace-pre-line break-words rounded-md bg-slate-800 px-2 py-1 text-[11px] font-medium leading-snug text-white shadow-lg"
-      style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? 'visible' : 'hidden' }}
+      className="pointer-events-none fixed max-h-[calc(100vh-16px)] max-w-[calc(100vw-16px)] overflow-hidden whitespace-pre-line break-words rounded-md bg-slate-800 px-2 py-1 text-[11px] font-medium leading-snug text-white shadow-lg"
+      style={{
+        left: pos?.left ?? 0,
+        top: pos?.top ?? 0,
+        visibility: pos ? 'visible' : 'hidden',
+        opacity: layer.opacity,
+        zIndex: layer.zIndex,
+      }}
     >
       {props.text}
     </span>,
