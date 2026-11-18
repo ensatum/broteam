@@ -1,6 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { nearestStoryPoint, storyPointColor, STORY_POINT_MARKS, type StoryPointColors } from '@shared/storyPoints';
+import {
+  nearestStoryPoint,
+  storyPointBrief,
+  storyPointColor,
+  storyPointDetail,
+  STORY_POINT_MARKS,
+  type StoryPointColors,
+} from '@shared/storyPoints';
 import { hexTint } from '@shared/types';
 import { BatteryChargingIcon, BatteryIcon, CheckIcon, heatStyle } from './Icons';
 import { InstantTip } from './InstantTip';
@@ -153,11 +160,19 @@ export function StoryPointsControl(props: {
         createPortal(
           <div
             ref={popRef}
-            className="fixed z-[10050] flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1 py-1 shadow-lg"
+            className="fixed z-[10050] rounded-md border border-slate-200 bg-white px-1 py-1 shadow-lg"
             style={{ left: pos?.left ?? -9999, top: pos?.top ?? 0, visibility: pos ? 'visible' : 'hidden' }}
             onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
           >
+            <InstantTip
+              text={storyPointDetail(draft)}
+              place="top"
+              className="mb-1 block max-w-56 cursor-default px-1 text-center text-[10px] leading-snug text-slate-600"
+            >
+              {storyPointBrief(draft)}
+            </InstantTip>
+            <div className="flex items-center gap-1">
             <button
               type="button"
               aria-label="Стереть Story Points"
@@ -177,6 +192,7 @@ export function StoryPointsControl(props: {
             >
               <CheckIcon className="h-3.5 w-3.5" />
             </button>
+            </div>
           </div>,
           document.body,
         )}
