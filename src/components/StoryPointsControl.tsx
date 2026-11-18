@@ -1,12 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { nearestStoryPoint, storyPointColor, STORY_POINT_MARKS } from '@shared/storyPoints';
+import { nearestStoryPoint, storyPointColor, STORY_POINT_MARKS, type StoryPointColors } from '@shared/storyPoints';
 import { hexTint } from '@shared/types';
 import { BatteryChargingIcon, BatteryIcon, CheckIcon, heatStyle } from './Icons';
 import { InstantTip } from './InstantTip';
+import { useStoryPointColors } from '../storyPointPalette';
 
 export function PointsSumBadge(props: { sum: number; tasks: number }) {
-  const color = storyPointColor(Math.round(props.sum / props.tasks));
+  const colors = useStoryPointColors();
+  const color = storyPointColor(Math.round(props.sum / props.tasks), colors);
   const wash = hexTint(color, 0.1);
   return (
     <InstantTip text="Story Points" className="pointer-events-auto inline-flex">
@@ -29,6 +31,7 @@ export function StoryPointsControl(props: {
   const [draft, setDraft] = useState(() => nearestStoryPoint(props.value));
   const [busy, setBusy] = useState(false);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const colors = useStoryPointColors();
   const anchorRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const saved = typeof props.value === 'number' ? props.value : null;
@@ -108,7 +111,7 @@ export function StoryPointsControl(props: {
   ) : (
     <span
       className="inline-flex h-4 min-w-4 items-center justify-center rounded bg-slate-50 px-1 text-[11px] font-bold leading-none"
-      style={{ color: storyPointColor(saved) }}
+      style={{ color: storyPointColor(saved, colors) }}
     >
       {saved}
     </span>
@@ -164,7 +167,7 @@ export function StoryPointsControl(props: {
             >
               <BatteryIcon className="h-3.5 w-3.5" />
             </button>
-            <StorySlider value={draft} disabled={busy} onChange={setDraft} />
+            <StorySlider value={draft} disabled={busy} onChange={setDraft} colors={colors} />
             <button
               type="button"
               aria-label="Записать Story Points"
@@ -181,10 +184,15 @@ export function StoryPointsControl(props: {
   );
 }
 
-function StorySlider(props: { value: number; disabled?: boolean; onChange: (point: number) => void }) {
+function StorySlider(props: {
+  value: number;
+  colors: StoryPointColors;
+  disabled?: boolean;
+  onChange: (point: number) => void;
+}) {
   const count = STORY_POINT_MARKS.length;
   const index = Math.max(0, STORY_POINT_MARKS.indexOf(props.value as (typeof STORY_POINT_MARKS)[number]));
-  const color = storyPointColor(props.value);
+  const color = storyPointColor(props.value, props.colors);
   const trackRef = useRef<HTMLDivElement>(null);
   const pick = (clientX: number) => {
     const rect = trackRef.current?.getBoundingClientRect();

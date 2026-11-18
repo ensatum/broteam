@@ -1,19 +1,45 @@
 export const STORY_POINT_MARKS = [0, 1, 2, 3, 5, 8, 13, 21] as const;
 
-const STORY_POINT_COLOR: Record<(typeof STORY_POINT_MARKS)[number], string> = {
-  0: '#b8c2cc',
-  1: '#2e3fff',
-  2: '#089eb4',
-  3: '#169624',
-  5: '#a4a91e',
-  8: '#ee7638',
-  13: '#dc2626',
-  21: '#991111',
+export type StoryPointMark = (typeof STORY_POINT_MARKS)[number];
+
+export type StoryPointColors = Record<StoryPointMark, string>;
+
+export const DEFAULT_STORY_POINT_COLORS: StoryPointColors = {
+  0: '#c5ced6',
+  1: '#8eb4e6',
+  2: '#5b94da',
+  3: '#3d82d2',
+  5: '#b06a09',
+  8: '#c44710',
+  13: '#c42222',
+  21: '#8b1218',
 };
 
-export function storyPointColor(value: number): string {
-  const mark = nearestStoryPoint(value) as (typeof STORY_POINT_MARKS)[number];
-  return STORY_POINT_COLOR[mark];
+export const STORY_POINT_MEANING: Record<StoryPointMark, string> = {
+  0: 'Уже сделано или усилий не требует.',
+  1: 'Мелочь: опечатка, подпись, тултип.',
+  2: 'Небольшая доработка: одно новое поле и его проверка.',
+  3: 'Обычная доработка: правило, расчёт или поведение уже существующей части.',
+  5: 'Отдельная разработка: новый список со своим просмотром, фильтрами и действиями.',
+  8: 'Средняя разработка: чужой сервис, с ошибками, повторами и наблюдением за ним.',
+  13: 'Сложная разработка: переписать целый модуль, с рефакторингом и миграциями.',
+  21: 'Масштабная разработка: новый вид данных, другая схема и перенос того, что уже лежит.',
+};
+
+export function storyPointColors(raw: unknown): StoryPointColors {
+  const next: StoryPointColors = { ...DEFAULT_STORY_POINT_COLORS };
+  if (!raw || typeof raw !== 'object') return next;
+  const record = raw as Record<string, unknown>;
+  for (const mark of STORY_POINT_MARKS) {
+    const value = record[String(mark)];
+    if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)) next[mark] = value.toLowerCase();
+  }
+  return next;
+}
+
+export function storyPointColor(value: number, colors: StoryPointColors = DEFAULT_STORY_POINT_COLORS): string {
+  const mark = nearestStoryPoint(value) as StoryPointMark;
+  return colors[mark];
 }
 
 export type StoryPointsSum = { sum: number; tasks: number };

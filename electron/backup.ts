@@ -9,6 +9,7 @@ import type {
   SavedBoard,
   SnapshotPayload,
 } from '../shared/types';
+import type { StoryPointColors } from '../shared/storyPoints';
 import {
   getBoardConfig,
   clearCachedMatrices,
@@ -26,6 +27,8 @@ import {
   replaceColumns,
   replaceDevelopers,
   saveBoardConfig,
+  readStoryPointColors,
+  writeStoryPointColors,
   setIssueNote,
   deleteDraft,
   upsertSnapshot,
@@ -50,6 +53,7 @@ export type AppBackup = {
     columns: BoardColumnConfig[];
     groups?: ColumnGroup[];
     developers: Developer[];
+    storyPointColors?: StoryPointColors;
   };
   history?: Array<{ date: string; createdAt: string; payload: SnapshotPayload }>;
   notes?: {
@@ -115,6 +119,7 @@ export function buildBackup(sections: BackupSections): AppBackup {
       columns: listColumns(),
       groups: listColumnGroups(),
       developers: listDevelopers(),
+      storyPointColors: readStoryPointColors(),
     };
   }
 
@@ -241,6 +246,7 @@ export function applyBackup(backup: AppBackup, sections: BackupSections): string
       );
       // The previous install kept one board's tasks. Those rows must not stay
       // on screen as if they belonged to every imported board.
+      if (settings.storyPointColors) writeStoryPointColors(settings.storyPointColors);
       clearCachedMatrices();
     })();
     applied.push('настройки');

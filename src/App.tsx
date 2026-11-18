@@ -34,6 +34,7 @@ import { invalidateIssueStories } from './issueStoryCache';
 import { revealContentFade, setApiCount, startContentFade } from './contentFade';
 import { sessionLog } from './sessionLog';
 import { describeMatrix } from '@shared/matrixShape';
+import { StoryPointPaletteProvider } from './storyPointPalette';
 
 const BoardPage = lazy(() => import('./pages/BoardPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
@@ -542,6 +543,7 @@ export default function App() {
   }
 
   return (
+    <StoryPointPaletteProvider>
     <div className="h-dvh overflow-hidden flex flex-col">
       <InstantTitleLayer />
       <header className="grid h-12 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-slate-200 bg-white px-3">
@@ -842,6 +844,7 @@ export default function App() {
         </span>
       </footer>
     </div>
+    </StoryPointPaletteProvider>
   );
 }
 

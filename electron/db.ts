@@ -16,6 +16,7 @@ import { normalizeColumnDuty, normalizeColumnOwnerRole } from '../shared/columnM
 import { parseSourceStatuses } from '../shared/boardColumns';
 import { coalesceColumns } from '../shared/columnGroups';
 import { liveVersion, settingsIncompatible } from '../shared/version';
+import { storyPointColors, type StoryPointColors } from '../shared/storyPoints';
 
 let db: Database.Database | null = null;
 
@@ -402,6 +403,22 @@ export function readRightTool(): RightTool | null {
 export function writeRightTool(tool: unknown): RightTool {
   const next: RightTool = tool === 'summary' || tool === 'drafts' || tool === 'off' ? tool : 'off';
   setSetting('rightTool', next);
+  return next;
+}
+
+export function readStoryPointColors(): StoryPointColors {
+  const raw = getSetting('storyPointColors');
+  if (!raw) return storyPointColors(null);
+  try {
+    return storyPointColors(JSON.parse(raw));
+  } catch {
+    return storyPointColors(null);
+  }
+}
+
+export function writeStoryPointColors(value: unknown): StoryPointColors {
+  const next = storyPointColors(value);
+  setSetting('storyPointColors', JSON.stringify(next));
   return next;
 }
 

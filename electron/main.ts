@@ -65,6 +65,8 @@ import {
   getSummarySource,
   readCloseToTray,
   writeCloseToTray,
+  readStoryPointColors,
+  writeStoryPointColors,
 } from './db';
 import { exportBackupToFile, importBackupFromFile, importBackupFromPath, inspectBackupFile, type BackupSections } from './backup';
 import { checkGithub, updateAppFromRepository } from './appUpdate';
@@ -971,6 +973,8 @@ function registerIpc(): void {
     shared: getSummarySource(boardLocalId) != null,
   }));
   ipcMain.handle('summary:open', (_e, request: SummaryBuildRequest) => sliceStoredSummary(request));
+  ipcMain.handle('settings:getStoryPointColors', () => readStoryPointColors());
+  ipcMain.handle('settings:saveStoryPointColors', (_e, value: unknown) => writeStoryPointColors(value));
   ipcMain.handle('app:getCloseToTray', () => readCloseToTray());
   ipcMain.handle('app:setCloseToTray', (_e, value: boolean) => writeCloseToTray(Boolean(value)));
   ipcMain.handle(

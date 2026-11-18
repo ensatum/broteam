@@ -28,8 +28,15 @@ import { sessionLog } from '../sessionLog';
 import ColorField from '../components/ColorField';
 import { ActivityIcon, ArrowDownIcon, ArrowRightIcon, BellOffIcon, DownloadIcon, InfoIcon, MoveIcon, PlusCircleIcon, PlusIcon, RefreshIcon, TrashIcon, UploadIcon } from '../components/Icons';
 import { DEFAULT_WORK_SCHEDULE, type WorkSchedule } from '../autoRefresh';
+import {
+  DEFAULT_STORY_POINT_COLORS,
+  STORY_POINT_MARKS,
+  STORY_POINT_MEANING,
+  type StoryPointMark,
+} from '@shared/storyPoints';
+import { useSaveStoryPointColors, useStoryPointColors } from '../storyPointPalette';
 
-type SettingsTab = 'app' | 'integrations' | 'people' | 'boards' | 'backup';
+type SettingsTab = 'app' | 'integrations' | 'people' | 'boards' | 'points' | 'backup';
 type BackupChoice = {
   settings: boolean;
   tasks: boolean;
@@ -42,6 +49,7 @@ const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'integrations', label: 'Интеграции' },
   { id: 'boards', label: 'Доски' },
   { id: 'people', label: 'Участники' },
+  { id: 'points', label: 'Story Points' },
   { id: 'backup', label: 'Импорт / экспорт' },
 ];
 
@@ -1492,6 +1500,8 @@ export default function SettingsPage(props: Props) {
       </>
       )}
 
+      {section === 'points' && <StoryPointSettings />}
+
       {section === 'backup' && (
       <>
         <p className="text-xs text-slate-500">
@@ -1880,6 +1890,42 @@ function BackupChecks(props: {
         );
       })}
     </div>
+  );
+}
+
+function StoryPointSettings() {
+  const colors = useStoryPointColors();
+  const save = useSaveStoryPointColors();
+  const paint = (mark: StoryPointMark, hex: string) => {
+    if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return;
+    void save({ ...colors, [mark]: hex.toLowerCase() });
+  };
+  return (
+    <SettingsSection title="Story Points">
+      <div className="flex items-start justify-between gap-3">
+        <p className="max-w-3xl text-sm text-slate-600">
+          Story Points — это не срок и не часы. Это сложность задачи относительно других задач команды: насколько она объёмная и сколько в ней неизвестного. Лесенка нарочно редкая: каждый следующий шаг заметно тяжелее предыдущего. Цвет цифры в таблице, в списке задач и в сводке берётся отсюда. Сумма в ячейке красится по среднему.
+        </p>
+        <button
+          type="button"
+          className="shrink-0 rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+          onClick={() => void save(DEFAULT_STORY_POINT_COLORS)}
+        >
+          Сбросить цвета
+        </button>
+      </div>
+      <div className="space-y-3">
+        {STORY_POINT_MARKS.map((mark) => (
+          <div key={mark} className="flex items-start gap-3">
+            <ColorField size="sm" value={colors[mark]} onChange={(hex) => paint(mark, hex)} />
+            <div className="min-w-0 pt-0.5">
+              <div className="text-sm font-semibold tabular-nums text-slate-900">{mark}</div>
+              <p className="text-sm text-slate-600">{STORY_POINT_MEANING[mark]}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </SettingsSection>
   );
 }
 
