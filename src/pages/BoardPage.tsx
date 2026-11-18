@@ -4580,7 +4580,7 @@ export default function BoardPage(props: Props) {
                         >
                           <InstantTip text="Не готово">{rowFigures.open}</InstantTip>
                         </button>
-                        <PointsEdge cell={rowOpenPoints} filled />
+                        <PointsEdge cell={rowOpenPoints} />
                         <span className="bro-cell-count bro-count-center bro-cell-spacer invisible block leading-none" aria-hidden>
                           {rowFigures.open}
                         </span>
@@ -4613,7 +4613,7 @@ export default function BoardPage(props: Props) {
                         >
                           <InstantTip text="Всего">{rowFigures.total}</InstantTip>
                         </button>
-                        <PointsEdge cell={rowPoints} filled />
+                        <PointsEdge cell={rowPoints} />
                         <span className="bro-cell-count bro-count-center bro-cell-spacer invisible block leading-none" aria-hidden>
                           {rowFigures.total}
                         </span>
@@ -4681,7 +4681,7 @@ export default function BoardPage(props: Props) {
                             >
                               {value}
                             </button>
-                            <PointsEdge cell={points} filled />
+                            <PointsEdge cell={points} />
                             <span className="bro-cell-count bro-count-center bro-cell-spacer invisible block leading-none" aria-hidden>
                               {value}
                             </span>
@@ -4725,7 +4725,7 @@ export default function BoardPage(props: Props) {
                         >
                           {value}
                         </button>
-                        <PointsEdge cell={points} filled />
+                        <PointsEdge cell={points} />
                         <span className="bro-cell-count bro-count-center bro-cell-spacer invisible block leading-none" aria-hidden>
                           {value}
                         </span>
@@ -4755,7 +4755,7 @@ export default function BoardPage(props: Props) {
                     >
                       <InstantTip text="Не готово">{grandFigures.open}</InstantTip>
                     </button>
-                    <PointsEdge cell={grandOpenPoints} filled />
+                    <PointsEdge cell={grandOpenPoints} />
                     <span className="bro-cell-count bro-count-center bro-cell-spacer invisible block leading-none" aria-hidden>
                       {grandFigures.open}
                     </span>
@@ -4775,7 +4775,7 @@ export default function BoardPage(props: Props) {
                     >
                       <InstantTip text="Всего">{grandFigures.total}</InstantTip>
                     </button>
-                    <PointsEdge cell={grandPoints} filled />
+                    <PointsEdge cell={grandPoints} />
                     <span className="bro-cell-count bro-count-center bro-count-grand bro-cell-spacer invisible block leading-none" aria-hidden>
                       {grandFigures.total}
                     </span>
@@ -4878,11 +4878,11 @@ function pointsPadStyle(cell: StoryPointsSum | null): CSSProperties | undefined 
   return { ['--bro-points-pad' as string]: `${String(cell.sum).length * 0.62 + 0.4}rem` };
 }
 
-function PointsEdge(props: { cell: StoryPointsSum | null; filled?: boolean }) {
+function PointsEdge(props: { cell: StoryPointsSum | null }) {
   if (props.cell == null) return null;
   return (
     <span className="bro-points-edge">
-      <PointsSumBadge sum={props.cell.sum} tasks={props.cell.tasks} filled={props.filled} />
+      <PointsSumBadge sum={props.cell.sum} tasks={props.cell.tasks} />
     </span>
   );
 }

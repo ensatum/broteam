@@ -4,13 +4,11 @@ import { nearestStoryPoint, storyPointColor, STORY_POINT_MARKS } from '@shared/s
 import { hexTint } from '@shared/types';
 import { BatteryChargingIcon, BatteryIcon, CheckIcon, heatStyle } from './Icons';
 
-export function PointsSumBadge(props: { sum: number; tasks: number; filled?: boolean }) {
+export function PointsSumBadge(props: { sum: number; tasks: number }) {
   const color = storyPointColor(Math.round(props.sum / props.tasks));
+  const wash = hexTint(color, 0.1);
   return (
-    <span
-      className="bro-points-sum"
-      style={{ color, backgroundColor: props.filled ? hexTint(color, 0.5) : undefined }}
-    >
+    <span className="bro-points-sum" style={{ color, backgroundColor: wash, borderColor: wash }}>
       {props.sum}
     </span>
   );
