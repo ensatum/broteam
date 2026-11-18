@@ -597,8 +597,8 @@ export default function SummaryDock(props: {
           onFetch={(period) => void build(period)}
           disabled={running || props.boardLocalId == null}
         />
-        <div className="ml-auto flex w-[38%] min-w-0 shrink-0 items-center gap-1">
-          <div className="flex h-6 min-w-0 max-w-[14rem] items-center">
+        <div className="ml-auto flex min-w-0 items-center gap-1">
+          <div className="flex h-6 min-w-0 max-w-[10rem] items-center">
             <EpicFilter options={epicChoices} selected={epicKey} onSelect={setEpicKey} />
           </div>
           <input
@@ -606,7 +606,7 @@ export default function SummaryDock(props: {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Поиск по ключу"
-            className="h-6 min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 text-xs font-normal text-slate-800"
+            className="h-6 w-36 shrink-0 rounded border border-slate-300 bg-white px-2 text-xs font-normal text-slate-800"
           />
         </div>
       </div>

@@ -456,12 +456,12 @@ export default function IssuePanel(props: Props) {
           </span>
           <span className="text-[11px] font-semibold text-slate-900">{filteredIssues.length}</span>
         </div>
-        <div className="flex h-6 min-w-0 max-w-[14rem] items-center">
+        <div className="flex h-6 min-w-0 max-w-[10rem] items-center">
           <EpicFilter options={epicChoices} selected={epicKey} onSelect={setEpicKey} />
         </div>
         <input
           type="search"
-          className="h-6 w-[30%] shrink-0 rounded border border-slate-300 bg-white px-2 text-xs"
+          className="h-6 w-36 shrink-0 rounded border border-slate-300 bg-white px-2 text-xs"
           placeholder="Поиск по ключу"
           value={search}
           onChange={(e) => setSearch(e.target.value)}

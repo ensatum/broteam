@@ -89,11 +89,14 @@ export function EpicFilter(props: {
   }
 
   if (current) {
+    const label = current.display || current.key;
+    const tip = current.display ? `${current.key}: ${current.display}` : current.key;
     return (
-      <span className="inline-flex h-6 max-w-full min-w-0 items-center gap-1 self-center rounded border border-sky-300 bg-sky-100 px-1.5 text-xs text-sky-900">
+      <span className="inline-flex h-6 min-w-0 max-w-[10rem] items-center gap-1 self-center rounded border border-sky-300 bg-sky-100 py-0 pl-1.5 pr-0.5 text-xs text-sky-900">
         <PackageIcon className="h-3.5 w-3.5 shrink-0" />
-        <span className="shrink-0">{current.key}:</span>
-        <span className="min-w-0 truncate">{current.display}</span>
+        <InstantTip text={tip} className="min-w-0 truncate">
+          {label}
+        </InstantTip>
         <button
           type="button"
           aria-label="Сбросить эпик"

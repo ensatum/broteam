@@ -3251,7 +3251,20 @@ export default function BoardPage(props: Props) {
     rememberTablePref('hidden');
   }
   const cellBox = `bro-cell relative h-full w-full overflow-hidden ${compact ? 'bro-cell-mini' : ''}`;
-  const totalBox = `${cellBox} bro-cell-total`;
+  const totalBox = `${cellBox} bro-cell-total bro-cell-center`;
+  const pointsOff = (count: number, place: 'side' | 'bell' | 'center' | 'grand') => {
+    const digits = Math.max(1, String(Math.trunc(Math.abs(count))).length);
+    if (compact && place !== 'center' && place !== 'grand') return colPx < 80 ? ' bro-points-off' : '';
+    const font =
+      place === 'grand'
+        ? Math.max(12, Math.min(20, digitPx * 0.72))
+        : place === 'center'
+          ? Math.max(11, Math.min(16, digitPx * 0.57))
+          : digitPx;
+    const text = font * digits * (place === 'center' || place === 'grand' ? 0.7 : 0.62);
+    const room = place === 'center' || place === 'grand' ? 64 : place === 'bell' ? 70 : 50;
+    return colPx < text + room ? ' bro-points-off' : '';
+  };
   const nameColBorder = 'border-r border-slate-300';
   const numColW = '';
   const activeFilterCount =
@@ -4545,7 +4558,7 @@ export default function BoardPage(props: Props) {
                               active ? cellSelectedClass : ''
                             } ${highlighted ? 'bro-cell-mark' : ''} ${columnDropMark(dropKey)} ${rowDropMark(row.developer.id)}`}
                           >
-                            <div className={cellBox}>
+                            <div className={`${cellBox}${pointsOff(count, changeCount > 0 ? 'bell' : 'side')}`}>
                             {cellPending ? (
                               <span className="absolute inset-0 z-0 flex items-end px-1.5 pb-1 text-sm text-slate-400">—</span>
                             ) : (
@@ -4618,7 +4631,7 @@ export default function BoardPage(props: Props) {
                           pendingSelected ? cellSelectedClass : ''
                         } ${rowDropMark(row.developer.id)}`}
                       >
-                        <div className={cellBox}>
+                        <div className={`${cellBox} bro-cell-center${pointsOff(rowFigures.open, 'center')}`}>
                         <button
                           className="bro-cell-count bro-count-center absolute inset-0 z-[1] cursor-pointer flex leading-none"
                           onClick={() => selectPending(row.developer.id, row.developer.displayName, rowIssues)}
@@ -4640,7 +4653,7 @@ export default function BoardPage(props: Props) {
                           totalSelected ? cellSelectedClass : ''
                         } ${rowDropMark(row.developer.id)}`}
                       >
-                        <div className={cellBox}>
+                        <div className={`${cellBox} bro-cell-center${pointsOff(rowFigures.total, 'center')}`}>
                         <button
                           className="bro-cell-count bro-count-center absolute inset-0 z-[1] flex cursor-pointer leading-none text-slate-400"
                           onClick={() =>
@@ -4709,7 +4722,7 @@ export default function BoardPage(props: Props) {
                             selected ? cellSelectedClass : 'bg-slate-100'
                           } ${columnDropMark(dropKey)}`}
                         >
-                          <div className={totalBox}>
+                          <div className={`${totalBox}${pointsOff(value, 'center')}`}>
                             <button
                               className="bro-cell-count bro-count-center absolute inset-0 z-[1] cursor-pointer flex leading-none"
                               style={{ color: slot.group.color }}
@@ -4753,7 +4766,7 @@ export default function BoardPage(props: Props) {
                           selected ? cellSelectedClass : 'bg-slate-100'
                         } ${columnDropMark(c.statusKey)}`}
                       >
-                        <div className={totalBox}>
+                        <div className={`${totalBox}${pointsOff(value, 'center')}`}>
                         <button
                           className="bro-cell-count bro-count-center absolute inset-0 z-[1] cursor-pointer flex leading-none"
                           style={{ color: c.color }}
@@ -4787,7 +4800,7 @@ export default function BoardPage(props: Props) {
                       isCellSelected(null, PENDING_COLUMN) ? cellSelectedClass : 'bg-slate-100'
                     }`}
                   >
-                    <div className={totalBox}>
+                    <div className={`${totalBox}${pointsOff(grandFigures.open, 'center')}`}>
                     <button
                       className="bro-cell-count bro-count-center absolute inset-0 z-[1] cursor-pointer flex leading-none"
                       onClick={() =>
@@ -4815,7 +4828,7 @@ export default function BoardPage(props: Props) {
                       isCellSelected(null, null) ? cellSelectedClass : 'bg-slate-100'
                     }`}
                   >
-                    <div className={totalBox}>
+                    <div className={`${totalBox}${pointsOff(grandFigures.total, 'grand')}`}>
                     <button
                       className="bro-cell-count bro-count-center bro-count-grand absolute inset-0 z-[1] flex cursor-pointer leading-none text-slate-400"
                       onClick={selectAllTasks}

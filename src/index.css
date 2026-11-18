@@ -536,16 +536,11 @@ body.bro-drag-col * {
   pointer-events: none;
 }
 
-@container cell (width < 61px) {
-  .bro-cell .bro-points-cell {
-    display: none;
-  }
-
-  .bro-cell-mini .bro-change-beside {
-    justify-content: flex-end;
-    padding-right: 2px;
-  }
+.bro-points-off .bro-points-edge,
+.bro-points-off .bro-points-cell {
+  display: none;
 }
+
 
 .bro-points-edge {
   position: absolute;
