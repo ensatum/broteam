@@ -5223,6 +5223,7 @@ function TasksDock(props: {
           : 'text-slate-500 hover:bg-slate-100'
     }`;
   const filterIconClass = (pinned: boolean) => `h-3.5 w-3.5${pinned ? ' text-white' : ''}`;
+  const filterTip = (on: boolean, name: string) => (on ? `Отменить фильтр: ${name}` : name);
   const allExpanded =
     props.visibleIssueKeys.length > 0 &&
     props.visibleIssueKeys.every((key) => props.expandedKeys.has(key));
@@ -5237,7 +5238,7 @@ function TasksDock(props: {
         {!showingTodos && (
           <>
             <FilterIconButton
-              title={props.noteFilter ? 'Показать все задачи' : 'Только задачи с примечаниями'}
+              title={filterTip(props.noteFilter, 'С примечанием')}
               active={props.noteFilter}
               pinned={props.notePinned}
               className={filterButtonClass(props.noteFilter, props.notePinned)}
@@ -5248,7 +5249,7 @@ function TasksDock(props: {
               {props.noteCount}
             </FilterIconButton>
             <FilterIconButton
-              title={props.bookmarkFilter ? 'Показать все задачи' : 'Только задачи с закладками'}
+              title={filterTip(props.bookmarkFilter, 'С закладкой')}
               active={props.bookmarkFilter}
               pinned={props.bookmarkPinned}
               className={filterButtonClass(props.bookmarkFilter, props.bookmarkPinned)}
@@ -5259,11 +5260,7 @@ function TasksDock(props: {
               {props.bookmarkCount}
             </FilterIconButton>
             <FilterIconButton
-              title={
-                props.missingPointsFilter
-                  ? 'Показать все задачи'
-                  : 'Только задачи без Story Points'
-              }
+              title={filterTip(props.missingPointsFilter, 'Без Story Points')}
               active={props.missingPointsFilter}
               pinned={props.pointsPinned}
               className={filterButtonClass(props.missingPointsFilter, props.pointsPinned)}
@@ -5274,11 +5271,7 @@ function TasksDock(props: {
               {props.missingPointsCount}
             </FilterIconButton>
             <FilterIconButton
-              title={
-                props.missingReviewerFilter
-                  ? 'Показать все задачи'
-                  : 'Только задачи без ревьюера'
-              }
+              title={filterTip(props.missingReviewerFilter, 'Без ревьюера')}
               active={props.missingReviewerFilter}
               pinned={props.reviewerPinned}
               className={filterButtonClass(props.missingReviewerFilter, props.reviewerPinned)}
@@ -5289,7 +5282,7 @@ function TasksDock(props: {
               {props.missingReviewerCount}
             </FilterIconButton>
             <FilterIconButton
-              title={props.missingQaFilter ? 'Показать все задачи' : 'Только задачи без QA'}
+              title={filterTip(props.missingQaFilter, 'Без QA')}
               active={props.missingQaFilter}
               pinned={props.qaPinned}
               className={filterButtonClass(props.missingQaFilter, props.qaPinned)}
@@ -5300,9 +5293,7 @@ function TasksDock(props: {
               {props.missingQaCount}
             </FilterIconButton>
             <FilterIconButton
-              title={
-                props.timeWarnFilter ? 'Показать все задачи' : 'Просроченные и давно без движения'
-              }
+              title={filterTip(props.timeWarnFilter, 'Просроченные и без движения')}
               active={props.timeWarnFilter}
               pinned={props.timePinned}
               className={filterButtonClass(props.timeWarnFilter, props.timePinned)}
@@ -5313,9 +5304,7 @@ function TasksDock(props: {
               {props.timeWarnCount}
             </FilterIconButton>
             <FilterIconButton
-              title={
-                props.otherSprintFilter ? 'Показать все задачи' : 'Задачи из другого спринта'
-              }
+              title={filterTip(props.otherSprintFilter, 'Чужой спринт')}
               active={props.otherSprintFilter}
               pinned={props.sprintPinned}
               className={filterButtonClass(props.otherSprintFilter, props.sprintPinned)}
@@ -5326,7 +5315,7 @@ function TasksDock(props: {
               {props.otherSprintCount}
             </FilterIconButton>
             <FilterIconButton
-              title={props.changesFilter ? 'Показать все задачи' : 'Только задачи с изменениями'}
+              title={filterTip(props.changesFilter, 'С изменениями')}
               active={props.changesFilter}
               pinned={props.changesPinned}
               className={filterButtonClass(props.changesFilter, props.changesPinned)}
