@@ -194,12 +194,17 @@ function titledAt(x: number, y: number): HTMLElement | null {
   return null;
 }
 
+/** Put `title` on a truncated line only while the text does not fit. */
+export function showTitleIfCut(el: HTMLElement, text: string) {
+  const cut = el.scrollWidth > el.clientWidth + 1;
+  if (cut && text.trim()) el.setAttribute('title', text);
+  else el.removeAttribute('title');
+}
+
 /** Title tip only when the single line is cut by ellipsis. */
 export function EllipsisTitle(props: { text: string; className?: string }) {
   function sync(el: HTMLSpanElement) {
-    const cut = el.scrollWidth > el.clientWidth + 1;
-    if (cut) el.setAttribute('title', props.text);
-    else el.removeAttribute('title');
+    showTitleIfCut(el, props.text);
   }
   return (
     <span className={props.className} onPointerEnter={(event) => sync(event.currentTarget)}>

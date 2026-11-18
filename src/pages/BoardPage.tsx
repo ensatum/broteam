@@ -22,7 +22,7 @@ import IssuePanel from '../components/IssuePanel';
 import { PointsSumBadge } from '../components/StoryPointsControl';
 import SummaryDock from '../components/SummaryDock';
 import { RunSpinner, stopBoardRefresh } from '../components/ApiRunControls';
-import { InstantTip } from '../components/InstantTip';
+import { InstantTip, showTitleIfCut } from '../components/InstantTip';
 import { ConsoleDock } from '../components/ConsoleDock';
 import { attachFadeHost, fadeThen, hideWorkBusy, reapplyFade, showWorkBusy } from '../contentFade';
 import { defaultSummaryPeriod, type SummaryPeriod } from '@shared/summary';
@@ -2720,7 +2720,6 @@ export default function BoardPage(props: Props) {
         <button
           ref={peopleButtonRef}
           type="button"
-          title="Исполнители"
           disabled={readOnly}
           className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium ${
             readOnly ? 'cursor-default text-slate-300' : 'text-slate-600 hover:bg-slate-200 hover:text-slate-900'
@@ -4005,12 +4004,12 @@ export default function BoardPage(props: Props) {
                           <th
                             key={`group-${grouped.id}`}
                             colSpan={members.length}
-                            title={grouped.name}
                             className="sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-left align-top"
                           >
                             <HeaderChip color={grouped.color || '#64748b'} className="bro-group-head flex items-start justify-between gap-1 px-1 py-0.5">
                               <span
                                 className={`min-w-0 flex-1 truncate text-[11px] font-semibold ${reorderMode && !readOnly ? 'cursor-grab' : 'cursor-pointer'}`}
+                                onPointerEnter={(event) => showTitleIfCut(event.currentTarget, grouped.name)}
                                 draggable={reorderMode && !readOnly}
                                 onClick={() => void toggleGroup(grouped)}
                                 onDragStart={(event) => {
@@ -4068,7 +4067,6 @@ export default function BoardPage(props: Props) {
                           <th
                             key={key}
                             rowSpan={2}
-                            title={slot.group.name}
                             onDragOver={(event) => allowColumnDrop(event, dropKey)}
                             onDrop={(event) => dropColumn(event, dropKey)}
                             className={`sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-left ${columnDropMark(dropKey)}`}
@@ -4099,6 +4097,7 @@ export default function BoardPage(props: Props) {
                               </span>
                               <span
                                 className={`min-w-0 truncate text-[11px] font-semibold ${reorderMode && !readOnly ? 'cursor-grab' : 'cursor-pointer'}`}
+                                onPointerEnter={(event) => showTitleIfCut(event.currentTarget, slot.group.name)}
                                 draggable={reorderMode && !readOnly}
                                 onClick={() => void toggleGroup(slot.group)}
                                 onDragStart={(event) => {
@@ -4127,7 +4126,6 @@ export default function BoardPage(props: Props) {
                         <th
                           key={c.statusKey}
                           rowSpan={2}
-                          title={c.alias}
                           onDragOver={(event) => allowColumnDrop(event, c.statusKey)}
                           onDrop={(event) => dropColumn(event, c.statusKey)}
                           className={`sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-left font-semibold text-[11px] leading-tight text-black ${columnDropMark(c.statusKey)}`}
@@ -4165,6 +4163,7 @@ export default function BoardPage(props: Props) {
                             </span>
                             <span
                               className={`min-w-0 truncate ${reorderMode && !readOnly ? 'cursor-grab' : ''}`}
+                              onPointerEnter={(event) => showTitleIfCut(event.currentTarget, c.alias)}
                               draggable={reorderMode && !readOnly}
                               onDragStart={(event) => {
                                 if (!reorderMode || readOnly) return;
@@ -4227,14 +4226,17 @@ export default function BoardPage(props: Props) {
                       return (
                         <th
                           key={key}
-                          title={slot.group.name}
                           onDragOver={(e) => allowColumnDrop(e, dropKey)}
                           onDrop={(e) => dropColumn(e, dropKey)}
                           onMouseEnter={() => setTableHover({ row: 'head', col: key })}
                           className={`relative sticky ${headSticky} z-10 h-px border-0 bg-slate-50 p-px text-left font-semibold text-[11px] leading-tight ${shade('head', key)} ${columnDropMark(dropKey)}`}
                         >
                           <HeaderChip color={slot.group.color} className="flex items-center px-1 py-0.5">
-                            <span className="block truncate" style={{ color: slot.group.color }}>
+                            <span
+                              className="block truncate"
+                              style={{ color: slot.group.color }}
+                              onPointerEnter={(event) => showTitleIfCut(event.currentTarget, slot.group.name)}
+                            >
                               {slot.group.name}
                             </span>
                           </HeaderChip>
@@ -4245,7 +4247,6 @@ export default function BoardPage(props: Props) {
                     return (
                     <th
                       key={c.statusKey}
-                      title={c.alias}
                       onDragOver={(e) => allowColumnDrop(e, c.statusKey)}
                       onDrop={(e) => dropColumn(e, c.statusKey)}
                       onMouseEnter={() => setTableHover({ row: 'head', col: c.statusKey })}
@@ -4288,6 +4289,7 @@ export default function BoardPage(props: Props) {
                         </span>
                         <span
                           className={`min-w-0 truncate ${reorderMode && !readOnly ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                          onPointerEnter={(event) => showTitleIfCut(event.currentTarget, c.alias)}
                           draggable={reorderMode && !readOnly}
                           onDragStart={(e) => {
                             if (!reorderMode || readOnly) return;
@@ -4391,7 +4393,15 @@ export default function BoardPage(props: Props) {
                               className={`block min-w-0 flex-1 truncate pr-1 text-sm font-medium leading-tight ${
                                 reorderMode && !readOnly && !rowFixed ? 'cursor-grab active:cursor-grabbing' : ''
                               }`}
-                              title={away ? 'В отпуске' : row.developer.displayName}
+                              onPointerEnter={(event) => {
+                                const name = row.developer.displayName;
+                                if (!away) {
+                                  showTitleIfCut(event.currentTarget, name);
+                                  return;
+                                }
+                                const cut = event.currentTarget.scrollWidth > event.currentTarget.clientWidth + 1;
+                                event.currentTarget.setAttribute('title', cut ? `${name} — в отпуске` : 'В отпуске');
+                              }}
                               draggable={reorderMode && !readOnly && !rowFixed}
                               onDragStart={(e) => {
                                 if (!reorderMode || readOnly || rowFixed) return;
