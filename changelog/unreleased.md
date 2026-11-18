@@ -8,3 +8,4 @@ Included changes since last build:
 - feat(board): show a story point sum in each cell
 - feat(board): change a task status from its marker
 - fix(settings): open the color picker to the lower right
+- fix(board): color the story point sum by the cell average

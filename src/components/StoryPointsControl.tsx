@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { nearestStoryPoint, storyPointColor, storyPointSumColor, STORY_POINT_MARKS } from '@shared/storyPoints';
+import { nearestStoryPoint, storyPointColor, STORY_POINT_MARKS } from '@shared/storyPoints';
 import { hexTint } from '@shared/types';
 import { BatteryChargingIcon, BatteryIcon, CheckIcon, heatStyle } from './Icons';
 
-export function PointsSumBadge(props: { sum: number; filled?: boolean }) {
-  const color = storyPointSumColor(props.sum);
+export function PointsSumBadge(props: { sum: number; tasks: number; filled?: boolean }) {
+  const color = storyPointColor(Math.round(props.sum / props.tasks));
   return (
     <span
       className="bro-points-sum"
