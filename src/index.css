@@ -241,6 +241,9 @@ body.bro-drag-col * {
 
 .bro-group-head {
   container-type: inline-size;
+  container-name: group-head;
+  width: 0;
+  min-width: 100%;
 }
 
 .bro-group-fold {
@@ -251,7 +254,7 @@ body.bro-drag-col * {
   background-color: transparent;
 }
 
-@container (max-width: 3.75rem) {
+@container group-head (max-width: 2.75rem) {
   .bro-group-bell {
     display: none;
   }
