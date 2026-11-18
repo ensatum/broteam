@@ -144,6 +144,20 @@ function titledAt(x: number, y: number): HTMLElement | null {
   return null;
 }
 
+/** Title tip only when the single line is cut by ellipsis. */
+export function EllipsisTitle(props: { text: string; className?: string }) {
+  function sync(el: HTMLSpanElement) {
+    const cut = el.scrollWidth > el.clientWidth + 1;
+    if (cut) el.setAttribute('title', props.text);
+    else el.removeAttribute('title');
+  }
+  return (
+    <span className={props.className} onPointerEnter={(event) => sync(event.currentTarget)}>
+      {props.text}
+    </span>
+  );
+}
+
 /** Browser `title` tips are delayed and can leave the window. This shows the same text at once, inside the window. */
 export function InstantTitleLayer() {
   const [tip, setTip] = useState<{ text: string; anchor: Anchor } | null>(null);

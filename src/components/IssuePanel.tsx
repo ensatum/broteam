@@ -31,7 +31,7 @@ import IssuePeopleLines from './IssuePeopleLines';
 import { RolePick } from './RolePick';
 import { StoryPointsControl } from './StoryPointsControl';
 import { LoadBar } from './LoadBar';
-import { InstantTip } from './InstantTip';
+import { EllipsisTitle, InstantTip } from './InstantTip';
 import { MarkdownSurface, type MarkdownHandle } from './MarkdownSurface';
 import { QuickComment } from './QuickComment';
 import { sortIssues, type ListSort } from './ListSort';
@@ -638,9 +638,7 @@ export default function IssuePanel(props: Props) {
                 </a>
                 <span className="text-black">:</span>
               </span>
-              <span className="min-w-0 truncate text-black" title={issue.summary}>
-                {issue.summary}
-              </span>
+              <EllipsisTitle className="min-w-0 truncate text-black" text={issue.summary} />
               <CopyIssueButton issueKey={issue.key} url={issue.url} summary={issue.summary} />
               <span className="min-w-0 flex-1" />
               <div className="flex shrink-0 items-center gap-1">

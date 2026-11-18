@@ -37,7 +37,7 @@ import {
 import { CopyIssueButton } from './IssuePanel';
 import { LoadBar } from './LoadBar';
 import { RunSpinner, stopMatchingRuns } from './ApiRunControls';
-import { InstantTip } from './InstantTip';
+import { EllipsisTitle, InstantTip } from './InstantTip';
 import { RolePick } from './RolePick';
 import { StoryPointsControl } from './StoryPointsControl';
 import { MarkdownSurface, type MarkdownHandle } from './MarkdownSurface';
@@ -1334,9 +1334,7 @@ function SummaryCard(props: {
           </a>
           <span className="text-black">:</span>
         </span>
-        <span className="min-w-0 truncate text-black" title={row.summary}>
-          {row.summary}
-        </span>
+        <EllipsisTitle className="min-w-0 truncate text-black" text={row.summary} />
         <CopyIssueButton issueKey={row.key} url={row.url} summary={row.summary} />
         <span className="min-w-0 flex-1" />
         <div className="flex shrink-0 items-center gap-1">
