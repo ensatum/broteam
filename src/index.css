@@ -583,10 +583,37 @@ a[href],
   cursor: pointer;
 }
 
-[data-board-badge].is-summary-hover {
-  background-color: #fefeec !important;
+[data-board-badge].is-summary-dim {
+  opacity: 0.28;
+}
+
+[data-board-badge].is-summary-focus:not(.bg-black) {
   color: #0f172a !important;
-  box-shadow: inset 0 0 0 2px #f59e0b;
+  border-top-color: #0f172a !important;
+  border-right-color: #0f172a !important;
+  border-bottom-color: #0f172a !important;
+}
+
+.bro-cell-mark {
+  z-index: 3;
+  background-color: #fefeec;
+}
+
+.bro-cell-mark::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  z-index: 4;
+  pointer-events: none;
+  background:
+    linear-gradient(#0284c7, #0284c7) left top / 6px 3px no-repeat,
+    linear-gradient(#0284c7, #0284c7) left top / 3px 6px no-repeat,
+    linear-gradient(#0284c7, #0284c7) right top / 6px 3px no-repeat,
+    linear-gradient(#0284c7, #0284c7) right top / 3px 6px no-repeat,
+    linear-gradient(#0284c7, #0284c7) left bottom / 6px 3px no-repeat,
+    linear-gradient(#0284c7, #0284c7) left bottom / 3px 6px no-repeat,
+    linear-gradient(#0284c7, #0284c7) right bottom / 6px 3px no-repeat,
+    linear-gradient(#0284c7, #0284c7) right bottom / 3px 6px no-repeat;
 }
 
 @keyframes bro-load {

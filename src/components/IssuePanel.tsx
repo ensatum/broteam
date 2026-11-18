@@ -428,7 +428,7 @@ export default function IssuePanel(props: Props) {
 
   return (
     <aside style={props.embedded ? undefined : { width }} className={frameClass}>
-      <div className="relative flex shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-100 px-2 py-1.5">
+      <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-100 px-2 py-1.5">
         <button
           type="button"
           title="Закрыть"
@@ -456,10 +456,8 @@ export default function IssuePanel(props: Props) {
           </span>
           <span className="text-[11px] font-semibold text-slate-900">{filteredIssues.length}</span>
         </div>
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="pointer-events-auto max-w-[42%]">
-            <EpicFilter options={epicChoices} selected={epicKey} onSelect={setEpicKey} />
-          </div>
+        <div className="min-w-0 max-w-[14rem]">
+          <EpicFilter options={epicChoices} selected={epicKey} onSelect={setEpicKey} />
         </div>
         <input
           type="search"

@@ -26,7 +26,7 @@ import { excludedTypeKeys, typeIsExcluded } from '@shared/issueTypeFilter';
 import { DEFAULT_GITHUB, DEVELOPER_TONE_PRESETS, PARTICIPANT_ROLES, hexTint, normalizeDeveloperTone } from '@shared/types';
 import { sessionLog } from '../sessionLog';
 import ColorField from '../components/ColorField';
-import { ActivityIcon, ArrowDownIcon, ArrowRightIcon, BellOffIcon, DownloadIcon, InfoIcon, MoveIcon, PlusCircleIcon, PlusIcon, RefreshIcon, TrashIcon, UploadIcon } from '../components/Icons';
+import { ActivityIcon, ArrowDownIcon, ArrowRightIcon, BellOffIcon, ChevronDownIcon, ChevronRightIcon, DownloadIcon, InfoIcon, MoveIcon, PlusCircleIcon, PlusIcon, RefreshIcon, TrashIcon, UploadIcon } from '../components/Icons';
 import { DEFAULT_WORK_SCHEDULE, type WorkSchedule } from '../autoRefresh';
 import {
   DEFAULT_STORY_POINT_COLORS,
@@ -1908,6 +1908,12 @@ function StoryPointSettings() {
     setBaseline(saved);
   }, [saved]);
   const dirty = !samePalette(draft, baseline);
+  const [openMarks, setOpenMarks] = useState<Set<StoryPointMark>>(() => new Set());
+  const [edit, setEdit] = useState<{ mark: StoryPointMark; kind: 'brief' | 'detail' } | null>(null);
+  const markChanged = (mark: StoryPointMark) =>
+    draft.colors[mark] !== baseline.colors[mark] ||
+    draft.copy.brief[mark] !== baseline.copy.brief[mark] ||
+    draft.copy.detail[mark] !== baseline.copy.detail[mark];
   const paint = (mark: StoryPointMark, hex: string) => {
     if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return;
     setDraft((prev) => ({ ...prev, colors: { ...prev.colors, [mark]: hex.toLowerCase() } }));
@@ -1941,29 +1947,83 @@ function StoryPointSettings() {
           </button>
         </div>
       </div>
-      <div className="space-y-4">
-        {STORY_POINT_MARKS.map((mark) => (
-          <div key={mark} className="flex items-start gap-3">
-            <ColorField size="sm" value={draft.colors[mark]} onChange={(hex) => paint(mark, hex)} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-3">
-                <div className="w-6 shrink-0 text-sm font-semibold tabular-nums text-slate-900">{mark}</div>
-                <input
-                  type="text"
-                  value={draft.copy.brief[mark]}
-                  onChange={(event) => writeCopy('brief', mark, event.target.value)}
-                  className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800"
-                />
+      <div className="space-y-2">
+        {STORY_POINT_MARKS.map((mark) => {
+          const open = openMarks.has(mark);
+          const changed = markChanged(mark);
+          const brief = draft.copy.brief[mark];
+          const detail = draft.copy.detail[mark];
+          return (
+            <div
+              key={mark}
+              className={`rounded border bg-white text-sm shadow-[0_1px_3px_rgba(15,23,42,0.18)] ${
+                changed ? 'border-amber-400 bg-amber-50' : 'border-slate-300'
+              }`}
+            >
+              <div className="flex items-center gap-2 px-2 py-1.5">
+                <ColorField size="sm" value={draft.colors[mark]} onChange={(hex) => paint(mark, hex)} />
+                <span className="inline-flex h-6 w-7 shrink-0 items-center justify-center rounded bg-slate-100 text-sm font-semibold tabular-nums text-slate-900">
+                  {mark}
+                </span>
+                {edit?.mark === mark && edit.kind === 'brief' ? (
+                  <input
+                    autoFocus
+                    type="text"
+                    value={brief}
+                    onChange={(event) => writeCopy('brief', mark, event.target.value)}
+                    onBlur={() => setEdit(null)}
+                    className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-sm font-semibold text-slate-900"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-slate-900"
+                    onClick={() => setEdit({ mark, kind: 'brief' })}
+                  >
+                    {brief || 'Кратко'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  aria-label={open ? 'Свернуть' : 'Развернуть'}
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100"
+                  onClick={() =>
+                    setOpenMarks((current) => {
+                      const next = new Set(current);
+                      if (next.has(mark)) next.delete(mark);
+                      else next.add(mark);
+                      return next;
+                    })
+                  }
+                >
+                  {open ? <ChevronDownIcon className="h-3.5 w-3.5" /> : <ChevronRightIcon className="h-3.5 w-3.5" />}
+                </button>
               </div>
-              <textarea
-                value={draft.copy.detail[mark]}
-                rows={3}
-                onChange={(event) => writeCopy('detail', mark, event.target.value)}
-                className="mt-1 w-full resize-y rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800"
-              />
+              {open && (
+                <div className="border-t border-slate-200 px-2 py-1.5">
+                  {edit?.mark === mark && edit.kind === 'detail' ? (
+                    <textarea
+                      autoFocus
+                      value={detail}
+                      rows={3}
+                      onChange={(event) => writeCopy('detail', mark, event.target.value)}
+                      onBlur={() => setEdit(null)}
+                      className="w-full resize-y rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="w-full text-left text-sm text-slate-600"
+                      onClick={() => setEdit({ mark, kind: 'detail' })}
+                    >
+                      {detail || 'Подробнее'}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <button
         type="button"

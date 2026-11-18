@@ -679,7 +679,6 @@ export default function BoardPage(props: Props) {
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [consoleHeight, setConsoleHeight] = useState(220);
   const [filterGroupOpen, setFilterGroupOpen] = useState(initialLeft.groups);
-  const [highlightBoardId, setHighlightBoardId] = useState<number | null>(null);
   const noteFilter = appliedIcon === 'note' || appliedPinnedIcons.has('note');
   const bookmarkFilter = appliedIcon === 'bookmark' || appliedPinnedIcons.has('bookmark');
   const missingPointsFilter = appliedIcon === 'points' || appliedPinnedIcons.has('points');
@@ -818,20 +817,23 @@ export default function BoardPage(props: Props) {
     () => new Set(initialLeft.excludedAssignees),
   );
   const [highlightIssueKey, setHighlightIssueKey] = useState<string | null>(null);
+  const [summaryTabs, setSummaryTabs] = useState<number[] | null>(null);
   useEffect(() => {
-    document.querySelectorAll<HTMLElement>('[data-board-badge].is-summary-hover').forEach((el) => {
-      el.classList.remove('is-summary-hover');
+    const badges = document.querySelectorAll<HTMLElement>('[data-board-badge]');
+    badges.forEach((el) => {
+      el.classList.remove('is-summary-focus', 'is-summary-dim');
     });
-    if (highlightBoardId == null) return;
-    document
-      .querySelector<HTMLElement>(`[data-board-badge="${highlightBoardId}"]`)
-      ?.classList.add('is-summary-hover');
+    if (!summaryTabs?.length) return;
+    const focus = new Set(summaryTabs.map(String));
+    badges.forEach((el) => {
+      el.classList.add(focus.has(el.dataset.boardBadge || '') ? 'is-summary-focus' : 'is-summary-dim');
+    });
     return () => {
-      document.querySelectorAll<HTMLElement>('[data-board-badge].is-summary-hover').forEach((el) => {
-        el.classList.remove('is-summary-hover');
+      badges.forEach((el) => {
+        el.classList.remove('is-summary-focus', 'is-summary-dim');
       });
     };
-  }, [highlightBoardId]);
+  }, [summaryTabs]);
   const [tableHover, setTableHover] = useState<{
     row: number | 'total' | 'head';
     col: string;
@@ -2973,19 +2975,22 @@ export default function BoardPage(props: Props) {
         if (props.readOnly) return;
         props.onMatrixChange(next);
       }}
-      onIssueHover={(issueKey, boardLocalId) => {
+      onIssueHover={(issueKey, boardLocalId, trackerBoardIds) => {
         if (!issueKey) {
           setHighlightIssueKey(null);
-          setHighlightBoardId(null);
+          setSummaryTabs(null);
           return;
         }
-        if (boardLocalId != null && boardLocalId !== props.activeBoardId) {
-          setHighlightIssueKey(null);
-          setHighlightBoardId(boardLocalId);
-          return;
+        const known = trackerBoardIds.length ? trackerBoardIds : boardIdsInMatrix(sourceMatrix, issueKey);
+        const members = new Set<number>();
+        if (boardLocalId != null) members.add(boardLocalId);
+        for (const board of props.boards) {
+          if (board.enabled && known.includes(board.trackerBoardId)) members.add(board.id);
         }
-        setHighlightIssueKey(issueKey);
-        setHighlightBoardId(null);
+        setHighlightIssueKey(matrixHasIssue(matrix, issueKey) ? issueKey : null);
+        if (crossOn && members.size > 1) setSummaryTabs([...members]);
+        else if (boardLocalId != null && boardLocalId !== props.activeBoardId) setSummaryTabs([boardLocalId]);
+        else setSummaryTabs(null);
       }}
     />
   ) : null;
@@ -4507,8 +4512,7 @@ export default function BoardPage(props: Props) {
                             onMouseEnter={() => setTableHover({ row: row.developer.id, col: c.statusKey })}
                             className={`relative border-b border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${shade(row.developer.id, c.statusKey)} ${
                               active ? cellSelectedClass : ''
-                            } ${columnDropMark(dropKey)} ${rowDropMark(row.developer.id)}`}
-                            style={highlighted ? { backgroundColor: '#fefeec' } : undefined}
+                            } ${highlighted ? 'bro-cell-mark' : ''} ${columnDropMark(dropKey)} ${rowDropMark(row.developer.id)}`}
                           >
                             <div className={cellBox}>
                             {cellPending ? (
@@ -6211,6 +6215,27 @@ function pickMatchesIssue(pick: BoardPersonPick, issue: TrackerIssue): boolean {
   if (pick.login && login === pick.login.toLowerCase()) return true;
   if (pick.uid && uid === pick.uid) return true;
   return Boolean(name) && name === pick.label;
+}
+
+function matrixHasIssue(board: BoardMatrix | null, key: string): boolean {
+  if (!board) return false;
+  for (const row of board.developers) {
+    for (const list of Object.values(row.issuesByColumn)) {
+      if (list.some((issue) => issue.key === key)) return true;
+    }
+  }
+  return false;
+}
+
+function boardIdsInMatrix(board: BoardMatrix | null, key: string): number[] {
+  if (!board) return [];
+  for (const row of board.developers) {
+    for (const list of Object.values(row.issuesByColumn)) {
+      const issue = list.find((item) => item.key === key);
+      if (issue) return issue.boardIds || [];
+    }
+  }
+  return [];
 }
 
 function boardStatusTotals(

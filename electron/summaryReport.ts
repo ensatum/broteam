@@ -224,6 +224,7 @@ export async function refreshSummaryIssue(
     storyPoints: issue.storyPoints ?? null,
     epicKey: issue.epicKey ?? null,
     epicDisplay: issue.epicDisplay ?? null,
+    trackerBoardIds: issue.boardIds || [],
   });
   const index = payload.issues.findIndex((item) => item.key === issueKey);
   if (index >= 0) payload.issues[index] = snap;
@@ -644,6 +645,8 @@ type SummaryIssue = {
   storyPoints?: number | null;
   epicKey?: string | null;
   epicDisplay?: string | null;
+  trackerBoardIds?: number[];
+  boardIds?: number[];
 };
 
 type SummaryCachePayload = {
@@ -654,6 +657,14 @@ type SummaryCachePayload = {
   statusTypes: Array<[string, string]>;
   partial?: boolean;
 };
+
+function trackerBoardIdsOf(issue: { trackerBoardIds?: number[]; boardIds?: number[] }): {
+  trackerBoardIds?: number[];
+} {
+  const raw = issue.trackerBoardIds?.length ? issue.trackerBoardIds : issue.boardIds;
+  const ids = (raw || []).map((id) => Number(id)).filter((id) => Number.isFinite(id));
+  return ids.length ? { trackerBoardIds: ids } : {};
+}
 
 function snapshotIssue(issue: SummaryIssue): SummaryIssue {
   return {
@@ -674,6 +685,7 @@ function snapshotIssue(issue: SummaryIssue): SummaryIssue {
     ...('epicKey' in issue
       ? { epicKey: issue.epicKey ?? null, epicDisplay: issue.epicDisplay ?? null }
       : {}),
+    ...trackerBoardIdsOf(issue),
   };
 }
 
@@ -1172,6 +1184,7 @@ function interpretIssue(
     ...('epicKey' in issue
       ? { epicKey: issue.epicKey ?? null, epicDisplay: issue.epicDisplay ?? null }
       : {}),
+    ...trackerBoardIdsOf(issue),
   };
 }
 

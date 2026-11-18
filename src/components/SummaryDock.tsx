@@ -96,7 +96,7 @@ export default function SummaryDock(props: {
   onCast: () => void;
   onOpenBoard: (boardLocalId: number) => void;
   onPeriod: (period: SummaryPeriod) => void;
-  onIssueHover: (issueKey: string | null, boardLocalId: number | null) => void;
+  onIssueHover: (issueKey: string | null, boardLocalId: number | null, trackerBoardIds: number[]) => void;
   onMatrix?: (matrix: BoardMatrix) => void;
   onCached?: () => void;
 }) {
@@ -467,7 +467,7 @@ export default function SummaryDock(props: {
           />
         </div>
       </div>
-      <div className="relative flex h-8 shrink-0 items-center gap-1.5 border-b border-slate-200 bg-slate-50 px-2">
+      <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-slate-200 bg-slate-50 px-2">
         <button
           type="button"
           title={
@@ -595,18 +595,18 @@ export default function SummaryDock(props: {
           onFetch={(period) => void build(period)}
           disabled={running || props.boardLocalId == null}
         />
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="pointer-events-auto max-w-[34%]">
+        <div className="ml-auto flex w-[38%] min-w-0 shrink-0 items-center gap-1">
+          <div className="min-w-0 max-w-[14rem]">
             <EpicFilter options={epicChoices} selected={epicKey} onSelect={setEpicKey} />
           </div>
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Поиск по ключу"
+            className="h-6 min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 text-xs font-normal text-slate-800"
+          />
         </div>
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Поиск по ключу"
-          className="ml-auto h-6 w-[30%] shrink-0 rounded border border-slate-300 bg-white px-2 text-xs font-normal text-slate-800"
-        />
       </div>
       <div className="flex shrink-0 flex-col gap-1 border-b border-slate-200 px-2 py-1">
           <div className="flex items-center gap-1">
@@ -1222,7 +1222,7 @@ function SummaryCard(props: {
   note: string;
   columns: BoardColumnConfig[];
   onToggle: () => void;
-  onHover: (issueKey: string | null, boardLocalId: number | null) => void;
+  onHover: (issueKey: string | null, boardLocalId: number | null, trackerBoardIds: number[]) => void;
   refreshing: boolean;
   onRefresh: () => void;
   people: Developer[];
@@ -1307,8 +1307,8 @@ function SummaryCard(props: {
     <div
       className={`relative shrink-0 cursor-pointer overflow-hidden rounded border shadow-[0_1px_3px_rgba(15,23,42,0.18)] hover:bg-slate-50 ${FRAME_CLASS[props.frame]}`}
       onClick={props.onToggle}
-      onMouseEnter={() => props.onHover(row.key, row.boardLocalId ?? null)}
-      onMouseLeave={() => props.onHover(null, null)}
+      onMouseEnter={() => props.onHover(row.key, row.boardLocalId ?? null, row.trackerBoardIds || [])}
+      onMouseLeave={() => props.onHover(null, null, [])}
     >
       {props.authored && (
         <span title="Автор" className="absolute inset-y-0 left-0 w-1.5 bg-emerald-200" aria-hidden />

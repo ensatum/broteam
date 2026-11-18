@@ -128,6 +128,8 @@ export type SummaryRow = {
   epicKey?: string | null;
   /** Epic title. */
   epicDisplay?: string | null;
+  /** Tracker board ids this task sits on. Missing until the summary is collected again. */
+  trackerBoardIds?: number[];
 };
 
 export function isoDate(date: Date): string {

@@ -94,7 +94,7 @@ export function EpicFilter(props: {
       <InstantTip text="Эпики">
         <button
           type="button"
-          className="inline-flex h-6 w-6 items-center justify-center rounded text-slate-600 hover:bg-white"
+          className="inline-flex h-6 w-6 items-center justify-center rounded border border-slate-300 bg-slate-200 text-slate-700 hover:bg-slate-300"
           onClick={toggle}
         >
           <PackageIcon className="h-3.5 w-3.5" />
