@@ -23,7 +23,6 @@ function statusChoices(
       display: (transition.toDisplay || transition.display || key).trim(),
     });
   }
-  choices.sort((a, b) => a.display.localeCompare(b.display, 'ru'));
   return choices;
 }
 
@@ -169,7 +168,7 @@ export function StatusFlowButton(props: {
         createPortal(
           <div
             ref={popRef}
-            className="fixed z-[10080] max-h-48 min-w-28 overflow-y-auto rounded-md border border-slate-200 bg-white py-0.5 text-[11px] shadow-lg"
+            className="fixed z-[10080] max-h-[calc(100vh-16px)] min-w-28 overflow-y-auto rounded-md border border-slate-200 bg-white py-0.5 text-[11px] shadow-lg"
             style={{ left: pos?.left ?? -9999, top: pos?.top ?? 0, visibility: pos ? 'visible' : 'hidden' }}
             onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
