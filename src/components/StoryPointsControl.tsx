@@ -11,7 +11,7 @@ import {
 import { hexTint } from '@shared/types';
 import { BatteryChargingIcon, BatteryIcon, CheckIcon, heatStyle } from './Icons';
 import { InstantTip } from './InstantTip';
-import { useStoryPointColors } from '../storyPointPalette';
+import { useStoryPointColors, useStoryPointCopy } from '../storyPointPalette';
 
 export function PointsSumBadge(props: { sum: number; tasks: number }) {
   const colors = useStoryPointColors();
@@ -39,6 +39,7 @@ export function StoryPointsControl(props: {
   const [busy, setBusy] = useState(false);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const colors = useStoryPointColors();
+  const copy = useStoryPointCopy();
   const anchorRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const saved = typeof props.value === 'number' ? props.value : null;
@@ -166,11 +167,11 @@ export function StoryPointsControl(props: {
             onClick={(event) => event.stopPropagation()}
           >
             <InstantTip
-              text={storyPointDetail(draft)}
+              text={storyPointDetail(draft, copy)}
               place="top"
               className="mb-1 block max-w-56 cursor-default px-1 text-center text-[10px] leading-snug text-slate-600"
             >
-              {storyPointBrief(draft)}
+              {storyPointBrief(draft, copy)}
             </InstantTip>
             <div className="flex items-center gap-1">
             <button

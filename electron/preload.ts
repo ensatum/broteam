@@ -20,7 +20,7 @@ import type {
 } from '../shared/types';
 import type { AppUpdateProgress } from '../shared/appUpdate';
 import type { SummaryBuildRequest, SummaryReport, SummaryRow, SummarySlice } from '../shared/summary';
-import type { StoryPointColors } from '../shared/storyPoints';
+import type { StoryPointColors, StoryPointCopy } from '../shared/storyPoints';
 
 export type BackupSections = {
   settings: boolean;
@@ -46,8 +46,11 @@ export type ElectronApi = {
     prefs: Record<string, { hidden: number[]; shown: number[] }>,
   ) => Promise<Record<string, { hidden: number[]; shown: number[] }>>;
   getRightTool: () => Promise<'summary' | 'drafts' | 'off' | null>;
-  getStoryPointColors: () => Promise<StoryPointColors>;
-  saveStoryPointColors: (colors: StoryPointColors) => Promise<StoryPointColors>;
+  getStoryPointPalette: () => Promise<{ colors: StoryPointColors; copy: StoryPointCopy }>;
+  saveStoryPointPalette: (value: {
+    colors: StoryPointColors;
+    copy: StoryPointCopy;
+  }) => Promise<{ colors: StoryPointColors; copy: StoryPointCopy }>;
   getCloseToTray: () => Promise<boolean>;
   setCloseToTray: (value: boolean) => Promise<boolean>;
   saveRightTool: (tool: 'summary' | 'drafts' | 'off') => Promise<'summary' | 'drafts' | 'off'>;
@@ -278,8 +281,8 @@ const api: ElectronApi = {
   getBoardRowPrefs: () => ipcRenderer.invoke('boardRows:get'),
   saveBoardRowPrefs: (prefs) => ipcRenderer.invoke('boardRows:save', prefs),
   getRightTool: () => ipcRenderer.invoke('rightTool:get'),
-  getStoryPointColors: () => ipcRenderer.invoke('settings:getStoryPointColors'),
-  saveStoryPointColors: (colors) => ipcRenderer.invoke('settings:saveStoryPointColors', colors),
+  getStoryPointPalette: () => ipcRenderer.invoke('settings:getStoryPointPalette'),
+  saveStoryPointPalette: (value) => ipcRenderer.invoke('settings:saveStoryPointPalette', value),
   getCloseToTray: () => ipcRenderer.invoke('app:getCloseToTray'),
   setCloseToTray: (value) => ipcRenderer.invoke('app:setCloseToTray', value),
   saveRightTool: (tool) => ipcRenderer.invoke('rightTool:save', tool),

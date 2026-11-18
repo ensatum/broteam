@@ -31,10 +31,12 @@ import { DEFAULT_WORK_SCHEDULE, type WorkSchedule } from '../autoRefresh';
 import {
   DEFAULT_STORY_POINT_COLORS,
   STORY_POINT_MARKS,
-  STORY_POINT_MEANING,
+  storyPointColors,
+  defaultStoryPointCopy,
+  type StoryPointCopy,
   type StoryPointMark,
 } from '@shared/storyPoints';
-import { useSaveStoryPointColors, useStoryPointColors } from '../storyPointPalette';
+import { useSaveStoryPointPalette, useStoryPointPalette } from '../storyPointPalette';
 
 type SettingsTab = 'app' | 'integrations' | 'people' | 'boards' | 'points' | 'backup';
 type BackupChoice = {
@@ -1894,38 +1896,105 @@ function BackupChecks(props: {
 }
 
 function StoryPointSettings() {
-  const colors = useStoryPointColors();
-  const save = useSaveStoryPointColors();
+  const saved = useStoryPointPalette();
+  const save = useSaveStoryPointPalette();
+  const [draft, setDraft] = useState(saved);
+  const [baseline, setBaseline] = useState(saved);
+  const baselineRef = useRef(saved);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    setDraft((prev) => (samePalette(prev, baselineRef.current) ? saved : prev));
+    baselineRef.current = saved;
+    setBaseline(saved);
+  }, [saved]);
+  const dirty = !samePalette(draft, baseline);
   const paint = (mark: StoryPointMark, hex: string) => {
     if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return;
-    void save({ ...colors, [mark]: hex.toLowerCase() });
+    setDraft((prev) => ({ ...prev, colors: { ...prev.colors, [mark]: hex.toLowerCase() } }));
+  };
+  const writeCopy = (kind: 'brief' | 'detail', mark: StoryPointMark, text: string) => {
+    setDraft((prev) => ({
+      ...prev,
+      copy: { ...prev.copy, [kind]: { ...prev.copy[kind], [mark]: text } },
+    }));
   };
   return (
     <SettingsSection title="Story Points">
       <div className="flex items-start justify-between gap-3">
         <p className="max-w-3xl text-sm text-slate-600">
-          Story Points — это не срок и не часы. Это сложность задачи относительно других задач команды: насколько она объёмная и сколько в ней неизвестного. Лесенка нарочно редкая: каждый следующий шаг заметно тяжелее предыдущего. Цвет цифры в таблице, в списке задач и в сводке берётся отсюда. Сумма в ячейке красится по среднему.
+          Story Points — это не срок и не часы. Это сложность задачи относительно других задач команды: насколько она объёмная и сколько в ней неизвестного. Лесенка нарочно редкая: каждый следующий шаг заметно тяжелее предыдущего. Цвет цифры в таблице, в списке задач и в сводке берётся отсюда. Сумма в ячейке красится по среднему. Цвета и оба текста сначала правятся здесь и попадают в доску только по кнопке «Сохранить».
         </p>
-        <button
-          type="button"
-          className="shrink-0 rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-          onClick={() => void save(DEFAULT_STORY_POINT_COLORS)}
-        >
-          Сбросить цвета
-        </button>
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            className="rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+            onClick={() => setDraft((prev) => ({ ...prev, colors: storyPointColors(null) }))}
+          >
+            Восстановить цвета
+          </button>
+          <button
+            type="button"
+            className="rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+            onClick={() => setDraft((prev) => ({ ...prev, copy: defaultStoryPointCopy() }))}
+          >
+            Восстановить описания
+          </button>
+        </div>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-4">
         {STORY_POINT_MARKS.map((mark) => (
           <div key={mark} className="flex items-start gap-3">
-            <ColorField size="sm" value={colors[mark]} onChange={(hex) => paint(mark, hex)} />
-            <div className="min-w-0 pt-0.5">
-              <div className="text-sm font-semibold tabular-nums text-slate-900">{mark}</div>
-              <p className="text-sm text-slate-600">{STORY_POINT_MEANING[mark]}</p>
+            <ColorField size="sm" value={draft.colors[mark]} onChange={(hex) => paint(mark, hex)} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-3">
+                <div className="w-6 shrink-0 text-sm font-semibold tabular-nums text-slate-900">{mark}</div>
+                <input
+                  type="text"
+                  value={draft.copy.brief[mark]}
+                  onChange={(event) => writeCopy('brief', mark, event.target.value)}
+                  className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800"
+                />
+              </div>
+              <textarea
+                value={draft.copy.detail[mark]}
+                rows={3}
+                onChange={(event) => writeCopy('detail', mark, event.target.value)}
+                className="mt-1 w-full resize-y rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800"
+              />
             </div>
           </div>
         ))}
       </div>
+      <button
+        type="button"
+        disabled={!dirty || saving}
+        className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-50 disabled:cursor-default disabled:opacity-40"
+        onClick={() => {
+          setSaving(true);
+          void save(draft)
+            .then((stored) => {
+              setDraft(stored);
+              baselineRef.current = stored;
+              setBaseline(stored);
+            })
+            .finally(() => setSaving(false));
+        }}
+      >
+        Сохранить
+      </button>
     </SettingsSection>
+  );
+}
+
+function samePalette(
+  left: { colors: typeof DEFAULT_STORY_POINT_COLORS; copy: StoryPointCopy },
+  right: { colors: typeof DEFAULT_STORY_POINT_COLORS; copy: StoryPointCopy },
+): boolean {
+  return STORY_POINT_MARKS.every(
+    (mark) =>
+      left.colors[mark] === right.colors[mark] &&
+      left.copy.brief[mark] === right.copy.brief[mark] &&
+      left.copy.detail[mark] === right.copy.detail[mark],
   );
 }
 

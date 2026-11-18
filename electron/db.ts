@@ -16,7 +16,7 @@ import { normalizeColumnDuty, normalizeColumnOwnerRole } from '../shared/columnM
 import { parseSourceStatuses } from '../shared/boardColumns';
 import { coalesceColumns } from '../shared/columnGroups';
 import { liveVersion, settingsIncompatible } from '../shared/version';
-import { storyPointColors, type StoryPointColors } from '../shared/storyPoints';
+import { storyPointColors, storyPointCopy, type StoryPointColors, type StoryPointCopy } from '../shared/storyPoints';
 
 let db: Database.Database | null = null;
 
@@ -420,6 +420,40 @@ export function writeStoryPointColors(value: unknown): StoryPointColors {
   const next = storyPointColors(value);
   setSetting('storyPointColors', JSON.stringify(next));
   return next;
+}
+
+export function readStoryPointCopy(): StoryPointCopy {
+  const raw = getSetting('storyPointTexts');
+  if (!raw) return storyPointCopy(null);
+  try {
+    return storyPointCopy(JSON.parse(raw));
+  } catch {
+    return storyPointCopy(null);
+  }
+}
+
+export function writeStoryPointCopy(value: unknown): StoryPointCopy {
+  const next = storyPointCopy(value);
+  setSetting('storyPointTexts', JSON.stringify(next));
+  return next;
+}
+
+export function readStoryPointPalette(): { colors: StoryPointColors; copy: StoryPointCopy } {
+  return { colors: readStoryPointColors(), copy: readStoryPointCopy() };
+}
+
+export function writeStoryPointPalette(value: { colors?: unknown; copy?: unknown }): {
+  colors: StoryPointColors;
+  copy: StoryPointCopy;
+} {
+  const colors = storyPointColors(value?.colors);
+  const copy = storyPointCopy(value?.copy);
+  const tx = getDb().transaction(() => {
+    setSetting('storyPointColors', JSON.stringify(colors));
+    setSetting('storyPointTexts', JSON.stringify(copy));
+  });
+  tx();
+  return { colors, copy };
 }
 
 export function readCloseToTray(): boolean {

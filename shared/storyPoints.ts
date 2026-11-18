@@ -37,24 +37,45 @@ export const STORY_POINT_DETAIL: Record<StoryPointMark, string> = {
   21: 'Масштабная разработка: новый вид данных, другая схема и перенос того, что уже лежит. Объём и неизвестность вместе.',
 };
 
-export function storyPointBrief(value: number): string {
-  return STORY_POINT_BRIEF[nearestStoryPoint(value) as StoryPointMark];
+export function storyPointBrief(value: number, copy: StoryPointCopy = defaultStoryPointCopy()): string {
+  return copy.brief[nearestStoryPoint(value) as StoryPointMark];
 }
 
-export function storyPointDetail(value: number): string {
-  return STORY_POINT_DETAIL[nearestStoryPoint(value) as StoryPointMark];
+export function storyPointDetail(value: number, copy: StoryPointCopy = defaultStoryPointCopy()): string {
+  return copy.detail[nearestStoryPoint(value) as StoryPointMark];
 }
 
-export const STORY_POINT_MEANING: Record<StoryPointMark, string> = {
-  0: 'Уже сделано или усилий не требует.',
-  1: 'Мелочь: опечатка, подпись, тултип.',
-  2: 'Небольшая доработка: одно новое поле и его проверка.',
-  3: 'Обычная доработка: правило, расчёт или поведение уже существующей части.',
-  5: 'Отдельная разработка: новый список со своим просмотром, фильтрами и действиями.',
-  8: 'Средняя разработка: чужой сервис, с ошибками, повторами и наблюдением за ним.',
-  13: 'Сложная разработка: переписать целый модуль, с рефакторингом и миграциями.',
-  21: 'Масштабная разработка: новый вид данных, другая схема и перенос того, что уже лежит.',
+export type StoryPointCopy = {
+  brief: Record<StoryPointMark, string>;
+  detail: Record<StoryPointMark, string>;
 };
+
+export function defaultStoryPointCopy(): StoryPointCopy {
+  return {
+    brief: { ...STORY_POINT_BRIEF },
+    detail: { ...STORY_POINT_DETAIL },
+  };
+}
+
+export function storyPointCopy(raw: unknown): StoryPointCopy {
+  const next = defaultStoryPointCopy();
+  if (!raw || typeof raw !== 'object') return next;
+  const record = raw as { brief?: unknown; detail?: unknown };
+  takeCopy(next.brief, record.brief);
+  takeCopy(next.detail, record.detail);
+  return next;
+}
+
+function takeCopy(target: Record<StoryPointMark, string>, raw: unknown) {
+  if (!raw || typeof raw !== 'object') return;
+  const record = raw as Record<string, unknown>;
+  for (const mark of STORY_POINT_MARKS) {
+    const value = record[String(mark)];
+    if (typeof value !== 'string') continue;
+    const text = value.trim();
+    if (text) target[mark] = text;
+  }
+}
 
 export function storyPointColors(raw: unknown): StoryPointColors {
   const next: StoryPointColors = { ...DEFAULT_STORY_POINT_COLORS };
