@@ -83,8 +83,14 @@ export default function ColorField({ value, onChange, className = '', size = 'md
   function openPicker() {
     const rect = swatchRef.current?.getBoundingClientRect();
     if (rect) {
-      const left = Math.min(rect.left, window.innerWidth - 240);
-      const top = Math.min(rect.bottom + 4, window.innerHeight - 240);
+      const width = 224;
+      const height = 196;
+      let left = rect.right + 4;
+      let top = rect.bottom + 4;
+      if (left + width > window.innerWidth - 8) left = window.innerWidth - 8 - width;
+      if (left < 8) left = 8;
+      if (top + height > window.innerHeight - 8) top = window.innerHeight - 8 - height;
+      if (top < 8) top = 8;
       setPos({ top, left });
     }
     setOpen((valueOpen) => !valueOpen);

@@ -7,3 +7,4 @@ Included changes since last build:
 - fix(settings): make board layout drag follow the pointer
 - feat(board): show a story point sum in each cell
 - feat(board): change a task status from its marker
+- fix(settings): open the color picker to the lower right
