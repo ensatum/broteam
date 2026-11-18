@@ -1,7 +1,20 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { nearestStoryPoint, storyPointColor, STORY_POINT_MARKS } from '@shared/storyPoints';
+import { nearestStoryPoint, storyPointColor, storyPointSumColor, STORY_POINT_MARKS } from '@shared/storyPoints';
+import { hexTint } from '@shared/types';
 import { BatteryChargingIcon, BatteryIcon, CheckIcon, heatStyle } from './Icons';
+
+export function PointsSumBadge(props: { sum: number; filled?: boolean }) {
+  const color = storyPointSumColor(props.sum);
+  return (
+    <span
+      className="bro-points-sum"
+      style={{ color, backgroundColor: props.filled ? hexTint(color, 0.5) : undefined }}
+    >
+      {props.sum}
+    </span>
+  );
+}
 
 const EDGE = 8;
 

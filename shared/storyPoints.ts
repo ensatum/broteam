@@ -16,6 +16,34 @@ export function storyPointColor(value: number): string {
   return STORY_POINT_COLOR[mark];
 }
 
+/** Sum color follows the task scale. The next color starts at that mark times 10. */
+export function storyPointSumColor(sum: number): string {
+  let mark: (typeof STORY_POINT_MARKS)[number] = STORY_POINT_MARKS[0];
+  for (const step of STORY_POINT_MARKS) {
+    if (sum < step * 10) break;
+    mark = step;
+  }
+  return STORY_POINT_COLOR[mark];
+}
+
+export function storyPointsTotal(
+  issues: Iterable<{ key?: string; storyPoints?: number | null }>,
+): number | null {
+  const seen = new Set<string>();
+  let sum = 0;
+  let any = false;
+  for (const issue of issues) {
+    if (issue.key) {
+      if (seen.has(issue.key)) continue;
+      seen.add(issue.key);
+    }
+    if (issue.storyPoints == null || !Number.isFinite(issue.storyPoints)) continue;
+    any = true;
+    sum += issue.storyPoints;
+  }
+  return any ? sum : null;
+}
+
 export function nearestStoryPoint(value: number | null | undefined): number {
   if (value == null || !Number.isFinite(value)) return STORY_POINT_MARKS[0];
   let best: number = STORY_POINT_MARKS[0];

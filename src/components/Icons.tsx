@@ -1255,6 +1255,7 @@ export type CellBadgeModel = {
 export function CellBadgeStack(props: {
   model: CellBadgeModel;
   className?: string;
+  edge?: ReactNode;
   onPick?: (kind: CellBadgeKind) => void;
 }) {
   const { model } = props;
@@ -1327,7 +1328,7 @@ export function CellBadgeStack(props: {
       </CellIconButton>,
     );
   }
-  if (!topLeft.length && !topRight.length && !bottom.length && !model.missingPoints) return null;
+  if (!topLeft.length && !topRight.length && !bottom.length && !model.missingPoints && !props.edge) return null;
 
   const micro: ReactNode[] = [];
   if (model.bookmarked) {
@@ -1405,16 +1406,19 @@ export function CellBadgeStack(props: {
             {bottom}
           </div>
         )}
-        {model.missingPoints && (
-          <div className="absolute right-px top-1/2 -translate-y-1/2">
-            <CellIconButton
-              title="Есть задачи без Story Points"
-              className="bro-heat-mark hover:brightness-75"
-              style={heatStyle(model.pointsCount || 1)}
-              onClick={() => pick('points')}
-            >
-              <BatteryChargingIcon className="h-3.5 w-3.5" />
-            </CellIconButton>
+        {(model.missingPoints || props.edge) && (
+          <div className="bro-points-edge">
+            {model.missingPoints && (
+              <CellIconButton
+                title="Есть задачи без Story Points"
+                className="bro-heat-mark hover:brightness-75"
+                style={heatStyle(model.pointsCount || 1)}
+                onClick={() => pick('points')}
+              >
+                <BatteryChargingIcon className="h-3.5 w-3.5" />
+              </CellIconButton>
+            )}
+            {props.edge}
           </div>
         )}
       </div>

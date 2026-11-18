@@ -276,7 +276,7 @@ body.bro-drag-col * {
 .bro-cell-count.bro-count-center {
   align-items: center;
   justify-content: center;
-  padding: 0;
+  padding: 0 var(--bro-points-pad, 0px) 0 0;
   font-size: var(--bro-digit-center, 1rem);
   font-weight: 700;
 }
@@ -513,7 +513,35 @@ body.bro-drag-col * {
 .bro-cell-mini .bro-cell-count.bro-count-center,
 .bro-cell-mini .bro-cell-count.bro-count-grand {
   justify-content: center !important;
-  padding: 0 !important;
+  padding: 0 var(--bro-points-pad, 0px) 0 0 !important;
+}
+
+.bro-points-edge {
+  position: absolute;
+  right: 1px;
+  top: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.bro-points-sum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 14px;
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  flex: 0 0 auto;
 }
 
 button:not(:disabled),

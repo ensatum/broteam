@@ -16,8 +16,10 @@ import { describeMatrix } from '@shared/matrixShape';
 import { sessionLog } from '../sessionLog';
 import { PENDING_COLUMN, cellMissingBadges, cellTimeWarn, issueIsDone, issueTimeWarn } from '@shared/columnMeta';
 import { staleNewTaskNote, changeStillOpen } from '@shared/issueChanges';
+import { storyPointsTotal } from '@shared/storyPoints';
 import { invalidateIssueStories } from '../issueStoryCache';
 import IssuePanel from '../components/IssuePanel';
+import { PointsSumBadge } from '../components/StoryPointsControl';
 import SummaryDock from '../components/SummaryDock';
 import { RunSpinner, stopBoardRefresh } from '../components/ApiRunControls';
 import { InstantTip } from '../components/InstantTip';
@@ -3030,6 +3032,11 @@ export default function BoardPage(props: Props) {
     columns,
     doneStatusKeys,
   );
+  const grandIssues = matrix.developers.flatMap((developerRow) =>
+    columns.flatMap((column) => developerRow.issuesByColumn[column.statusKey] || []),
+  );
+  const grandPoints = storyPointsTotal(grandIssues);
+  const grandOpenPoints = storyPointsTotal(grandIssues.filter((issue) => !issueIsDone(issue, doneStatusKeys)));
   const showPending = grandFigures.open > 0 && !reorderMode;
   const dataCols = slots.length + (showPending ? 2 : 1);
   const developerRows = matrix.developers;
@@ -4327,6 +4334,10 @@ export default function BoardPage(props: Props) {
                   const rowIssues = columns.flatMap(
                     (column) => row.issuesByColumn[column.statusKey] || [],
                   );
+                  const rowPoints = storyPointsTotal(rowIssues);
+                  const rowOpenPoints = storyPointsTotal(
+                    rowIssues.filter((issue) => !issueIsDone(issue, doneStatusKeys)),
+                  );
                   const rowFigures = splitVisible(row.issuesByColumn, columns, doneStatusKeys);
                   const totalSelected = isCellSelected(row.developer.id, null);
                   const pendingSelected = isCellSelected(row.developer.id, PENDING_COLUMN);
@@ -4471,6 +4482,7 @@ export default function BoardPage(props: Props) {
                           reviewerFilled: badges.reviewerTone === 'warn',
                           testerFilled: badges.testerTone === 'warn',
                         };
+                        const cellPoints = storyPointsTotal(issues);
                         return (
                           <td
                             key={c.statusKey}
@@ -4518,6 +4530,7 @@ export default function BoardPage(props: Props) {
                                 show={changeCount > 0}
                                 count={count}
                                 heat={changeCount}
+                                trailing={compact && cellPoints != null ? <PointsSumBadge sum={cellPoints} /> : null}
                                 onClick={() =>
                                   chooseByBadge('changes', {
                                     kind: 'issues',
@@ -4532,6 +4545,7 @@ export default function BoardPage(props: Props) {
                             {!compact && !cellPending && (
                               <CellBadgeStack
                                 model={cellBadges}
+                                edge={cellPoints != null ? <PointsSumBadge sum={cellPoints} /> : null}
                                 onPick={(kind) =>
                                   chooseByBadge(kind, {
                                     kind: 'issues',
@@ -4559,13 +4573,14 @@ export default function BoardPage(props: Props) {
                           pendingSelected ? cellSelectedClass : ''
                         } ${rowDropMark(row.developer.id)}`}
                       >
-                        <div className={cellBox}>
+                        <div className={cellBox} style={pointsPadStyle(rowOpenPoints)}>
                         <button
                           className="bro-cell-count bro-count-center absolute inset-0 z-[1] cursor-pointer flex leading-none"
                           onClick={() => selectPending(row.developer.id, row.developer.displayName, rowIssues)}
                         >
                           <InstantTip text="Не готово">{rowFigures.open}</InstantTip>
                         </button>
+                        <PointsEdge sum={rowOpenPoints} filled />
                         <span className="bro-cell-count bro-count-center bro-cell-spacer invisible block leading-none" aria-hidden>
                           {rowFigures.open}
                         </span>
@@ -4580,7 +4595,7 @@ export default function BoardPage(props: Props) {
                           totalSelected ? cellSelectedClass : ''
                         } ${rowDropMark(row.developer.id)}`}
                       >
-                        <div className={cellBox}>
+                        <div className={cellBox} style={pointsPadStyle(rowPoints)}>
                         <button
                           className="bro-cell-count bro-count-center absolute inset-0 z-[1] flex cursor-pointer leading-none text-slate-400"
                           onClick={() =>
@@ -4598,6 +4613,7 @@ export default function BoardPage(props: Props) {
                         >
                           <InstantTip text="Всего">{rowFigures.total}</InstantTip>
                         </button>
+                        <PointsEdge sum={rowPoints} filled />
                         <span className="bro-cell-count bro-count-center bro-cell-spacer invisible block leading-none" aria-hidden>
                           {rowFigures.total}
                         </span>
@@ -4634,6 +4650,7 @@ export default function BoardPage(props: Props) {
                       const issues = matrix.developers.flatMap((developerRow) =>
                         slot.columns.flatMap((column) => developerRow.issuesByColumn[column.statusKey] || []),
                       );
+                      const points = storyPointsTotal(issues);
                       const dropKey = slot.columns[0]?.statusKey || key;
                       return (
                         <td
@@ -4645,7 +4662,7 @@ export default function BoardPage(props: Props) {
                             selected ? cellSelectedClass : 'bg-slate-100'
                           } ${columnDropMark(dropKey)}`}
                         >
-                          <div className={totalBox}>
+                          <div className={totalBox} style={pointsPadStyle(points)}>
                             <button
                               className="bro-cell-count bro-count-center absolute inset-0 z-[1] cursor-pointer flex leading-none"
                               style={{ color: slot.group.color }}
@@ -4664,6 +4681,7 @@ export default function BoardPage(props: Props) {
                             >
                               {value}
                             </button>
+                            <PointsEdge sum={points} filled />
                             <span className="bro-cell-count bro-count-center bro-cell-spacer invisible block leading-none" aria-hidden>
                               {value}
                             </span>
@@ -4677,6 +4695,7 @@ export default function BoardPage(props: Props) {
                     const issues = matrix.developers.flatMap(
                       (r) => r.issuesByColumn[c.statusKey] || [],
                     );
+                    const points = storyPointsTotal(issues);
                     return (
                       <td
                         key={c.statusKey}
@@ -4687,7 +4706,7 @@ export default function BoardPage(props: Props) {
                           selected ? cellSelectedClass : 'bg-slate-100'
                         } ${columnDropMark(c.statusKey)}`}
                       >
-                        <div className={totalBox}>
+                        <div className={totalBox} style={pointsPadStyle(points)}>
                         <button
                           className="bro-cell-count bro-count-center absolute inset-0 z-[1] cursor-pointer flex leading-none"
                           style={{ color: c.color }}
@@ -4706,6 +4725,7 @@ export default function BoardPage(props: Props) {
                         >
                           {value}
                         </button>
+                        <PointsEdge sum={points} filled />
                         <span className="bro-cell-count bro-count-center bro-cell-spacer invisible block leading-none" aria-hidden>
                           {value}
                         </span>
@@ -4720,7 +4740,7 @@ export default function BoardPage(props: Props) {
                       isCellSelected(null, PENDING_COLUMN) ? cellSelectedClass : 'bg-slate-100'
                     }`}
                   >
-                    <div className={totalBox}>
+                    <div className={totalBox} style={pointsPadStyle(grandOpenPoints)}>
                     <button
                       className="bro-cell-count bro-count-center absolute inset-0 z-[1] cursor-pointer flex leading-none"
                       onClick={() =>
@@ -4735,6 +4755,7 @@ export default function BoardPage(props: Props) {
                     >
                       <InstantTip text="Не готово">{grandFigures.open}</InstantTip>
                     </button>
+                    <PointsEdge sum={grandOpenPoints} filled />
                     <span className="bro-cell-count bro-count-center bro-cell-spacer invisible block leading-none" aria-hidden>
                       {grandFigures.open}
                     </span>
@@ -4747,13 +4768,14 @@ export default function BoardPage(props: Props) {
                       isCellSelected(null, null) ? cellSelectedClass : 'bg-slate-100'
                     }`}
                   >
-                    <div className={totalBox}>
+                    <div className={totalBox} style={pointsPadStyle(grandPoints)}>
                     <button
                       className="bro-cell-count bro-count-center bro-count-grand absolute inset-0 z-[1] flex cursor-pointer leading-none text-slate-400"
                       onClick={selectAllTasks}
                     >
                       <InstantTip text="Всего">{grandFigures.total}</InstantTip>
                     </button>
+                    <PointsEdge sum={grandPoints} filled />
                     <span className="bro-cell-count bro-count-center bro-count-grand bro-cell-spacer invisible block leading-none" aria-hidden>
                       {grandFigures.total}
                     </span>
@@ -4851,26 +4873,45 @@ function changeBellStyle(count: number): CSSProperties {
   return BELL_STEPS[index];
 }
 
-function ChangeBell(props: { show: boolean; count: number; heat?: number; onClick?: () => void }) {
-  if (!props.show) return null;
+function pointsPadStyle(sum: number | null): CSSProperties | undefined {
+  if (sum == null) return undefined;
+  return { ['--bro-points-pad' as string]: `${String(sum).length * 0.62 + 0.4}rem` };
+}
+
+function PointsEdge(props: { sum: number | null; filled?: boolean }) {
+  if (props.sum == null) return null;
+  return (
+    <span className="bro-points-edge">
+      <PointsSumBadge sum={props.sum} filled={props.filled} />
+    </span>
+  );
+}
+
+function ChangeBell(props: { show: boolean; count: number; heat?: number; onClick?: () => void; trailing?: ReactNode }) {
+  if (!props.show && !props.trailing) return null;
   return (
     <span className="bro-change-beside">
-      <span className="bro-change-digit" aria-hidden>
-        {props.count}
-      </span>
-      <InstantTip text="Есть изменения" place="top" className="bro-change-tip inline-flex">
-        <button
-          type="button"
-          className="bro-change-bell pointer-events-auto"
-          style={changeBellStyle(props.heat || 1)}
-          onClick={(event) => {
-            event.stopPropagation();
-            props.onClick?.();
-          }}
-        >
-          <BellIcon />
-        </button>
-      </InstantTip>
+      {props.show && (
+        <>
+          <span className="bro-change-digit" aria-hidden>
+            {props.count}
+          </span>
+          <InstantTip text="Есть изменения" place="top" className="bro-change-tip inline-flex">
+            <button
+              type="button"
+              className="bro-change-bell pointer-events-auto"
+              style={changeBellStyle(props.heat || 1)}
+              onClick={(event) => {
+                event.stopPropagation();
+                props.onClick?.();
+              }}
+            >
+              <BellIcon />
+            </button>
+          </InstantTip>
+        </>
+      )}
+      {props.trailing}
     </span>
   );
 }

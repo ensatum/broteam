@@ -5,3 +5,4 @@ Included changes since last build:
 - docs(board): note how stacked tooltips fade
 - chore(build): sync the unreleased forecast
 - fix(settings): make board layout drag follow the pointer
+- feat(board): show a story point sum in each cell
