@@ -57,7 +57,7 @@ export function QuickComment(props: { issueKey: string }) {
         </button>
       </div>
       {open && (
-        <div className="mt-1.5">
+        <div className="-mx-2 -mb-1.5 mt-1.5 bg-white px-2 pb-1.5 pt-1.5">
           <div className="mb-1 text-[11px] font-medium text-slate-700">Комментарий на трекер</div>
           <MarkdownSurface
             ref={surface}

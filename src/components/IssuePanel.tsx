@@ -853,7 +853,7 @@ function IssueStory(props: { issueKey: string; readOnly?: boolean }) {
         </div>
       )}
       {story && part === 'comment' && (
-        <div className="mt-2 rounded border border-amber-200/80 bg-[#fffbeb] px-2 py-1.5">
+        <div className="mt-2 overflow-hidden rounded border border-amber-200/80 bg-[#fffbeb] px-2 py-1.5">
           {story.commentText ? (
             <>
               {(story.commentAuthor || story.commentAt) && (

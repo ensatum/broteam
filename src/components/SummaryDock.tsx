@@ -1507,7 +1507,7 @@ function SummaryCard(props: {
             </div>
           )}
           {story && storyPart === 'comment' && (
-            <div className="mx-6 mt-2 rounded border border-amber-200/80 bg-[#fffbeb] px-2 py-1.5">
+            <div className="mx-6 mt-2 overflow-hidden rounded border border-amber-200/80 bg-[#fffbeb] px-2 py-1.5">
               {story.commentText ? (
                 <>
                   <a
