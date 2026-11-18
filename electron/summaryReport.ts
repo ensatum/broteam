@@ -730,6 +730,19 @@ function roleOf(field: { id?: string; display?: string } | string | undefined): 
   return '';
 }
 
+function fieldKind(
+  field: { id?: string; display?: string } | string | undefined,
+): 'assignee' | 'qa' | 'reviewer' | 'status' | 'sprint' | 'description' | 'points' | '' {
+  const role = roleOf(field);
+  if (role) return role;
+  const id = fieldId(field).toLowerCase();
+  const display = (typeof field === 'object' && field?.display ? field.display : '').toLowerCase();
+  const blob = `${id} ${display}`;
+  if (id === 'description' || display === 'описание') return 'description';
+  if (id === 'storypoints' || id === 'storypoint' || /story\s*points|стори\s*поинт|сторипоинт/.test(blob)) return 'points';
+  return '';
+}
+
 function slimEvent(event: TrackerChangelogEvent): TrackerChangelogEvent {
   return {
     updatedAt: event.updatedAt,
@@ -757,16 +770,24 @@ function slimEvent(event: TrackerChangelogEvent): TrackerChangelogEvent {
           })),
         }
       : undefined,
-    fields: (event.fields || [])
-      .filter((field) => roleOf(field.field))
-      .map((field) => ({
-        field: {
-          id: fieldId(field.field),
-          display: typeof field.field === 'object' ? field.field.display : undefined,
-        },
-        from: slimValue(field.from),
-        to: slimValue(field.to),
-      })),
+    fields: (event.fields || []).flatMap((field) => {
+      const kind = fieldKind(field.field);
+      if (!kind) return [];
+      const slim: NonNullable<TrackerChangelogEvent['fields']> =
+        kind === 'description' || kind === 'points'
+          ? [{ field: { id: kind }, from: null, to: null }]
+          : [
+              {
+                field: {
+                  id: fieldId(field.field),
+                  display: typeof field.field === 'object' ? field.field.display : undefined,
+                },
+                from: slimValue(field.from),
+                to: slimValue(field.to),
+              },
+            ];
+      return slim;
+    }),
   };
 }
 
@@ -938,6 +959,8 @@ function interpretIssue(
   if (!audience.length) return null;
   const touched = new Set<number>();
   const changedBy = new Set<number>();
+  const described = new Set<number>();
+  const indirectAct = new Set<number>();
   const ordered = [...events].sort((a, b) => stamp(a.updatedAt) - stamp(b.updatedAt));
   const fromMs = Date.parse(fromIso);
   const toMs = Date.parse(toIso);
@@ -1060,6 +1083,18 @@ function interpretIssue(
             (event.comments?.added || []).some((comment) => matchesPerson(item, comment.createdBy || null)),
         )
       : [];
+    if (at >= fromMs && at <= toMs) {
+      const kinds = (event.fields || []).map((field) => fieldKind(field.field));
+      if (kinds.includes('description')) {
+        for (const item of matchedNow) described.add(item.id);
+      }
+      if (kinds.some((kind) => kind === 'assignee' || kind === 'qa' || kind === 'reviewer' || kind === 'points')) {
+        for (const item of matchedNow) indirectAct.add(item.id);
+      }
+      if (commented) {
+        for (const item of commentPeople) indirectAct.add(item.id);
+      }
+    }
     const addedComments = Math.max(event.comments?.added?.length || 0, commented ? 1 : 0);
     if (addedComments) {
       commentTotal += addedComments;
@@ -1137,6 +1172,17 @@ function interpretIssue(
     pushShuffle(shuffles, 'qa', 'Тестировщик', first.qa, last.qa || roleNow(issue.qaDisplay, ''), name);
     pushShuffle(shuffles, 'reviewer', 'Ревьюер', first.reviewer, last.reviewer || roleNow(issue.reviewerDisplay, ''), name);
   }
+  const indirectIds = [...indirectAct].filter((id) => {
+    if (described.has(id)) return false;
+    const person = audience.find((item) => item.id === id);
+    if (!person) return false;
+    return (
+      !holds(person, issue.assigneeDisplay) &&
+      !holds(person, issue.reviewerDisplay) &&
+      !holds(person, issue.qaDisplay) &&
+      !holds(person, issue.authorDisplay)
+    );
+  });
   const role = focus?.role;
   return {
     key: issue.key,
@@ -1171,6 +1217,7 @@ function interpretIssue(
     lastById,
     touchedIds: [...touched],
     changedByIds: [...changedBy],
+    indirectIds,
     activeInPeriod: movedInPeriod,
     boardLocalId: origin?.boardLocalId ?? null,
     boardLabel: (origin?.alias || '').trim() || origin?.name || '',

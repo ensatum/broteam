@@ -30,6 +30,7 @@ import {
   IconActionButton,
   NoteClipboardButton,
   TargetIcon,
+  TvIcon,
   RefreshIcon,
   UsersIcon,
   XIcon,
@@ -122,6 +123,7 @@ export default function SummaryDock(props: {
   const [sort, setSort] = useState<SummarySort>(loadSummarySort);
   const [plans, setPlans] = useState(true);
   const [activity, setActivity] = useState(true);
+  const [indirect, setIndirect] = useState(true);
   const [peopleOrder, setPeopleOrder] = useState<number[]>(loadSummaryPeopleOrder);
   const personRef = useRef<HTMLDivElement>(null);
   const selected = roster.find((person) => person.id === props.personId) || null;
@@ -195,9 +197,9 @@ export default function SummaryDock(props: {
       (person) => !person.hidden && (person.role === 'developer' || person.role === 'qa'),
     );
     return namedRows
-      .filter((row) => cardVisible(row, selected, props.columns, people, { plans, activity }))
+      .filter((row) => cardVisible(row, selected, props.columns, people, { plans, activity, indirect }))
       .map((row) => (selected ? focusSummaryRow(row, selected) : row));
-  }, [namedRows, selected, props.columns, props.participants, plans, activity]);
+  }, [namedRows, selected, props.columns, props.participants, plans, activity, indirect]);
   const boardBadges = useMemo(
     () => summaryBoardBadges(audienceRows, props.boards),
     [audienceRows, props.boards],
@@ -540,7 +542,7 @@ export default function SummaryDock(props: {
                     </div>
                     {group.map((person, index) => {
                       const count = namedRows.filter((row) =>
-                        cardVisible(row, person, props.columns, orderedPeople, { plans: true, activity: true }),
+                        cardVisible(row, person, props.columns, orderedPeople, { plans: true, activity: true, indirect: true }),
                       ).length;
                       return (
                         <div
@@ -596,7 +598,7 @@ export default function SummaryDock(props: {
           disabled={running || props.boardLocalId == null}
         />
         <div className="ml-auto flex w-[38%] min-w-0 shrink-0 items-center gap-1">
-          <div className="min-w-0 max-w-[14rem]">
+          <div className="flex h-6 min-w-0 max-w-[14rem] items-center">
             <EpicFilter options={epicChoices} selected={epicKey} onSelect={setEpicKey} />
           </div>
           <input
@@ -659,6 +661,18 @@ export default function SummaryDock(props: {
                 <TargetIcon className="h-3 w-3" />
                 Планы
               </button>
+              {selected && (
+                <button
+                  type="button"
+                  aria-pressed={indirect}
+                  title="Не исполнитель, не ревьюер, не тестировщик и не автор, описание не менял, но менял людей, Story Points или комментарии"
+                  className={summaryToggleClass(indirect, false, 'primary')}
+                  onClick={() => setIndirect((on) => !on)}
+                >
+                  <TvIcon className="h-3 w-3" />
+                  Косвенно
+                </button>
+              )}
             </div>
           </div>
           {boardFilter != null && statusBadges.length > 0 && (
@@ -724,6 +738,7 @@ export default function SummaryDock(props: {
               columns={props.columns}
               onToggle={toggle}
               onHover={props.onIssueHover}
+              onPickEpic={setEpicKey}
               refreshing={refreshingKey === row.key}
               onRefresh={() => void refreshRow(row)}
               people={props.participants}
@@ -1223,6 +1238,7 @@ function SummaryCard(props: {
   columns: BoardColumnConfig[];
   onToggle: () => void;
   onHover: (issueKey: string | null, boardLocalId: number | null, trackerBoardIds: number[]) => void;
+  onPickEpic: (key: string) => void;
   refreshing: boolean;
   onRefresh: () => void;
   people: Developer[];
@@ -1314,7 +1330,7 @@ function SummaryCard(props: {
         <span title="Автор" className="absolute inset-y-0 left-0 w-1.5 bg-emerald-200" aria-hidden />
       )}
       <div className={`flex items-center gap-1.5 px-2 py-1 ${props.open ? 'border-b border-slate-200 bg-slate-50' : ''}`}>
-        <EpicMark epicKey={row.epicKey} epicDisplay={row.epicDisplay} />
+        <EpicMark epicKey={row.epicKey} epicDisplay={row.epicDisplay} onPick={props.onPickEpic} />
         <StatusFlowButton
           issueKey={row.key}
           statusKey={row.statusKey || ''}
@@ -2312,12 +2328,13 @@ function cardVisible(
   person: Developer | null,
   columns: BoardColumnConfig[],
   people: Developer[],
-  flags: { plans: boolean; activity: boolean },
+  flags: { plans: boolean; activity: boolean; indirect: boolean },
 ): boolean {
   if (!person) {
     if (hadActivity(row)) return flags.activity;
     return flags.plans && people.some((item) => isPlanFor(columnOf(row, columns), row, item));
   }
+  if ((row.indirectIds || []).includes(person.id)) return flags.indirect;
   const kind = cardKind(row, person, columns);
   if (kind === 'activity') return flags.activity;
   if (kind === 'plan') return flags.plans;

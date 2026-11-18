@@ -19,16 +19,31 @@ export function epicOptions(items: EpicRef[]): EpicOption[] {
     .sort((a, b) => a.key.localeCompare(b.key, 'ru'));
 }
 
-export function EpicMark(props: EpicRef) {
+export function EpicMark(props: EpicRef & { onPick?: (key: string) => void }) {
   const key = props.epicKey?.trim() || '';
   const display = props.epicDisplay?.trim() || '';
   const linked = Boolean(key);
+  const icon = <PackageIcon className="h-3.5 w-3.5" />;
+  if (!linked) {
+    return (
+      <span className="inline-flex shrink-0 text-slate-400" onClick={(event) => event.stopPropagation()}>
+        {icon}
+      </span>
+    );
+  }
   return (
-    <span className="inline-flex shrink-0" onClick={(event) => event.stopPropagation()}>
-      <InstantTip text={linked ? `${key}: ${display}` : ''} className={linked ? 'text-sky-700' : 'text-slate-400'}>
-        <PackageIcon className="h-3.5 w-3.5" />
-      </InstantTip>
-    </span>
+    <InstantTip text={`${key}: ${display}`} className="inline-flex shrink-0 text-sky-700">
+      <button
+        type="button"
+        className="inline-flex items-center"
+        onClick={(event) => {
+          event.stopPropagation();
+          props.onPick?.(key);
+        }}
+      >
+        {icon}
+      </button>
+    </InstantTip>
   );
 }
 
@@ -44,6 +59,10 @@ export function EpicFilter(props: {
   const current = props.options.find((item) => item.key === props.selected) || null;
 
   useEffect(() => {
+    if (!props.options.length) setOpen(false);
+  }, [props.options.length]);
+
+  useEffect(() => {
     if (!open) return;
     const onDoc = (event: MouseEvent) => {
       const target = event.target as Node;
@@ -56,6 +75,7 @@ export function EpicFilter(props: {
 
   function toggle(event: ReactMouseEvent) {
     event.stopPropagation();
+    if (!props.options.length) return;
     if (open) {
       setOpen(false);
       return;
@@ -70,7 +90,7 @@ export function EpicFilter(props: {
 
   if (current) {
     return (
-      <span className="inline-flex h-6 max-w-full min-w-0 items-center gap-1 rounded border border-sky-300 bg-sky-100 px-1.5 text-xs text-sky-900">
+      <span className="inline-flex h-6 max-w-full min-w-0 items-center gap-1 self-center rounded border border-sky-300 bg-sky-100 px-1.5 text-xs text-sky-900">
         <PackageIcon className="h-3.5 w-3.5 shrink-0" />
         <span className="shrink-0">{current.key}:</span>
         <span className="min-w-0 truncate">{current.display}</span>
@@ -90,11 +110,12 @@ export function EpicFilter(props: {
   }
 
   return (
-    <div ref={rootRef} className="relative">
-      <InstantTip text="Эпики">
+    <div ref={rootRef} className="flex h-6 items-center">
+      <InstantTip text={props.options.length ? 'Эпики' : 'В списке нет эпиков'} className="inline-flex h-6 items-center">
         <button
           type="button"
-          className="inline-flex h-6 w-6 items-center justify-center rounded border border-slate-300 bg-slate-200 text-slate-700 hover:bg-slate-300"
+          disabled={!props.options.length}
+          className="inline-flex h-6 w-6 items-center justify-center rounded border border-slate-300 bg-slate-200 text-slate-700 hover:bg-slate-300 disabled:cursor-default disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-300 disabled:hover:bg-slate-100"
           onClick={toggle}
         >
           <PackageIcon className="h-3.5 w-3.5" />
@@ -108,9 +129,6 @@ export function EpicFilter(props: {
             className="fixed z-[10040] max-h-64 w-72 overflow-y-auto rounded border border-slate-300 bg-white py-1 shadow-lg"
             style={{ left: place.left, top: place.top }}
           >
-            {props.options.length === 0 && (
-              <div className="px-2 py-1 text-xs text-slate-400">В списке нет эпиков</div>
-            )}
             {props.options.map((epic) => (
               <button
                 key={epic.key}

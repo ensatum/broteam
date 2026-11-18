@@ -112,6 +112,8 @@ export type SummaryRow = {
   touchedIds?: number[];
   /** Summary users who authored a changelog event inside the period. */
   changedByIds?: number[];
+  /** In the period: not a current role holder or author, did not edit the description, but changed people, story points, or comments. */
+  indirectIds?: number[];
   /** A changelog event or issue update falls inside the selected window. */
   activeInPeriod?: boolean;
   boardLocalId?: number | null;

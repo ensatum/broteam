@@ -818,6 +818,13 @@ export default function BoardPage(props: Props) {
   );
   const [highlightIssueKey, setHighlightIssueKey] = useState<string | null>(null);
   const [summaryTabs, setSummaryTabs] = useState<number[] | null>(null);
+  const summaryHoverTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (summaryHoverTimer.current != null) window.clearTimeout(summaryHoverTimer.current);
+    },
+    [],
+  );
   useEffect(() => {
     const badges = document.querySelectorAll<HTMLElement>('[data-board-badge]');
     badges.forEach((el) => {
@@ -2977,19 +2984,29 @@ export default function BoardPage(props: Props) {
       onIssueHover={(issueKey, boardLocalId, trackerBoardIds) => {
         if (!issueKey) {
           setHighlightIssueKey(null);
-          setSummaryTabs(null);
+          if (summaryHoverTimer.current != null) window.clearTimeout(summaryHoverTimer.current);
+          summaryHoverTimer.current = window.setTimeout(() => {
+            summaryHoverTimer.current = null;
+            setSummaryTabs(null);
+          }, 1000);
           return;
+        }
+        if (summaryHoverTimer.current != null) {
+          window.clearTimeout(summaryHoverTimer.current);
+          summaryHoverTimer.current = null;
         }
         const known = trackerBoardIds.length ? trackerBoardIds : boardIdsInMatrix(sourceMatrix, issueKey);
         const members = new Set<number>();
         if (boardLocalId != null) members.add(boardLocalId);
-        for (const board of props.boards) {
-          if (board.enabled && known.includes(board.trackerBoardId)) members.add(board.id);
+        if (crossOn) {
+          for (const board of props.boards) {
+            if (board.enabled && known.includes(board.trackerBoardId)) members.add(board.id);
+          }
         }
-        setHighlightIssueKey(matrixHasIssue(matrix, issueKey) ? issueKey : null);
-        if (crossOn && members.size > 1) setSummaryTabs([...members]);
-        else if (boardLocalId != null && boardLocalId !== props.activeBoardId) setSummaryTabs([boardLocalId]);
-        else setSummaryTabs(null);
+        const onTable = matrixHasIssue(matrix, issueKey);
+        if (members.size === 0 && onTable && props.activeBoardId != null) members.add(props.activeBoardId);
+        setHighlightIssueKey(onTable ? issueKey : null);
+        setSummaryTabs(members.size ? [...members] : null);
       }}
     />
   ) : null;
@@ -3037,7 +3054,7 @@ export default function BoardPage(props: Props) {
     );
   }
 
-  const cellSelectedClass = 'ring-1 ring-inset ring-sky-600 bg-sky-100';
+  const cellSelectedClass = 'bro-cell-selected';
   const grandFigures = splitVisible(
     visibleIssuesByColumn(matrix, columns),
     columns,
@@ -4339,7 +4356,7 @@ export default function BoardPage(props: Props) {
                 )}
               </thead>
               <tbody>
-                {matrix.developers.map((row) => {
+                {matrix.developers.map((row, rowIndex) => {
                   const sourceRow = sourceMatrix.developers.find(
                     (r) => r.developer.id === row.developer.id,
                   );
@@ -4360,6 +4377,7 @@ export default function BoardPage(props: Props) {
                   const pendingSelected = isCellSelected(row.developer.id, PENDING_COLUMN);
                   const rowFixed = row.developer.id < 0;
                   const away = row.developer.onVacation;
+                  const edgeTop = rowIndex === 0 ? 'bro-edge-top' : '';
                   return (
                     <tr key={row.developer.id} className={away ? 'bg-slate-200 opacity-50' : 'bg-white'}>
                       <td
@@ -4442,8 +4460,9 @@ export default function BoardPage(props: Props) {
                           </span>
                         </div>
                       </td>
-                      {slots.map((slot) => {
+                      {slots.map((slot, slotIndex) => {
                         const grouped = slot.kind === 'group';
+                        const edgeLeft = slotIndex === 0 ? 'bro-edge-left' : '';
                         const c = grouped
                           ? {
                               ...slot.columns[0],
@@ -4520,7 +4539,7 @@ export default function BoardPage(props: Props) {
                               else dropRow(e, row.developer.id);
                             }}
                             onMouseEnter={() => setTableHover({ row: row.developer.id, col: c.statusKey })}
-                            className={`relative border-b border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${shade(row.developer.id, c.statusKey)} ${
+                            className={`relative border-b border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${edgeTop} ${edgeLeft} ${shade(row.developer.id, c.statusKey)} ${
                               active ? cellSelectedClass : ''
                             } ${highlighted ? 'bro-cell-mark' : ''} ${columnDropMark(dropKey)} ${rowDropMark(row.developer.id)}`}
                           >
@@ -4593,7 +4612,7 @@ export default function BoardPage(props: Props) {
                         onDragOver={(e) => allowRowDrop(e, row.developer.id)}
                         onDrop={(e) => dropRow(e, row.developer.id)}
                         onMouseEnter={() => setTableHover({ row: row.developer.id, col: PENDING_COLUMN })}
-                        className={`relative border-b border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${shade(row.developer.id, PENDING_COLUMN)} ${
+                        className={`relative border-b border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${edgeTop} ${shade(row.developer.id, PENDING_COLUMN)} ${
                           pendingSelected ? cellSelectedClass : ''
                         } ${rowDropMark(row.developer.id)}`}
                       >
@@ -4615,7 +4634,7 @@ export default function BoardPage(props: Props) {
                         onDragOver={(e) => allowRowDrop(e, row.developer.id)}
                         onDrop={(e) => dropRow(e, row.developer.id)}
                         onMouseEnter={() => setTableHover({ row: row.developer.id, col: 'total' })}
-                        className={`relative border-b border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${shade(row.developer.id, 'total')} ${
+                        className={`relative border-b border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${edgeTop} ${shade(row.developer.id, 'total')} ${
                           totalSelected ? cellSelectedClass : ''
                         } ${rowDropMark(row.developer.id)}`}
                       >
@@ -4663,7 +4682,8 @@ export default function BoardPage(props: Props) {
                       </span>
                     </div>
                   </td>
-                  {slots.map((slot) => {
+                  {slots.map((slot, slotIndex) => {
+                    const edgeLeft = slotIndex === 0 ? 'bro-edge-left' : '';
                     if (slot.kind === 'group') {
                       const key = groupStatusKey(slot.group.id);
                       const selected = isCellSelected(null, key);
@@ -4682,7 +4702,7 @@ export default function BoardPage(props: Props) {
                           onDragOver={(e) => allowColumnDrop(e, dropKey)}
                           onDrop={(e) => dropColumn(e, dropKey)}
                           onMouseEnter={() => setTableHover({ row: 'total', col: key })}
-                          className={`relative border-t border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${shade('total', key)} ${
+                          className={`relative border-t border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${edgeLeft} ${shade('total', key)} ${
                             selected ? cellSelectedClass : 'bg-slate-100'
                           } ${columnDropMark(dropKey)}`}
                         >
@@ -4726,7 +4746,7 @@ export default function BoardPage(props: Props) {
                         onDragOver={(e) => allowColumnDrop(e, c.statusKey)}
                         onDrop={(e) => dropColumn(e, c.statusKey)}
                         onMouseEnter={() => setTableHover({ row: 'total', col: c.statusKey })}
-                        className={`relative border-t border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${shade('total', c.statusKey)} ${
+                        className={`relative border-t border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${edgeLeft} ${shade('total', c.statusKey)} ${
                           selected ? cellSelectedClass : 'bg-slate-100'
                         } ${columnDropMark(c.statusKey)}`}
                       >

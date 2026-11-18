@@ -750,6 +750,16 @@ export function ChevronDownIcon({ className = 'h-3.5 w-3.5' }: { className?: str
   );
 }
 
+/** Feather: tv */
+export function TvIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" {...strokeCrisp} aria-hidden>
+      <rect x="2" y="7" width="20" height="15" rx="2" ry="2" />
+      <polyline points="17 2 12 7 7 2" />
+    </svg>
+  );
+}
+
 /** Feather: target */
 export function TargetIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
   return (
