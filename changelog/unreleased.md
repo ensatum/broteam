@@ -3,3 +3,4 @@ Included changes since last build:
 - feat(settings): edit story point wording with the colors
 - feat(board): show epics and filter lists by one
 - feat(board): count final columns as done
+- docs(board): shorten the project readme
