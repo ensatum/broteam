@@ -25,6 +25,7 @@ import {
   ArrowUpIcon,
   CalendarIcon,
   CheckSquareIcon,
+  DownloadIcon,
   EditIcon,
   CastIcon,
   IconActionButton,
@@ -116,6 +117,8 @@ export default function SummaryDock(props: {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [reportNote, setReportNote] = useState('');
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
   const [issueNotes, setIssueNotes] = useState<Record<string, string>>({});
   const [query, setQuery] = useState('');
   const [epicKey, setEpicKey] = useState<string | null>(null);
@@ -174,6 +177,16 @@ export default function SummaryDock(props: {
       setRequests(0);
     });
   }, []);
+
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onDoc = (event: MouseEvent) => {
+      if (exportRef.current?.contains(event.target as Node)) return;
+      setExportOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [exportOpen]);
 
   useEffect(() => {
     if (!personOpen) return;
@@ -343,6 +356,17 @@ export default function SummaryDock(props: {
       runningRef.current = false;
       setRunning(false);
     }
+  }
+
+  function saveReportNote() {
+    if (props.boardLocalId == null || props.personId == null) return;
+    void window.api.setSummaryReportNote(props.boardLocalId, props.personId, reportNote);
+  }
+
+  function exportReport(format: 'xlsx' | 'docx') {
+    saveReportNote();
+    void window.api.exportSummary(format, reportPayload());
+    setExportOpen(false);
   }
 
   function reportPayload(): SummaryReport & { reportNote?: string; issueNotes?: Record<string, string> } {
@@ -756,36 +780,50 @@ export default function SummaryDock(props: {
             />
           );
         })}
-        <label className="mt-1 block text-[11px] text-slate-500">
-          Примечание к отчёту
-          <textarea
-            className="mt-1 h-16 w-full resize-none rounded border border-slate-300 px-1 py-0.5 text-xs text-slate-800"
-            value={reportNote}
-            onChange={(event) => setReportNote(event.target.value)}
-            onBlur={() => {
-              if (props.boardLocalId == null || props.personId == null) return;
-              void window.api.setSummaryReportNote(props.boardLocalId, props.personId, reportNote);
-            }}
-          />
-        </label>
-        <div className="flex gap-2 pb-2">
+      </div>
+      <div ref={exportRef} className="relative flex shrink-0 justify-end px-2 py-1">
+        {exportOpen && (
+          <div className="absolute bottom-full right-2 z-30 mb-1 w-64 rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+            <label className="block text-[11px] text-slate-500">
+              Примечание к отчёту
+              <textarea
+                className="mt-1 h-16 w-full resize-none rounded border border-slate-300 px-1 py-0.5 text-xs text-slate-800"
+                value={reportNote}
+                onChange={(event) => setReportNote(event.target.value)}
+                onBlur={saveReportNote}
+              />
+            </label>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                className="rounded border border-slate-300 px-2 py-1 disabled:opacity-40"
+                disabled={!rows.length}
+                onClick={() => exportReport('xlsx')}
+              >
+                Excel
+              </button>
+              <button
+                type="button"
+                className="rounded border border-slate-300 px-2 py-1 disabled:opacity-40"
+                disabled={!rows.length}
+                onClick={() => exportReport('docx')}
+              >
+                Word
+              </button>
+            </div>
+          </div>
+        )}
+        <InstantTip text="Выгрузить" place="top">
           <button
             type="button"
-            className="rounded border border-slate-300 px-2 py-1 disabled:opacity-40"
-            disabled={!rows.length}
-            onClick={() => void window.api.exportSummary('xlsx', reportPayload())}
+            aria-label="Выгрузить"
+            aria-expanded={exportOpen}
+            className="inline-flex h-6 w-6 items-center justify-center rounded text-slate-600 hover:bg-slate-100"
+            onClick={() => setExportOpen((open) => !open)}
           >
-            Excel
+            <DownloadIcon className="h-3.5 w-3.5" />
           </button>
-          <button
-            type="button"
-            className="rounded border border-slate-300 px-2 py-1 disabled:opacity-40"
-            disabled={!rows.length}
-            onClick={() => void window.api.exportSummary('docx', reportPayload())}
-          >
-            Word
-          </button>
-        </div>
+        </InstantTip>
       </div>
     </div>
   );

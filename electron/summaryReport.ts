@@ -9,7 +9,7 @@ import type {
   SummaryShuffle,
   SummarySlice,
 } from '../shared/summary';
-import { TrackerClient, buildIssuesQuery, isReactionComment, type TrackerChangelogEvent, type TrackerComment } from './tracker';
+import { TrackerClient, isReactionComment, type TrackerChangelogEvent, type TrackerComment } from './tracker';
 import { trackerActivity } from './trackerActivity';
 import {
   clearSummaryReports,
@@ -45,32 +45,7 @@ export async function buildSummaryReport(
   const bounds = periodWindow(request.period);
   const boards = summaryTargets(request);
   const found = new Map<string, { issue: SummaryIssue; board: SummaryBoardRef }>();
-  for (const board of boards) {
-    const base = buildIssuesQuery({
-      boardId: board.trackerBoardId,
-      queueKey: '',
-      sprintIds: [],
-      logins: [],
-      membership: 'board',
-      unresolvedOnly: false,
-    });
-    const issues = await client.findIssues(`${base} AND ${bounds.query}`);
-    for (const issue of issues) rememberIssue(found, issue, board, boards);
-    const statuses = watchedStatuses(request, board.boardLocalId);
-    if (statuses.length) {
-      const standing = buildIssuesQuery({
-        boardId: board.trackerBoardId,
-        queueKey: '',
-        sprintIds: [],
-        logins: [],
-        membership: 'board',
-        unresolvedOnly: true,
-      });
-      const quoted = statuses.map((key) => `"${key.replace(/"/g, '')}"`).join(', ');
-      const parked = await client.findIssues(`${standing} AND Status: ${quoted}`);
-      for (const issue of parked) rememberIssue(found, issue, board, boards);
-    }
-  }
+  await collectSummaryIssues(client, request, boards, bounds.query, found);
   const collected = [...found.values()];
   if (collected.length > 0) onProgress({ row: null, index: 0, total: collected.length });
   const rows: SummaryRow[] = [];
@@ -417,6 +392,44 @@ function clockBound(iso: string, time: string | undefined, end: boolean): string
   const [year, month, day] = iso.split('-').map(Number);
   const date = new Date(year, month - 1, day, hours, minutes, match ? 0 : end ? 59 : 0, match ? 0 : end ? 999 : 0);
   return date.toISOString();
+}
+
+async function collectSummaryIssues(
+  client: TrackerClient,
+  request: SummaryBuildRequest,
+  boards: SummaryBoardRef[],
+  updatedQuery: string,
+  found: Map<string, { issue: SummaryIssue; board: SummaryBoardRef }>,
+): Promise<void> {
+  const boardIds = [...new Set(boards.map((board) => board.trackerBoardId).filter((id) => id > 0))];
+  const home = boards.find((board) => board.trackerBoardId > 0);
+  if (!boardIds.length || !home) return;
+  const place = (issue: SummaryIssue) => {
+    if (found.has(issue.key)) return;
+    rememberIssue(found, issue, sourceBoard(issue.key, home, boards), boards);
+  };
+  const updated = await client.findIssues(`Boards: ${boardIds.join(', ')} AND ${updatedQuery}`);
+  for (const issue of updated) place(issue);
+  const parkedByStatus = new Map<string, number[]>();
+  for (const board of boards) {
+    if (board.trackerBoardId <= 0) continue;
+    const statuses = watchedStatuses(request, board.boardLocalId);
+    if (!statuses.length) continue;
+    const signature = [...statuses].sort().join('\0');
+    const ids = parkedByStatus.get(signature) || [];
+    if (!ids.includes(board.trackerBoardId)) ids.push(board.trackerBoardId);
+    parkedByStatus.set(signature, ids);
+  }
+  for (const [signature, ids] of parkedByStatus) {
+    const quoted = signature
+      .split('\0')
+      .map((key) => `"${key.replace(/"/g, '')}"`)
+      .join(', ');
+    const parked = await client.findIssues(
+      `Boards: ${ids.join(', ')} AND "Resolution": unresolved() AND Status: ${quoted}`,
+    );
+    for (const issue of parked) place(issue);
+  }
 }
 
 function summaryTargets(request: SummaryBuildRequest): SummaryBoardRef[] {
