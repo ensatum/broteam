@@ -4530,7 +4530,7 @@ export default function BoardPage(props: Props) {
                                 show={changeCount > 0}
                                 count={count}
                                 heat={changeCount}
-                                trailing={compact && cellPoints != null ? <PointsSumBadge sum={cellPoints.sum} tasks={cellPoints.tasks} /> : null}
+                                trailing={compact && cellPoints != null ? <span className="bro-points-cell"><PointsSumBadge sum={cellPoints.sum} tasks={cellPoints.tasks} /></span> : null}
                                 onClick={() =>
                                   chooseByBadge('changes', {
                                     kind: 'issues',
@@ -4545,7 +4545,7 @@ export default function BoardPage(props: Props) {
                             {!compact && !cellPending && (
                               <CellBadgeStack
                                 model={cellBadges}
-                                edge={cellPoints != null ? <PointsSumBadge sum={cellPoints.sum} tasks={cellPoints.tasks} /> : null}
+                                edge={cellPoints != null ? <span className="bro-points-cell"><PointsSumBadge sum={cellPoints.sum} tasks={cellPoints.tasks} /></span> : null}
                                 onPick={(kind) =>
                                   chooseByBadge(kind, {
                                     kind: 'issues',

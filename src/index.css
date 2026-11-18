@@ -519,6 +519,12 @@ body.bro-drag-col * {
   padding: 0 !important;
 }
 
+@container cell (width < 61px) {
+  .bro-points-cell {
+    display: none;
+  }
+}
+
 .bro-points-edge {
   position: absolute;
   right: 1px;
