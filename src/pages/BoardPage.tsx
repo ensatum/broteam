@@ -3085,7 +3085,9 @@ export default function BoardPage(props: Props) {
     if (from != null) reorderDevelopers(from, devId);
   }
   const bodyRows = matrix.developers.length + 1;
-  const headerUnits = showGroupRow ? 2 : 1;
+  const splitHeader =
+    showGroupRow && slots.some((slot) => slot.kind === 'column' && slot.column.groupId != null);
+  const headerUnits = splitHeader ? 2 : 1;
   const fullHeaderPx = FULL_HEADER_PX * headerUnits;
   const compactHeaderPx = COMPACT_HEADER_PX * headerUnits;
   const compactW = tableWidth(dataCols, COMPACT_COL_PX);
@@ -3940,8 +3942,12 @@ export default function BoardPage(props: Props) {
             style={panelOverlap > 0 ? { width: `calc(100% - ${panelOverlap}px)` } : undefined}
           >
             <table
-              className="h-full w-full table-fixed border-collapse text-sm [&_thead_th]:align-top"
-              style={tableShown ? { ...tableVars, minWidth: compactW } : tableVars}
+              className="w-full table-fixed border-collapse text-sm [&_thead_th]:align-top"
+              style={{
+                ...tableVars,
+                height: tableViewport.h > 0 ? tableViewport.h : '100%',
+                ...(tableShown ? { minWidth: compactW } : {}),
+              }}
               onMouseLeave={() => setTableHover(null)}
             >
               <colgroup>
@@ -4181,6 +4187,7 @@ export default function BoardPage(props: Props) {
                     </th>
                   </tr>
                 )}
+                {(splitHeader || !showGroupRow) && (
                 <tr className="bg-slate-50">
                   {!showGroupRow && (
                   <th
@@ -4305,6 +4312,7 @@ export default function BoardPage(props: Props) {
                   </th>
                   )}
                 </tr>
+                )}
               </thead>
               <tbody>
                 {matrix.developers.map((row) => {
