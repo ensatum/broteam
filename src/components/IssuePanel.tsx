@@ -644,13 +644,13 @@ export default function IssuePanel(props: Props) {
               <CopyIssueButton issueKey={issue.key} url={issue.url} summary={issue.summary} />
               <span className="min-w-0 flex-1" />
               <div className="flex shrink-0 items-center gap-px">
+                {marks}
                 <StoryPointsControl
                   value={issue.storyPoints}
                   disabled={readOnly}
                   onApply={(points) => assignPoints(issue.key, points)}
                   onError={props.onError}
                 />
-                {marks}
                 {traitButtons}
                 {refreshButton}
               </div>
