@@ -4573,7 +4573,7 @@ export default function BoardPage(props: Props) {
                           pendingSelected ? cellSelectedClass : ''
                         } ${rowDropMark(row.developer.id)}`}
                       >
-                        <div className={cellBox} style={pointsPadStyle(rowOpenPoints)}>
+                        <div className={cellBox}>
                         <button
                           className="bro-cell-count bro-count-center absolute inset-0 z-[1] cursor-pointer flex leading-none"
                           onClick={() => selectPending(row.developer.id, row.developer.displayName, rowIssues)}
@@ -4595,7 +4595,7 @@ export default function BoardPage(props: Props) {
                           totalSelected ? cellSelectedClass : ''
                         } ${rowDropMark(row.developer.id)}`}
                       >
-                        <div className={cellBox} style={pointsPadStyle(rowPoints)}>
+                        <div className={cellBox}>
                         <button
                           className="bro-cell-count bro-count-center absolute inset-0 z-[1] flex cursor-pointer leading-none text-slate-400"
                           onClick={() =>
@@ -4662,7 +4662,7 @@ export default function BoardPage(props: Props) {
                             selected ? cellSelectedClass : 'bg-slate-100'
                           } ${columnDropMark(dropKey)}`}
                         >
-                          <div className={totalBox} style={pointsPadStyle(points)}>
+                          <div className={totalBox}>
                             <button
                               className="bro-cell-count bro-count-center absolute inset-0 z-[1] cursor-pointer flex leading-none"
                               style={{ color: slot.group.color }}
@@ -4706,7 +4706,7 @@ export default function BoardPage(props: Props) {
                           selected ? cellSelectedClass : 'bg-slate-100'
                         } ${columnDropMark(c.statusKey)}`}
                       >
-                        <div className={totalBox} style={pointsPadStyle(points)}>
+                        <div className={totalBox}>
                         <button
                           className="bro-cell-count bro-count-center absolute inset-0 z-[1] cursor-pointer flex leading-none"
                           style={{ color: c.color }}
@@ -4740,7 +4740,7 @@ export default function BoardPage(props: Props) {
                       isCellSelected(null, PENDING_COLUMN) ? cellSelectedClass : 'bg-slate-100'
                     }`}
                   >
-                    <div className={totalBox} style={pointsPadStyle(grandOpenPoints)}>
+                    <div className={totalBox}>
                     <button
                       className="bro-cell-count bro-count-center absolute inset-0 z-[1] cursor-pointer flex leading-none"
                       onClick={() =>
@@ -4768,7 +4768,7 @@ export default function BoardPage(props: Props) {
                       isCellSelected(null, null) ? cellSelectedClass : 'bg-slate-100'
                     }`}
                   >
-                    <div className={totalBox} style={pointsPadStyle(grandPoints)}>
+                    <div className={totalBox}>
                     <button
                       className="bro-cell-count bro-count-center bro-count-grand absolute inset-0 z-[1] flex cursor-pointer leading-none text-slate-400"
                       onClick={selectAllTasks}
@@ -4871,11 +4871,6 @@ const BELL_STEPS = [
 function changeBellStyle(count: number): CSSProperties {
   const index = Math.min(BELL_STEPS.length, Math.max(1, count || 1)) - 1;
   return BELL_STEPS[index];
-}
-
-function pointsPadStyle(cell: StoryPointsSum | null): CSSProperties | undefined {
-  if (cell == null) return undefined;
-  return { ['--bro-points-pad' as string]: `${String(cell.sum).length * 0.62 + 0.4}rem` };
 }
 
 function PointsEdge(props: { cell: StoryPointsSum | null }) {

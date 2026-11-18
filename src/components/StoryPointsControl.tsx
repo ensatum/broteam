@@ -9,7 +9,7 @@ export function PointsSumBadge(props: { sum: number; tasks: number }) {
   const color = storyPointColor(Math.round(props.sum / props.tasks));
   const wash = hexTint(color, 0.1);
   return (
-    <InstantTip text="Story Points" className="inline-flex">
+    <InstantTip text="Story Points" className="pointer-events-auto inline-flex">
       <span className="bro-points-sum" style={{ color, backgroundColor: wash, borderColor: wash }}>
         {props.sum}
       </span>
