@@ -38,6 +38,7 @@ import { CopyIssueButton } from './IssuePanel';
 import { LoadBar } from './LoadBar';
 import { RunSpinner, stopMatchingRuns } from './ApiRunControls';
 import { EllipsisTitle, InstantTip } from './InstantTip';
+import { StatusFlowButton } from './StatusFlowButton';
 import { RolePick } from './RolePick';
 import { StoryPointsControl } from './StoryPointsControl';
 import { MarkdownSurface, type MarkdownHandle } from './MarkdownSurface';
@@ -353,6 +354,23 @@ export default function SummaryDock(props: {
       saveSummaryPeopleOrder(next);
       return next;
     });
+  }
+
+  function assignStatus(row: SummaryRow, matrix: BoardMatrix, status: { key: string; display: string }) {
+    props.onMatrix?.(matrix);
+    const issue = findMatrixIssue(matrix, row.key);
+    setRows((prev) =>
+      prev.map((item) =>
+        item.key === row.key
+          ? {
+              ...item,
+              statusKey: issue?.statusKey || status.key,
+              currentStatus: issue?.statusDisplay || status.display,
+              currentStatusAt: issue?.statusStartTime || new Date().toISOString(),
+            }
+          : item,
+      ),
+    );
   }
 
   async function assignPoints(row: SummaryRow, points: number | null) {
@@ -696,6 +714,7 @@ export default function SummaryDock(props: {
               roleBusy={refreshingKey === row.key}
               onAssignRole={(role, person) => void assignRole(row, role, person)}
               onAssignPoints={(points) => assignPoints(row, points)}
+              onAssignStatus={(matrix, status) => assignStatus(row, matrix, status)}
               onPointsError={setError}
               onNoteSave={(body) => {
                 setIssueNotes((prev) => ({ ...prev, [row.key]: body }));
@@ -1219,6 +1238,7 @@ function SummaryCard(props: {
   roleBusy: boolean;
   onAssignRole: (role: IssueRole, person: Developer | null) => void;
   onAssignPoints: (points: number | null) => Promise<void>;
+  onAssignStatus: (matrix: BoardMatrix, status: { key: string; display: string }) => void;
   onPointsError: (message: string | null) => void;
   onNoteSave: (body: string) => void;
   onOpenBoard: (boardLocalId: number) => void;
@@ -1303,9 +1323,15 @@ function SummaryCard(props: {
         <span title="Автор" className="absolute inset-y-0 left-0 w-1.5 bg-emerald-200" aria-hidden />
       )}
       <div className={`flex items-center gap-1.5 px-2 py-1 ${props.open ? 'border-b border-slate-200 bg-slate-50' : ''}`}>
-        <InstantTip text={row.currentStatus || '—'} className="inline-flex shrink-0 items-center">
-          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: props.color }} />
-        </InstantTip>
+        <StatusFlowButton
+          issueKey={row.key}
+          statusKey={row.statusKey || ''}
+          color={props.color}
+          name={row.currentStatus || '—'}
+          colorFor={(key) => statusMarkColor(props.columns, row.boardLocalId, key, '')}
+          onApplied={props.onAssignStatus}
+          onError={props.onPointsError}
+        />
         {row.boardLabel ? (
           <button
             type="button"
@@ -1733,20 +1759,30 @@ function stampValue(iso: string | null | undefined): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-function markerColor(row: SummaryRow, columns: BoardColumnConfig[]): string {
-  const onBoard = columns.filter(
-    (column) => row.boardLocalId == null || column.boardLocalId === row.boardLocalId,
-  );
+function statusMarkColor(
+  columns: BoardColumnConfig[],
+  boardLocalId: number | null | undefined,
+  statusKey: string,
+  display: string,
+): string {
+  const onBoard = columns.filter((column) => boardLocalId == null || column.boardLocalId === boardLocalId);
+  const named = display.trim();
   const match =
-    onBoard.find((column) => sourceStatusesOf(column).some((status) => status.key === row.statusKey)) ||
-    onBoard.find(
-      (column) =>
-        column.statusDisplay === row.currentStatus ||
-        column.alias === row.currentStatus ||
-        column.columnName === row.currentStatus ||
-        sourceStatusesOf(column).some((status) => status.display === row.currentStatus),
-    );
+    onBoard.find((column) => sourceStatusesOf(column).some((status) => status.key === statusKey)) ||
+    (named
+      ? onBoard.find(
+          (column) =>
+            column.statusDisplay === named ||
+            column.alias === named ||
+            column.columnName === named ||
+            sourceStatusesOf(column).some((status) => status.display === named),
+        )
+      : undefined);
   return match?.color || '#94a3b8';
+}
+
+function markerColor(row: SummaryRow, columns: BoardColumnConfig[]): string {
+  return statusMarkColor(columns, row.boardLocalId, row.statusKey || '', row.currentStatus);
 }
 
 function remapSummaryText(name: string, developers: Developer[]): string {

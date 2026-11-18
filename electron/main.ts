@@ -669,13 +669,10 @@ function registerIpc(): void {
   ipcMain.handle('tracker:setStoryPoints', async (_e, issueKey: string, points: number | null) =>
     keepConfirmedIssue(await getClient().setStoryPoints(issueKey, points)),
   );
-  ipcMain.handle(
-    'tracker:executeTransition',
-    async (_e, issueKey: string, transitionId: string) => {
-      await getClient().executeTransition(issueKey, transitionId);
-      return true;
-    },
-  );
+  ipcMain.handle('tracker:executeTransition', async (_e, issueKey: string, transitionId: string) => {
+    await getClient().executeTransition(issueKey, transitionId);
+    return keepConfirmedIssue(await getClient().getIssue(issueKey));
+  });
 
   ipcMain.handle('board:refresh', async (_e, boardLocalId?: number) => {
     armTracker();

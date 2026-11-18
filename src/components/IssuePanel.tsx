@@ -30,6 +30,7 @@ import {
 import IssuePeopleLines from './IssuePeopleLines';
 import { RolePick } from './RolePick';
 import { StoryPointsControl } from './StoryPointsControl';
+import { StatusFlowButton } from './StatusFlowButton';
 import { LoadBar } from './LoadBar';
 import { EllipsisTitle, InstantTip } from './InstantTip';
 import { MarkdownSurface, type MarkdownHandle } from './MarkdownSurface';
@@ -623,7 +624,19 @@ export default function IssuePanel(props: Props) {
               className="flex cursor-pointer items-center gap-1.5 bg-slate-100 px-2 py-1 hover:bg-slate-200"
               onClick={toggleExpand}
             >
-              <StatusMark color={color} name={col?.statusDisplay || issue.statusDisplay || col?.alias || issue.statusKey} />
+              <StatusFlowButton
+                issueKey={issue.key}
+                statusKey={issue.statusKey}
+                color={color}
+                name={col?.statusDisplay || issue.statusDisplay || col?.alias || issue.statusKey}
+                disabled={readOnly}
+                colorFor={(key) => colorByStatus[key] || '#94a3b8'}
+                onApplied={(matrix) => {
+                  invalidateIssueStories(issue.key);
+                  props.onIssueRefreshed(matrix);
+                }}
+                onError={props.onError}
+              />
               <span className="inline-flex shrink-0 items-baseline">
                 <a
                   href={issue.url}
@@ -1069,12 +1082,3 @@ export function NoteEditorPopup(props: {
   );
 }
 
-function StatusMark(props: { color: string; name: string }) {
-  return (
-    <InstantTip text={props.name} className="inline-flex shrink-0">
-      <span className="inline-flex items-center justify-center p-1 -m-1">
-        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: props.color }} />
-      </span>
-    </InstantTip>
-  );
-}

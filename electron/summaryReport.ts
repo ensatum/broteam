@@ -130,6 +130,9 @@ export function writeIssuePeopleIntoSummaries(issue: {
   reviewerDisplay: string | null;
   qaDisplay: string | null;
   storyPoints?: number | null;
+  statusKey?: string;
+  statusDisplay?: string;
+  statusStartTime?: string | null;
 }): void {
   for (const stored of listSummarySources()) {
     let payload: SummaryCachePayload;
@@ -142,11 +145,17 @@ export function writeIssuePeopleIntoSummaries(issue: {
     if (index < 0) continue;
     const prev = payload.issues[index];
     const nextPoints = 'storyPoints' in issue ? issue.storyPoints ?? null : prev.storyPoints;
+    const nextStatusKey = issue.statusKey || prev.statusKey;
+    const nextStatusDisplay = issue.statusDisplay || prev.statusDisplay;
+    const nextStatusStart = issue.statusStartTime !== undefined ? issue.statusStartTime : prev.statusStartTime;
     if (
       prev.assigneeDisplay === issue.assigneeDisplay &&
       prev.reviewerDisplay === issue.reviewerDisplay &&
       prev.qaDisplay === issue.qaDisplay &&
-      prev.storyPoints === nextPoints
+      prev.storyPoints === nextPoints &&
+      prev.statusKey === nextStatusKey &&
+      prev.statusDisplay === nextStatusDisplay &&
+      prev.statusStartTime === nextStatusStart
     ) {
       continue;
     }
@@ -155,6 +164,9 @@ export function writeIssuePeopleIntoSummaries(issue: {
       assigneeDisplay: issue.assigneeDisplay ?? '',
       reviewerDisplay: issue.reviewerDisplay ?? '',
       qaDisplay: issue.qaDisplay ?? '',
+      statusKey: nextStatusKey,
+      statusDisplay: nextStatusDisplay,
+      statusStartTime: nextStatusStart,
       ...('storyPoints' in issue ? { storyPoints: nextPoints } : {}),
     };
     saveSummarySource(stored.boardLocalId, {

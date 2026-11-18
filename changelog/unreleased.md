@@ -6,3 +6,4 @@ Included changes since last build:
 - chore(build): sync the unreleased forecast
 - fix(settings): make board layout drag follow the pointer
 - feat(board): show a story point sum in each cell
+- feat(board): change a task status from its marker
