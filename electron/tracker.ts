@@ -128,12 +128,25 @@ function workflowBindings(workflows: unknown): Array<{ id: string; types: Workfl
 
 export class TrackerClient {
   private statusTypes: Map<string, string> | null = null;
+  private fields = new Map<string, { name: string; type: string }>();
 
   constructor(private connection: TrackerConnection) {}
 
   updateConnection(connection: TrackerConnection): void {
     this.connection = connection;
     this.statusTypes = null;
+    this.fields.clear();
+  }
+
+  private async fieldMeta(id: string): Promise<{ name: string; type: string }> {
+    const cached = this.fields.get(id);
+    if (cached) return cached;
+    const field = await this.request<{ name?: string; schema?: { type?: string } }>(
+      `/v2/fields/${encodeURIComponent(id)}`,
+    );
+    const meta = { name: (field.name || '').trim() || id, type: (field.schema?.type || '').trim() };
+    this.fields.set(id, meta);
+    return meta;
   }
 
   private headers(): Record<string, string> {
@@ -788,13 +801,14 @@ export class TrackerClient {
   }
 
   async getTransitions(issueId: string): Promise<
-    Array<{ id: string; display: string; toKey?: string; toDisplay?: string }>
+    Array<{ id: string; display: string; toKey?: string; toDisplay?: string; screenId?: string }>
   > {
     const data = await this.request<
       Array<{
         id: string;
         display: string;
         to?: { key?: string; display?: string };
+        screen?: { id?: string | number };
       }>
     >(`/v2/issues/${issueId}/transitions`);
     return data.map((t) => ({
@@ -802,13 +816,41 @@ export class TrackerClient {
       display: t.display,
       toKey: t.to?.key,
       toDisplay: t.to?.display,
+      screenId: t.screen?.id != null ? String(t.screen.id) : undefined,
     }));
   }
 
-  async executeTransition(issueId: string, transitionId: string): Promise<void> {
+  async transitionFields(screenId: string): Promise<Array<{ id: string; name: string; type: string }>> {
+    const screen = await this.request<{
+      elements?: Array<{ required?: boolean; field?: { id?: string; display?: string } }>;
+    }>(`/v2/screens/${encodeURIComponent(screenId)}`);
+    const fields: Array<{ id: string; name: string; type: string }> = [];
+    for (const element of screen.elements || []) {
+      const id = (element.field?.id || '').trim();
+      if (!element.required || !id) continue;
+      const meta = await this.fieldMeta(id);
+      fields.push({
+        id,
+        name: (element.field?.display || '').trim() || meta.name || id,
+        type: meta.type,
+      });
+    }
+    return fields;
+  }
+
+  async executeTransition(
+    issueId: string,
+    transitionId: string,
+    values?: Record<string, string>,
+  ): Promise<void> {
+    const body: Record<string, string> = {};
+    for (const [key, value] of Object.entries(values || {})) {
+      const trimmed = value.trim();
+      if (trimmed) body[key] = trimmed;
+    }
     await this.request(`/v2/issues/${issueId}/transitions/${transitionId}/_execute`, {
       method: 'POST',
-      body: {},
+      body,
     });
   }
 

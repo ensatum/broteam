@@ -95,7 +95,8 @@ export type ElectronApi = {
   getBoardSprints: (boardId: number) => Promise<TrackerSprint[]>;
   getTransitions: (
     issueKey: string,
-  ) => Promise<Array<{ id: string; display: string; toKey?: string; toDisplay?: string }>>;
+  ) => Promise<Array<{ id: string; display: string; toKey?: string; toDisplay?: string; screenId?: string }>>;
+  transitionFields: (screenId: string) => Promise<Array<{ id: string; name: string; type: string }>>;
   getIssueStory: (issueKey: string) => Promise<{
     description: string;
     commentText: string;
@@ -113,7 +114,11 @@ export type ElectronApi = {
   refreshIssue: (issueKey: string) => Promise<BoardMatrix>;
   setIssueRole: (issueKey: string, role: 'assignee' | 'reviewer' | 'qa', login: string | null) => Promise<BoardMatrix>;
   setStoryPoints: (issueKey: string, points: number | null) => Promise<BoardMatrix>;
-  executeTransition: (issueKey: string, transitionId: string) => Promise<BoardMatrix>;
+  executeTransition: (
+    issueKey: string,
+    transitionId: string,
+    values?: Record<string, string>,
+  ) => Promise<BoardMatrix>;
   refreshBoard: (boardLocalId?: number) => Promise<BoardMatrix>;
   getLastBoard: (boardLocalId?: number) => Promise<BoardMatrix | null>;
   readLog: () => Promise<string>;
@@ -302,13 +307,14 @@ const api: ElectronApi = {
   listStatusTypes: () => ipcRenderer.invoke('tracker:statusTypes'),
   getBoardSprints: (boardId) => ipcRenderer.invoke('tracker:getBoardSprints', boardId),
   getTransitions: (issueKey) => ipcRenderer.invoke('tracker:getTransitions', issueKey),
+  transitionFields: (screenId) => ipcRenderer.invoke('tracker:transitionFields', screenId),
   getIssueStory: (issueKey) => ipcRenderer.invoke('tracker:issueStory', issueKey),
   addIssueComment: (issueKey, text) => ipcRenderer.invoke('tracker:addIssueComment', issueKey, text),
     refreshIssue: (issueKey) => ipcRenderer.invoke('tracker:refreshIssue', issueKey),
     setIssueRole: (issueKey, role, login) => ipcRenderer.invoke('tracker:setIssueRole', issueKey, role, login),
     setStoryPoints: (issueKey, points) => ipcRenderer.invoke('tracker:setStoryPoints', issueKey, points),
-  executeTransition: (issueKey, transitionId) =>
-    ipcRenderer.invoke('tracker:executeTransition', issueKey, transitionId),
+  executeTransition: (issueKey, transitionId, values) =>
+    ipcRenderer.invoke('tracker:executeTransition', issueKey, transitionId, values),
   refreshBoard: (boardLocalId) => ipcRenderer.invoke('board:refresh', boardLocalId),
   getLastBoard: (boardLocalId) => ipcRenderer.invoke('board:getLast', boardLocalId),
   readLog: () => ipcRenderer.invoke('log:read'),
