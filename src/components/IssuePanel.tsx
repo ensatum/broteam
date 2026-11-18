@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import { sourceStatusesOf, viewColumns } from '@shared/boardColumns';
 import type { BoardColumnConfig, BoardMatrix, Developer, SavedBoard, TrackerIssue } from '@shared/types';
@@ -32,6 +32,8 @@ import { RolePick } from './RolePick';
 import { StoryPointsControl } from './StoryPointsControl';
 import { LoadBar } from './LoadBar';
 import { InstantTip } from './InstantTip';
+import { MarkdownSurface, type MarkdownHandle } from './MarkdownSurface';
+import { QuickComment } from './QuickComment';
 import { sortIssues, type ListSort } from './ListSort';
 import {
   invalidateIssueStories,
@@ -202,6 +204,7 @@ export default function IssuePanel(props: Props) {
     return map;
   }, [viewedColumns]);
   const [menuKey, setMenuKey] = useState<string | null>(null);
+  const noteSurface = useRef<MarkdownHandle>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [draft, setDraft] = useState('');
   const [linkDraft, setLinkDraft] = useState<number[]>([]);
@@ -351,7 +354,8 @@ export default function IssuePanel(props: Props) {
   const listNotice = onlyDoneHidden || hiddenByFilters || selection.issues.length === 0;
 
   async function saveNote(issueKey: string) {
-    await props.onNoteChange(issueKey, draft);
+    const text = (noteSurface.current?.read() ?? draft).replace(/\s+$/, '');
+    await props.onNoteChange(issueKey, text);
     const saved = await window.api.setIssueNoteLinks(issueKey, linkDraft);
     setLinks((prev) => ({ ...prev, [issueKey]: saved }));
     setMenuKey(null);
@@ -506,8 +510,13 @@ export default function IssuePanel(props: Props) {
           const openNote = (e: MouseEvent<Element>) => {
             e.stopPropagation();
             if (isMenuOpen) {
-              setMenuKey(null);
-              setMenuPos(null);
+              const text = (noteSurface.current?.read() ?? draft).replace(/\s+$/, '');
+              if (!text.trim()) {
+                setMenuKey(null);
+                setMenuPos(null);
+                return;
+              }
+              void saveNote(issue.key);
               return;
             }
             setDraft(note);
@@ -580,6 +589,8 @@ export default function IssuePanel(props: Props) {
           const notePopup = isMenuOpen && menuPos && (
             <NoteEditorPopup
               pos={menuPos}
+              surfaceRef={noteSurface}
+              draftKey={issue.key}
               draft={draft}
               people={people}
               linkedIds={linkDraft}
@@ -746,7 +757,12 @@ export default function IssuePanel(props: Props) {
                     )}
                     {(hasNote || linkedNames.length > 0) && (
                       <div className={shownChange ? 'mt-1' : ''}>
-                        {hasNote && <div className="whitespace-pre-wrap leading-snug text-red-800">{note}</div>}
+                        {hasNote && (
+                          <div
+                            className="markdown-body text-xs leading-snug text-red-800"
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(note) }}
+                          />
+                        )}
                         {linkedNames.length > 0 && (
                           <div className="mt-0.5 text-[10px] text-slate-500">{linkedNames.join(', ')}</div>
                         )}
@@ -757,7 +773,7 @@ export default function IssuePanel(props: Props) {
                         )}
                       </div>
                     )}
-                    <IssueStory issueKey={issue.key} />
+                    <IssueStory issueKey={issue.key} readOnly={props.readOnly} />
                   </div>
                 </div>
               </div>
@@ -770,7 +786,7 @@ export default function IssuePanel(props: Props) {
   );
 }
 
-function IssueStory(props: { issueKey: string }) {
+function IssueStory(props: { issueKey: string; readOnly?: boolean }) {
   const storyRev = useIssueStoryRevision();
   const [story, setStory] = useState(() => readIssueStory(props.issueKey));
   const [failed, setFailed] = useState(false);
@@ -865,6 +881,7 @@ function IssueStory(props: { issueKey: string }) {
           ) : (
             <div className="text-slate-400">Нет комментария</div>
           )}
+          {!props.readOnly && <QuickComment issueKey={props.issueKey} />}
         </div>
       )}
     </div>
@@ -944,6 +961,8 @@ function createdLabel(issue: TrackerIssue): string {
 export function NoteEditorPopup(props: {
   pos: { top: number; left: number };
   draft: string;
+  draftKey?: string;
+  surfaceRef?: Ref<MarkdownHandle>;
   people?: Developer[];
   linkedIds?: number[];
   onDraftChange: (v: string) => void;
@@ -976,11 +995,14 @@ export function NoteEditorPopup(props: {
       style={{ top: pos.top, left: pos.left }}
       onClick={(e) => e.stopPropagation()}
     >
-      <textarea
-        className="w-full rounded border border-slate-300 px-2 py-1.5 text-xs min-h-[96px]"
-        value={props.draft}
-        onChange={(e) => props.onDraftChange(e.target.value)}
-        autoFocus
+      <div className="mb-1 text-[11px] font-medium text-slate-700">Примечание</div>
+      <MarkdownSurface
+        ref={props.surfaceRef}
+        draft={props.draft}
+        onDraft={props.onDraftChange}
+        resetKey={props.draftKey}
+        minRows={4}
+        placeholder="Примечание к задаче"
       />
       {props.people && props.onLinkedChange && (
         <div className="mt-1.5 flex flex-wrap items-center gap-1">

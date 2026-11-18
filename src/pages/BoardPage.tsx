@@ -3940,7 +3940,7 @@ export default function BoardPage(props: Props) {
             style={panelOverlap > 0 ? { width: `calc(100% - ${panelOverlap}px)` } : undefined}
           >
             <table
-              className="h-full w-full table-fixed border-collapse text-sm"
+              className="h-full w-full table-fixed border-collapse text-sm [&_thead_th]:align-top"
               style={tableShown ? { ...tableVars, minWidth: compactW } : tableVars}
               onMouseLeave={() => setTableHover(null)}
             >
@@ -3955,7 +3955,7 @@ export default function BoardPage(props: Props) {
                       className={`sticky top-0 left-0 z-20 relative h-px overflow-hidden border-0 bg-slate-50 p-px ${nameColW} text-left ${shade('head', 'name')}`}
                       onMouseEnter={() => setTableHover({ row: 'head', col: 'name' })}
                     >
-                      <HeaderChip className="flex items-center justify-center">{tableCorner()}</HeaderChip>
+                      <HeaderChip className="flex items-start justify-center">{tableCorner()}</HeaderChip>
                     </th>
                     {slots.map((slot) => {
                       const grouped =
@@ -3978,11 +3978,11 @@ export default function BoardPage(props: Props) {
                             key={`group-${grouped.id}`}
                             colSpan={members.length}
                             title={grouped.name}
-                            className="sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-left align-bottom"
+                            className="sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-left align-top"
                           >
-                            <HeaderChip color={grouped.color || '#64748b'} className="bro-group-head grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-1 py-0.5">
+                            <HeaderChip color={grouped.color || '#64748b'} className="bro-group-head flex items-start justify-between gap-1 px-1 py-0.5">
                               <span
-                                className={`min-w-0 truncate text-[11px] font-semibold ${reorderMode && !readOnly ? 'cursor-grab' : 'cursor-pointer'}`}
+                                className={`min-w-0 flex-1 truncate text-[11px] font-semibold ${reorderMode && !readOnly ? 'cursor-grab' : 'cursor-pointer'}`}
                                 draggable={reorderMode && !readOnly}
                                 onClick={() => void toggleGroup(grouped)}
                                 onDragStart={(event) => {
@@ -4003,27 +4003,29 @@ export default function BoardPage(props: Props) {
                               >
                                 <ColumnAliasLabel alias={grouped.name} color={grouped.color} />
                               </span>
-                              <InstantTip text="Свернуть группу" place="bottom" className="inline-flex justify-self-center">
+                              <span className="flex shrink-0 items-center gap-0.5">
                                 <button
                                   type="button"
-                                  className="bro-group-fold inline-flex h-4 w-4 items-center justify-center rounded border"
-                                  style={groupFoldStyle(grouped.color || '#64748b')}
-                                  onClick={() => void toggleGroup(grouped)}
+                                  title={skipped ? 'Выключить автопропуск изменений' : 'Автопропуск изменений для всей группы'}
+                                  className={`bro-group-bell inline-flex h-4 w-4 shrink-0 items-center justify-center ${
+                                    skipped ? 'text-red-600 hover:text-red-800' : 'text-slate-300 hover:text-slate-500'
+                                  }`}
+                                  onMouseDown={(event) => event.stopPropagation()}
+                                  onClick={() => toggleGroupAutoSkip(grouped)}
                                 >
-                                  <ChevronUpIcon className="h-3 w-3" />
+                                  <BellOffIcon className="h-3 w-3" />
                                 </button>
-                              </InstantTip>
-                              <button
-                                type="button"
-                                title={skipped ? 'Выключить автопропуск изменений' : 'Автопропуск изменений для всей группы'}
-                                className={`bro-group-bell justify-self-end inline-flex h-4 w-4 shrink-0 items-center justify-center ${
-                                  skipped ? 'text-red-600 hover:text-red-800' : 'text-slate-300 hover:text-slate-500'
-                                }`}
-                                onMouseDown={(event) => event.stopPropagation()}
-                                onClick={() => toggleGroupAutoSkip(grouped)}
-                              >
-                                <BellOffIcon className="h-3 w-3" />
-                              </button>
+                                <InstantTip text="Свернуть группу" place="bottom" className="inline-flex">
+                                  <button
+                                    type="button"
+                                    className="bro-group-fold inline-flex h-4 w-4 items-center justify-center rounded border"
+                                    style={groupFoldStyle(grouped.color || '#64748b')}
+                                    onClick={() => void toggleGroup(grouped)}
+                                  >
+                                    <ChevronUpIcon className="h-3 w-3" />
+                                  </button>
+                                </InstantTip>
+                              </span>
                             </HeaderChip>
                           </th>
                         );
@@ -4043,8 +4045,8 @@ export default function BoardPage(props: Props) {
                             onDrop={(event) => dropColumn(event, dropKey)}
                             className={`sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-left ${columnDropMark(dropKey)}`}
                           >
-                            <HeaderChip color={slot.group.color || '#64748b'} className="bro-group-head flex flex-col justify-center gap-0.5 px-1 py-0.5">
-                              <span className="grid grid-cols-[1rem_minmax(0,1fr)_1rem] items-center">
+                            <HeaderChip color={slot.group.color || '#64748b'} className="bro-group-head flex flex-col items-stretch justify-start gap-0.5 px-1 py-0.5">
+                              <span className="flex items-center justify-end gap-0.5">
                                 <button
                                   type="button"
                                   title={skipped ? 'Выключить автопропуск изменений' : 'Автопропуск изменений для всей группы'}
@@ -4056,7 +4058,7 @@ export default function BoardPage(props: Props) {
                                 >
                                   <BellOffIcon className="h-3 w-3" />
                                 </button>
-                                <InstantTip text="Развернуть группу" place="bottom" className="inline-flex justify-self-center">
+                                <InstantTip text="Развернуть группу" place="bottom" className="inline-flex">
                                   <button
                                     type="button"
                                     className="bro-group-fold inline-flex h-4 w-4 items-center justify-center rounded border"
@@ -4102,8 +4104,8 @@ export default function BoardPage(props: Props) {
                           onDrop={(event) => dropColumn(event, c.statusKey)}
                           className={`sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-left font-semibold text-[11px] leading-tight text-black ${columnDropMark(c.statusKey)}`}
                         >
-                          <HeaderChip color={c.color} className="flex flex-col justify-center gap-0.5 px-1 py-0.5">
-                            <span className="flex items-center gap-0.5">
+                          <HeaderChip color={c.color} className="flex flex-col justify-start gap-0.5 px-1 py-0.5">
+                            <span className="flex items-center justify-end gap-0.5">
                               <button
                                 type="button"
                                 title={autoSkipColumns.has(c.statusKey) ? 'Выключить автопропуск изменений' : 'Автопропуск изменений'}
@@ -4163,7 +4165,7 @@ export default function BoardPage(props: Props) {
                         title="Задачи не в финальном статусе"
                         className="sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-center font-bold text-[11px] whitespace-nowrap"
                       >
-                        <HeaderChip className="flex items-center justify-center px-1 py-0.5">
+                        <HeaderChip className="flex items-start justify-center px-1 py-0.5">
                           <span className="block truncate">FLOW</span>
                         </HeaderChip>
                       </th>
@@ -4173,7 +4175,7 @@ export default function BoardPage(props: Props) {
                       title="Все задачи"
                       className="sticky top-0 z-10 h-px border-0 bg-slate-50 p-px text-center font-bold text-[11px] whitespace-nowrap"
                     >
-                      <HeaderChip className="flex items-center justify-center px-1 py-0.5">
+                      <HeaderChip className="flex items-start justify-center px-1 py-0.5">
                         <span className="block truncate">TOTAL</span>
                       </HeaderChip>
                     </th>
@@ -4185,7 +4187,7 @@ export default function BoardPage(props: Props) {
                     className={`sticky ${headSticky} left-0 z-20 relative h-px overflow-hidden border-0 bg-slate-50 p-px ${nameColW} text-left ${shade('head', 'name')}`}
                     onMouseEnter={() => setTableHover({ row: 'head', col: 'name' })}
                   >
-                    <HeaderChip className="flex items-center justify-center">{tableCorner()}</HeaderChip>
+                    <HeaderChip className="flex items-start justify-center">{tableCorner()}</HeaderChip>
                   </th>
                   )}
                   {slots.map((slot) => {
@@ -4220,8 +4222,8 @@ export default function BoardPage(props: Props) {
                       onMouseEnter={() => setTableHover({ row: 'head', col: c.statusKey })}
                       className={`relative sticky ${headSticky} z-10 h-px border-0 bg-slate-50 p-px text-left font-semibold text-[11px] leading-tight text-black ${shade('head', c.statusKey)} ${columnDropMark(c.statusKey)}`}
                     >
-                      <HeaderChip color={c.color} className="flex flex-col justify-center gap-0.5 px-1 py-0.5">
-                        <span className="flex items-center gap-0.5">
+                      <HeaderChip color={c.color} className="flex flex-col justify-start gap-0.5 px-1 py-0.5">
+                        <span className="flex items-center justify-end gap-0.5">
                         <button
                           type="button"
                           title={
@@ -4286,7 +4288,7 @@ export default function BoardPage(props: Props) {
                     onMouseEnter={() => setTableHover({ row: 'head', col: PENDING_COLUMN })}
                     className={`relative sticky ${headSticky} z-10 h-px border-0 bg-slate-50 p-px text-center font-bold text-[11px] whitespace-nowrap ${shade('head', PENDING_COLUMN)}`}
                   >
-                    <HeaderChip className="flex items-center justify-center px-1 py-0.5">
+                    <HeaderChip className="flex items-start justify-center px-1 py-0.5">
                       <span className="block truncate">FLOW</span>
                     </HeaderChip>
                   </th>
@@ -4297,7 +4299,7 @@ export default function BoardPage(props: Props) {
                     onMouseEnter={() => setTableHover({ row: 'head', col: 'total' })}
                     className={`relative sticky ${headSticky} z-10 h-px border-0 bg-slate-50 p-px text-center font-bold text-[11px] whitespace-nowrap ${shade('head', 'total')}`}
                   >
-                    <HeaderChip className="flex items-center justify-center px-1 py-0.5">
+                    <HeaderChip className="flex items-start justify-center px-1 py-0.5">
                       <span className="block truncate">TOTAL</span>
                     </HeaderChip>
                   </th>

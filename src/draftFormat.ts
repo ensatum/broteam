@@ -60,10 +60,7 @@ export function handleRichHotkey(event: KeyboardEvent): boolean {
 }
 
 export function htmlToMarkdown(root: HTMLElement): string {
-  return renderBlocks(root, 0)
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return renderBlocks(root, 0).replace(/[ \t]+\n/g, '\n').trim();
 }
 
 function toggleWrap(value: string, start: number, end: number, open: string, close: string): TextEdit {
@@ -160,11 +157,16 @@ function renderBlocks(node: Node, indent: number): string {
       return;
     }
     if (/^H[1-3]$/.test(tag)) {
-      out += `${'#'.repeat(Number(tag[1]))} ${inlineMarkdown(child).trim()}\n\n`;
+      out += `${'#'.repeat(Number(tag[1]))} ${inlineMarkdown(child).trim()}\n`;
       return;
     }
     if (tag === 'DIV' || tag === 'P') {
       const inner = renderBlocks(child, indent).replace(/\n+$/, '');
+      if (!inner.trim()) {
+        if (out && !out.endsWith('\n')) out += '\n';
+        out += '\n';
+        return;
+      }
       if (out && !out.endsWith('\n')) out += '\n';
       out += `${inner}\n`;
       return;

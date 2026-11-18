@@ -157,6 +157,21 @@ const NOTE_TONE: Record<string, string> = {
   alert: 'yfm-note-alert',
 };
 
+function blankBetween(lines: string[], index: number): boolean {
+  let before = false;
+  for (let i = 0; i < index; i += 1) {
+    if (lines[i].trim()) {
+      before = true;
+      break;
+    }
+  }
+  if (!before) return false;
+  for (let i = index + 1; i < lines.length; i += 1) {
+    if (lines[i].trim()) return true;
+  }
+  return false;
+}
+
 /** Markdown plus the Yandex blocks Tracker stores in descriptions and comments. */
 export function renderMarkdown(source: string): string {
   const lines = decodeEntities(source).replace(/\r\n/g, '\n').split('\n');
@@ -202,6 +217,7 @@ export function renderMarkdown(source: string): string {
       continue;
     }
     if (!trimmed) {
+      if (blankBetween(lines, i)) out.push('<p><br></p>');
       i += 1;
       continue;
     }

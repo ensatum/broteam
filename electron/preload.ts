@@ -100,6 +100,13 @@ export type ElectronApi = {
     commentAuthor: string;
     commentAt: string;
   }>;
+  addIssueComment: (issueKey: string, text: string) => Promise<{
+    description: string;
+    commentText: string;
+    commentUrl: string;
+    commentAuthor: string;
+    commentAt: string;
+  }>;
   refreshIssue: (issueKey: string) => Promise<BoardMatrix>;
   setIssueRole: (issueKey: string, role: 'assignee' | 'reviewer' | 'qa', login: string | null) => Promise<BoardMatrix>;
   setStoryPoints: (issueKey: string, points: number | null) => Promise<BoardMatrix>;
@@ -291,6 +298,7 @@ const api: ElectronApi = {
   getBoardSprints: (boardId) => ipcRenderer.invoke('tracker:getBoardSprints', boardId),
   getTransitions: (issueKey) => ipcRenderer.invoke('tracker:getTransitions', issueKey),
   getIssueStory: (issueKey) => ipcRenderer.invoke('tracker:issueStory', issueKey),
+  addIssueComment: (issueKey, text) => ipcRenderer.invoke('tracker:addIssueComment', issueKey, text),
     refreshIssue: (issueKey) => ipcRenderer.invoke('tracker:refreshIssue', issueKey),
     setIssueRole: (issueKey, role, login) => ipcRenderer.invoke('tracker:setIssueRole', issueKey, role, login),
     setStoryPoints: (issueKey, points) => ipcRenderer.invoke('tracker:setStoryPoints', issueKey, points),

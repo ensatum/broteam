@@ -18,6 +18,8 @@ export function readIssueStory(issueKey: string): IssueStoryText | null {
 
 export function writeIssueStory(issueKey: string, story: IssueStoryText) {
   cache.set(issueKey, story);
+  revision += 1;
+  listeners.forEach((listener) => listener());
 }
 
 export function invalidateIssueStories(issueKey?: string) {

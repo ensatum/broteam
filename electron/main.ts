@@ -618,6 +618,9 @@ function registerIpc(): void {
   ipcMain.handle('tracker:issueStory', async (_e, issueKey: string) => {
     return getClient().getIssueStory(issueKey);
   });
+  ipcMain.handle('tracker:addIssueComment', async (_e, issueKey: string, text: string) => {
+    return getClient().addIssueComment(issueKey, text);
+  });
   ipcMain.handle('tracker:refreshIssue', async (_e, issueKey: string) => {
     const issue = await getClient().getIssue(issueKey);
     const activeId = getActiveBoardLocalId();

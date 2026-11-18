@@ -1,9 +1,8 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { sourceStatusesOf } from '@shared/boardColumns';
 import { PARTICIPANT_ROLES, type BoardColumnConfig, type BoardMatrix, type Developer, type SavedBoard, type TrackerIssue } from '@shared/types';
 import { issueRoleLabel, trackerUserRef, type IssueRole } from '@shared/rolePick';
-import { applyMarkdownHotkey, handleRichHotkey, hotkeyId, htmlToMarkdown } from '../draftFormat';
 import { renderMarkdown } from '../markdown';
 import {
   shiftIsoDate,
@@ -26,9 +25,7 @@ import {
   CalendarIcon,
   CheckSquareIcon,
   EditIcon,
-  EyeIcon,
   CastIcon,
-  HashIcon,
   IconActionButton,
   NoteClipboardButton,
   TargetIcon,
@@ -43,6 +40,8 @@ import { RunSpinner, stopMatchingRuns } from './ApiRunControls';
 import { InstantTip } from './InstantTip';
 import { RolePick } from './RolePick';
 import { StoryPointsControl } from './StoryPointsControl';
+import { MarkdownSurface, type MarkdownHandle } from './MarkdownSurface';
+import { QuickComment } from './QuickComment';
 import { SortMenu, type ListSortDir } from './ListSort';
 import {
   invalidateIssueStories,
@@ -1231,6 +1230,7 @@ function SummaryCard(props: {
   const taken = row.takenAt || row.receivedAt;
   const sprints = sprintNames(row);
   const [editingNote, setEditingNote] = useState(false);
+  const noteRef = useRef<MarkdownHandle>(null);
   const storyRev = useIssueStoryRevision();
   const seenStoryRev = useRef(storyRev);
   const [story, setStory] = useState(() => readIssueStory(row.key));
@@ -1350,7 +1350,17 @@ function SummaryCard(props: {
             onClick={(event) => {
               event.stopPropagation();
               if (!props.open) props.onToggle();
-              setEditingNote(true);
+              if (!editingNote) {
+                setEditingNote(true);
+                return;
+              }
+              const text = noteRef.current?.read() ?? props.note;
+              if (!text.trim()) {
+                setEditingNote(false);
+                return;
+              }
+              props.onNoteSave(text.replace(/\s+$/, ''));
+              setEditingNote(false);
             }}
           />
           <IconActionButton
@@ -1522,6 +1532,7 @@ function SummaryCard(props: {
               ) : (
                 <div className="text-slate-400">Нет комментария</div>
               )}
+              <QuickComment issueKey={row.key} />
             </div>
           )}
           {storyPart === 'stats' && (
@@ -1546,6 +1557,7 @@ function SummaryCard(props: {
       )}
       {showNote && (
         <SummaryNote
+          ref={noteRef}
           note={props.note}
           editing={editingNote}
           onEdit={() => setEditingNote(true)}
@@ -1877,153 +1889,71 @@ function summaryFrame(row: SummaryRow, person: Developer | null, columns: BoardC
   return 'plain';
 }
 
-function SummaryNote(props: {
-  note: string;
-  editing: boolean;
-  onEdit: () => void;
-  onSave: (body: string) => void;
-}) {
+const SummaryNote = forwardRef(function SummaryNote(
+  props: {
+    note: string;
+    editing: boolean;
+    onEdit: () => void;
+    onSave: (body: string) => void;
+  },
+  ref: Ref<MarkdownHandle>,
+) {
+  const surface = useRef<MarkdownHandle>(null);
   const [draft, setDraft] = useState(props.note);
-  const [view, setView] = useState<'preview' | 'markdown'>('preview');
-  const previewRef = useRef<HTMLDivElement | null>(null);
-  const areaRef = useRef<HTMLTextAreaElement | null>(null);
-  const skip = useRef(false);
-  const pending = useRef<{ start: number; end: number } | null>(null);
-  const wasEditing = useRef(false);
-
-  useEffect(() => {
-    if (props.editing && !wasEditing.current) {
-      setDraft(props.note);
-      setView(props.note.trim() ? 'preview' : 'markdown');
-    }
-    wasEditing.current = props.editing;
-  }, [props.editing, props.note]);
-
-  useLayoutEffect(() => {
-    const sel = pending.current;
-    const area = areaRef.current;
-    if (!sel || !area) return;
-    area.selectionStart = sel.start;
-    area.selectionEnd = sel.end;
-    pending.current = null;
-  });
-
-  useLayoutEffect(() => {
-    const node = previewRef.current;
-    if (!props.editing || view !== 'preview' || !node) return;
-    if (skip.current) {
-      skip.current = false;
-      return;
-    }
-    node.innerHTML = renderMarkdown(draft);
-  }, [props.editing, view, draft]);
-
-  function source(): string {
-    if (props.editing && view === 'preview' && previewRef.current) return htmlToMarkdown(previewRef.current);
-    return draft;
+  const editingNow = useRef(props.editing);
+  if (editingNow.current !== props.editing) {
+    editingNow.current = props.editing;
+    if (props.editing) setDraft(props.note);
   }
-
-  function onMarkdownKey(event: KeyboardEvent<HTMLTextAreaElement>) {
-    const key = hotkeyId(event);
-    if (!key) return;
-    if (key !== 'Tab' && !['b', 'i', 'u', 's', 'e'].includes(key)) return;
-    const next = applyMarkdownHotkey(draft, event.currentTarget.selectionStart, event.currentTarget.selectionEnd, key, event.shiftKey);
-    if (!next) return;
-    event.preventDefault();
-    setDraft(next.value);
-    pending.current = { start: next.start, end: next.end };
-  }
-
+  useImperativeHandle(ref, () => ({
+    read: () => (props.editing ? surface.current?.read() ?? draft : props.note).replace(/\s+$/, ''),
+  }));
+  const saveButton = (
+    <button
+      type="button"
+      title={props.editing ? 'Сохранить' : 'Редактировать'}
+      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-white ${
+        props.editing
+          ? 'border-emerald-600 bg-emerald-600 hover:border-emerald-700 hover:bg-emerald-700'
+          : 'border-sky-600 bg-sky-600 hover:border-sky-700 hover:bg-sky-700'
+      }`}
+      onClick={() => {
+        if (!props.editing) {
+          props.onEdit();
+          return;
+        }
+        props.onSave((surface.current?.read() ?? draft).replace(/\s+$/, ''));
+      }}
+    >
+      {props.editing ? <CheckSquareIcon className="h-3.5 w-3.5" /> : <EditIcon className="h-3.5 w-3.5" />}
+    </button>
+  );
   return (
-    <div className="mt-1.5 flex items-stretch gap-1.5 border-t border-slate-100 px-2 pb-2 pt-1.5" onClick={(event) => event.stopPropagation()}>
-      <div className="flex shrink-0 flex-col items-center gap-1">
-        <button
-          type="button"
-          title={props.editing ? 'Сохранить' : 'Редактировать'}
-          className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-white ${
-            props.editing
-              ? 'border-emerald-600 bg-emerald-600 hover:border-emerald-700 hover:bg-emerald-700'
-              : 'border-sky-600 bg-sky-600 hover:border-sky-700 hover:bg-sky-700'
-          }`}
-          onClick={() => {
-            if (!props.editing) {
-              props.onEdit();
-              return;
-            }
-            props.onSave(source().replace(/\s+$/, ''));
-          }}
-        >
-          {props.editing ? <CheckSquareIcon className="h-3.5 w-3.5" /> : <EditIcon className="h-3.5 w-3.5" />}
-        </button>
-        {props.editing && (
-          <NoteModeSwitch
-            value={view}
-            onChange={(next) => {
-              if (view === 'preview' && next === 'markdown' && previewRef.current) {
-                setDraft(htmlToMarkdown(previewRef.current));
-              }
-              setView(next);
-            }}
+    <div className="mt-1.5 border-t border-slate-100 px-2 pb-2 pt-1.5" onClick={(event) => event.stopPropagation()}>
+      <div className="text-[11px] font-medium text-slate-700">Примечание</div>
+      {props.editing ? (
+        <div className="pt-1">
+          <MarkdownSurface
+            ref={surface}
+            draft={draft}
+            onDraft={setDraft}
+            resetKey="edit"
+            placeholder="Примечание к задаче"
+            leading={saveButton}
           />
-        )}
-      </div>
-      <div className="flex min-h-full min-w-0 flex-1">
-      {props.editing && view === 'markdown' ? (
-        <textarea
-          ref={areaRef}
-          rows={Math.max(1, draft.split('\n').length)}
-          className="m-0 block min-h-full w-full resize-none rounded border border-slate-300 bg-white p-1 text-xs leading-snug outline-none"
-          value={draft}
-          placeholder="Примечание к задаче"
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={onMarkdownKey}
-        />
-      ) : props.editing ? (
-        <div
-          ref={previewRef}
-          className="summary-note markdown-body m-0 min-h-full w-full rounded border border-slate-300 bg-white p-1 text-xs leading-snug outline-none"
-          contentEditable
-          suppressContentEditableWarning
-          onInput={() => {
-            if (!previewRef.current) return;
-            skip.current = true;
-            setDraft(htmlToMarkdown(previewRef.current));
-          }}
-          onKeyDown={(event) => {
-            if (!handleRichHotkey(event.nativeEvent)) return;
-            if (!previewRef.current) return;
-            skip.current = true;
-            setDraft(htmlToMarkdown(previewRef.current));
-          }}
-        />
+        </div>
       ) : (
-        <div
-          className="summary-note markdown-body p-0 text-xs leading-snug"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(props.note) }}
-        />
+        <div className="mt-1 flex items-stretch gap-1.5">
+          {saveButton}
+          <div
+            className="summary-note markdown-body min-w-0 flex-1 p-0 text-xs leading-snug"
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(props.note) }}
+          />
+        </div>
       )}
-      </div>
     </div>
   );
-}
-
-function NoteModeSwitch(props: {
-  value: 'preview' | 'markdown';
-  onChange: (value: 'preview' | 'markdown') => void;
-}) {
-  const item = (active: boolean) =>
-    `inline-flex items-center justify-center ${active ? 'bg-slate-300 text-slate-700' : 'text-slate-500 hover:bg-slate-50'}`;
-  return (
-    <div className="flex flex-col overflow-hidden rounded-md border border-slate-300">
-      <button type="button" title="Просмотр" className={`${item(props.value === 'preview')} h-6 w-6`} onClick={() => props.onChange('preview')}>
-        <EyeIcon className="h-3.5 w-3.5" />
-      </button>
-      <button type="button" title="Markdown" className={`${item(props.value === 'markdown')} h-6 w-6`} onClick={() => props.onChange('markdown')}>
-        <HashIcon className="h-3.5 w-3.5" />
-      </button>
-    </div>
-  );
-}
+});
 
 function periodDayCount(from: string | null | undefined, to: string | null | undefined): number | null {
   if (!from) return null;

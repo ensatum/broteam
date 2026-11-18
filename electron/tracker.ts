@@ -743,6 +743,20 @@ export class TrackerClient {
     };
   }
 
+  async addIssueComment(issueId: string, text: string): Promise<{
+    description: string;
+    commentText: string;
+    commentUrl: string;
+    commentAuthor: string;
+    commentAt: string;
+  }> {
+    await this.request(`/v2/issues/${encodeURIComponent(issueId)}/comments`, {
+      method: 'POST',
+      body: { text },
+    });
+    return this.getIssueStory(issueId);
+  }
+
   /**
    * Oldest page first. The comments method ignores `page` and continues after `id`.
    * A full page still carries `Link: rel="next"`; the page after the last one is empty.
