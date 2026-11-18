@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type Ref } from 'react';
 import { createPortal } from 'react-dom';
-import { sourceStatusesOf, viewColumns } from '@shared/boardColumns';
+import { issueStatusName, sourceStatusesOf, viewColumns } from '@shared/boardColumns';
 import type { BoardColumnConfig, BoardMatrix, Developer, SavedBoard, TrackerIssue } from '@shared/types';
 import { resolvePersonDisplayName } from '@shared/personDisplay';
 import { issueRoleLabel, trackerUserRef, type IssueRole } from '@shared/rolePick';
@@ -654,7 +654,7 @@ export default function IssuePanel(props: Props) {
                 issueKey={issue.key}
                 statusKey={issue.statusKey}
                 color={color}
-                name={col?.statusDisplay || issue.statusDisplay || col?.alias || issue.statusKey}
+                name={issueStatusName(issue, col)}
                 disabled={readOnly}
                 colorFor={(key) => colorByStatus[key] || '#94a3b8'}
                 onApplied={(matrix) => {
@@ -767,7 +767,7 @@ export default function IssuePanel(props: Props) {
                   <div className="w-44 shrink-0 leading-snug">
                     <div className="text-[10px] text-slate-500">Создано: {createdLabel(issue) || '—'}</div>
                     <div className="mt-0.5 text-[10px] text-slate-500">
-                      {col?.statusDisplay || issue.statusDisplay}
+                      {issueStatusName(issue, col)}
                       {issue.daysInStatus != null ? ` · ${formatDays(issue.daysInStatus)}` : ''}
                     </div>
                     <IssuePeopleLines

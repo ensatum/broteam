@@ -54,6 +54,24 @@ export function sourceStatusesOf(column: {
   return [{ key: column.statusKey, display: column.statusDisplay || column.statusKey }];
 }
 
+/** The task's own status. A column may gather several statuses under one name. */
+export function issueStatusName(
+  issue: { statusKey: string; statusDisplay?: string | null },
+  column?: {
+    statusKey: string;
+    statusDisplay?: string;
+    alias?: string;
+    sourceStatuses?: SourceStatus[];
+  } | null,
+): string {
+  const own = (issue.statusDisplay || '').trim();
+  if (own) return own;
+  const listed = column
+    ? sourceStatusesOf(column).find((status) => status.key === issue.statusKey)
+    : undefined;
+  return listed?.display || column?.statusDisplay || column?.alias || issue.statusKey;
+}
+
 export function columnForStatus<T extends { statusKey: string; statusDisplay?: string; sourceStatuses?: SourceStatus[] }>(
   columns: T[],
   statusKey: string,

@@ -181,18 +181,6 @@ async function mergeOpenIssuesWithoutSprint(
   }
 }
 
-function issueQueueKey(issueKey: string): string {
-  const dash = issueKey.lastIndexOf('-');
-  return (dash > 0 ? issueKey.slice(0, dash) : issueKey).trim().toLowerCase();
-}
-
-/** Issue keys are numbered inside a queue. That queue is the board the task belongs to. */
-function belongsToBoardQueue(issueKey: string, queueKey: string): boolean {
-  const queue = queueKey.trim().toLowerCase();
-  if (!queue) return true;
-  return issueQueueKey(issueKey) === queue;
-}
-
 function boardHasNoSprints(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return message.includes('не может быть спринтов');
@@ -562,12 +550,13 @@ export function patchIssueInMatrix(matrix: BoardMatrix, issue: TrackerIssue): Bo
     requiredBoardId == null ||
     !(resolvedIssue.boardIds?.length) ||
     resolvedIssue.boardIds.includes(requiredBoardId);
-  const onHomeQueue = belongsToBoardQueue(issue.key, boardConfig.queueKey);
   const wasPresent = matrix.developers.some((row) =>
     Object.values(row.issuesByColumn).some((items) => items.some((item) => item.key === issue.key)),
   );
-  const placeOnBoard =
-    statusToColumn.has(resolvedIssue.statusKey) && onHomeQueue && (onConfiguredBoard || wasPresent);
+  // A task from another queue stays when it is on this board. The table hides
+  // it until «Перекрёстные» is on. A task already on the matrix stays through
+  // a point refresh.
+  const placeOnBoard = statusToColumn.has(resolvedIssue.statusKey) && (onConfiguredBoard || wasPresent);
 
   const prevSprintDates = new Map(
     matrix.sprintCounts.map((s) => [
