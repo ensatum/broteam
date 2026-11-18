@@ -593,7 +593,34 @@ a[href],
 
 .bro-cell-mark,
 .bro-cell-selected {
+  --bro-edge-x: 0px;
+  --bro-edge-y: 0px;
+  --bro-edge-r: 0px;
+  --bro-edge-b: 0px;
+}
+
+.bro-cell-selected {
   z-index: 8;
+}
+
+.bro-cell-mark {
+  z-index: 9;
+}
+
+.bro-edge-left {
+  --bro-edge-x: 3px;
+}
+
+.bro-edge-top {
+  --bro-edge-y: 3px;
+}
+
+.bro-edge-right {
+  --bro-edge-r: 3px;
+}
+
+.bro-edge-bottom {
+  --bro-edge-b: 3px;
 }
 
 .bro-cell-mark {
@@ -618,30 +645,26 @@ a[href],
   inset: -3px;
   z-index: 6;
   pointer-events: none;
-  background:
-    linear-gradient(var(--bro-corner), var(--bro-corner)) left top / 7px 3px no-repeat,
-    linear-gradient(var(--bro-corner), var(--bro-corner)) left top / 3px 7px no-repeat,
-    linear-gradient(var(--bro-corner), var(--bro-corner)) right top / 7px 3px no-repeat,
-    linear-gradient(var(--bro-corner), var(--bro-corner)) right top / 3px 7px no-repeat,
-    linear-gradient(var(--bro-corner), var(--bro-corner)) left bottom / 7px 3px no-repeat,
-    linear-gradient(var(--bro-corner), var(--bro-corner)) left bottom / 3px 7px no-repeat,
-    linear-gradient(var(--bro-corner), var(--bro-corner)) right bottom / 7px 3px no-repeat,
-    linear-gradient(var(--bro-corner), var(--bro-corner)) right bottom / 3px 7px no-repeat;
-}
-
-.bro-edge-top.bro-cell-mark::before,
-.bro-edge-top.bro-cell-selected::before {
-  background-position: left 3px, left 3px, right 3px, right 3px, left bottom, left bottom, right bottom, right bottom;
-}
-
-.bro-edge-left.bro-cell-mark::before,
-.bro-edge-left.bro-cell-selected::before {
-  background-position: 3px top, 3px top, right top, right top, 3px bottom, 3px bottom, right bottom, right bottom;
-}
-
-.bro-edge-top.bro-edge-left.bro-cell-mark::before,
-.bro-edge-top.bro-edge-left.bro-cell-selected::before {
-  background-position: 3px 3px, 3px 3px, right 3px, right 3px, 3px bottom, 3px bottom, right bottom, right bottom;
+  background-repeat: no-repeat;
+  background-image:
+    linear-gradient(var(--bro-corner), var(--bro-corner)),
+    linear-gradient(var(--bro-corner), var(--bro-corner)),
+    linear-gradient(var(--bro-corner), var(--bro-corner)),
+    linear-gradient(var(--bro-corner), var(--bro-corner)),
+    linear-gradient(var(--bro-corner), var(--bro-corner)),
+    linear-gradient(var(--bro-corner), var(--bro-corner)),
+    linear-gradient(var(--bro-corner), var(--bro-corner)),
+    linear-gradient(var(--bro-corner), var(--bro-corner));
+  background-size: 7px 3px, 3px 7px, 7px 3px, 3px 7px, 7px 3px, 3px 7px, 7px 3px, 3px 7px;
+  background-position:
+    left var(--bro-edge-x) top var(--bro-edge-y),
+    left var(--bro-edge-x) top var(--bro-edge-y),
+    right var(--bro-edge-r) top var(--bro-edge-y),
+    right var(--bro-edge-r) top var(--bro-edge-y),
+    left var(--bro-edge-x) bottom var(--bro-edge-b),
+    left var(--bro-edge-x) bottom var(--bro-edge-b),
+    right var(--bro-edge-r) bottom var(--bro-edge-b),
+    right var(--bro-edge-r) bottom var(--bro-edge-b);
 }
 
 @keyframes bro-load {

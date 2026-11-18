@@ -4378,6 +4378,8 @@ export default function BoardPage(props: Props) {
                   const rowFixed = row.developer.id < 0;
                   const away = row.developer.onVacation;
                   const edgeTop = rowIndex === 0 ? 'bro-edge-top' : '';
+                  const edgeRight = 'bro-edge-right';
+                  const soleColumn = slots.length === 0 && !showPending;
                   return (
                     <tr key={row.developer.id} className={away ? 'bg-slate-200 opacity-50' : 'bg-white'}>
                       <td
@@ -4612,7 +4614,7 @@ export default function BoardPage(props: Props) {
                         onDragOver={(e) => allowRowDrop(e, row.developer.id)}
                         onDrop={(e) => dropRow(e, row.developer.id)}
                         onMouseEnter={() => setTableHover({ row: row.developer.id, col: PENDING_COLUMN })}
-                        className={`relative border-b border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${edgeTop} ${shade(row.developer.id, PENDING_COLUMN)} ${
+                        className={`relative border-b border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${edgeTop} ${slots.length === 0 ? 'bro-edge-left' : ''} ${shade(row.developer.id, PENDING_COLUMN)} ${
                           pendingSelected ? cellSelectedClass : ''
                         } ${rowDropMark(row.developer.id)}`}
                       >
@@ -4634,7 +4636,7 @@ export default function BoardPage(props: Props) {
                         onDragOver={(e) => allowRowDrop(e, row.developer.id)}
                         onDrop={(e) => dropRow(e, row.developer.id)}
                         onMouseEnter={() => setTableHover({ row: row.developer.id, col: 'total' })}
-                        className={`relative border-b border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${edgeTop} ${shade(row.developer.id, 'total')} ${
+                        className={`relative border-b border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${edgeTop} ${soleColumn ? 'bro-edge-left' : ''} ${edgeRight} ${shade(row.developer.id, 'total')} ${
                           totalSelected ? cellSelectedClass : ''
                         } ${rowDropMark(row.developer.id)}`}
                       >
@@ -4684,6 +4686,7 @@ export default function BoardPage(props: Props) {
                   </td>
                   {slots.map((slot, slotIndex) => {
                     const edgeLeft = slotIndex === 0 ? 'bro-edge-left' : '';
+                    const edgeBottom = 'bro-edge-bottom';
                     if (slot.kind === 'group') {
                       const key = groupStatusKey(slot.group.id);
                       const selected = isCellSelected(null, key);
@@ -4702,7 +4705,7 @@ export default function BoardPage(props: Props) {
                           onDragOver={(e) => allowColumnDrop(e, dropKey)}
                           onDrop={(e) => dropColumn(e, dropKey)}
                           onMouseEnter={() => setTableHover({ row: 'total', col: key })}
-                          className={`relative border-t border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${edgeLeft} ${shade('total', key)} ${
+                          className={`relative border-t border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${edgeLeft} ${edgeBottom} ${shade('total', key)} ${
                             selected ? cellSelectedClass : 'bg-slate-100'
                           } ${columnDropMark(dropKey)}`}
                         >
@@ -4746,7 +4749,7 @@ export default function BoardPage(props: Props) {
                         onDragOver={(e) => allowColumnDrop(e, c.statusKey)}
                         onDrop={(e) => dropColumn(e, c.statusKey)}
                         onMouseEnter={() => setTableHover({ row: 'total', col: c.statusKey })}
-                        className={`relative border-t border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${edgeLeft} ${shade('total', c.statusKey)} ${
+                        className={`relative border-t border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${edgeLeft} ${edgeBottom} ${shade('total', c.statusKey)} ${
                           selected ? cellSelectedClass : 'bg-slate-100'
                         } ${columnDropMark(c.statusKey)}`}
                       >
@@ -4780,7 +4783,7 @@ export default function BoardPage(props: Props) {
                   {showPending && (
                   <td
                     onMouseEnter={() => setTableHover({ row: 'total', col: PENDING_COLUMN })}
-                    className={`relative border-t border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${shade('total', PENDING_COLUMN)} ${
+                    className={`relative border-t border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] bro-edge-bottom ${slots.length === 0 ? 'bro-edge-left' : ''} ${shade('total', PENDING_COLUMN)} ${
                       isCellSelected(null, PENDING_COLUMN) ? cellSelectedClass : 'bg-slate-100'
                     }`}
                   >
@@ -4808,7 +4811,7 @@ export default function BoardPage(props: Props) {
                   )}
                   <td
                     onMouseEnter={() => setTableHover({ row: 'total', col: 'total' })}
-                    className={`relative border-t border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] ${shade('total', 'total')} ${
+                    className={`relative border-t border-slate-200 p-0 [border-right:1px_dotted_#cbd5e1] bro-edge-bottom bro-edge-right ${slots.length === 0 && !showPending ? 'bro-edge-left' : ''} ${shade('total', 'total')} ${
                       isCellSelected(null, null) ? cellSelectedClass : 'bg-slate-100'
                     }`}
                   >
