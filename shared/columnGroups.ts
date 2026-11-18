@@ -193,6 +193,85 @@ export function moveGroupSection(
   return flattenSections(shiftSection(sections, fromAt, toAt, where));
 }
 
+export type BoardDrag = { kind: 'column'; key: string } | { kind: 'group'; id: number };
+
+/** Index in the list after the dragged block is taken out. */
+export type BoardSlot =
+  | { kind: 'section'; index: number }
+  | { kind: 'member'; groupId: number; index: number };
+
+export function boardDragOrigin(
+  columns: BoardColumnConfig[],
+  groups: ColumnGroup[],
+  drag: BoardDrag,
+): BoardSlot | null {
+  const sections = columnSections(columns, groups);
+  if (drag.kind === 'group') {
+    const index = sections.findIndex((section) => section.kind === 'group' && section.group.id === drag.id);
+    return index < 0 ? null : { kind: 'section', index };
+  }
+  for (const section of sections) {
+    if (section.kind === 'column' && section.column.statusKey === drag.key) {
+      return { kind: 'section', index: sections.indexOf(section) };
+    }
+    if (section.kind !== 'group') continue;
+    const index = section.columns.findIndex((column) => column.statusKey === drag.key);
+    if (index >= 0) return { kind: 'member', groupId: section.group.id, index };
+  }
+  return null;
+}
+
+function sameSlot(drag: BoardDrag, slot: BoardSlot, sections: ColumnSection[]): boolean {
+  if (drag.kind === 'group') {
+    if (slot.kind !== 'section') return false;
+    const fromAt = sections.findIndex((section) => section.kind === 'group' && section.group.id === drag.id);
+    return fromAt === slot.index;
+  }
+  if (slot.kind === 'section') {
+    const fromAt = sections.findIndex((section) => section.kind === 'column' && section.column.statusKey === drag.key);
+    return fromAt === slot.index;
+  }
+  const host = sections.find((section) => section.kind === 'group' && section.group.id === slot.groupId);
+  if (!host || host.kind !== 'group') return false;
+  return host.columns.findIndex((column) => column.statusKey === drag.key) === slot.index;
+}
+
+/** Drop a column or a group at a gap in the settings list. */
+export function applyBoardDrop(
+  columns: BoardColumnConfig[],
+  groups: ColumnGroup[],
+  drag: BoardDrag,
+  slot: BoardSlot,
+): { columns: BoardColumnConfig[]; groups: ColumnGroup[] } | null {
+  const sections = columnSections(columns, groups);
+  if (sameSlot(drag, slot, sections)) return null;
+  if (drag.kind === 'group') {
+    if (slot.kind !== 'section') return null;
+    const fromAt = sections.findIndex((section) => section.kind === 'group' && section.group.id === drag.id);
+    if (fromAt < 0) return null;
+    const next = [...sections];
+    const [item] = next.splice(fromAt, 1);
+    next.splice(Math.max(0, Math.min(slot.index, next.length)), 0, item);
+    return flattenSections(next);
+  }
+  const taken = takeColumn(sections, drag.key);
+  if (!taken) return null;
+  if (slot.kind === 'section') {
+    taken.sections.splice(Math.max(0, Math.min(slot.index, taken.sections.length)), 0, {
+      kind: 'column',
+      column: { ...taken.column, groupId: null },
+    });
+    return flattenSections(taken.sections);
+  }
+  const host = taken.sections.find((section) => section.kind === 'group' && section.group.id === slot.groupId);
+  if (!host || host.kind !== 'group') return null;
+  host.columns.splice(Math.max(0, Math.min(slot.index, host.columns.length)), 0, {
+    ...taken.column,
+    groupId: slot.groupId,
+  });
+  return flattenSections(taken.sections);
+}
+
 /** Move a whole group so it sits just before the column it was dropped on. */
 export function moveGroupBefore(
   columns: BoardColumnConfig[],

@@ -4,3 +4,4 @@ Included changes since last build:
 - fix(board): fade older tooltips when several are open
 - docs(board): note how stacked tooltips fade
 - chore(build): sync the unreleased forecast
+- fix(settings): make board layout drag follow the pointer

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent, type ReactNode, type RefObject } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import type {
   BoardColumnConfig,
@@ -14,12 +14,13 @@ import type {
 import type { AppUpdateProgress } from '@shared/appUpdate';
 import { freshBoardColumns } from '@shared/boardColumns';
 import {
+  applyBoardDrop,
+  boardDragOrigin,
   coalesceColumns,
   columnSections,
-  moveColumnIntoGroup,
-  moveGroupSection,
-  placeColumnBesideGroup,
-  placeColumnFree,
+  type BoardDrag,
+  type BoardSlot,
+  type ColumnSection,
 } from '@shared/columnGroups';
 import { excludedTypeKeys, typeIsExcluded } from '@shared/issueTypeFilter';
 import { DEFAULT_GITHUB, DEVELOPER_TONE_PRESETS, PARTICIPANT_ROLES, hexTint, normalizeDeveloperTone } from '@shared/types';
@@ -27,11 +28,6 @@ import { sessionLog } from '../sessionLog';
 import ColorField from '../components/ColorField';
 import { ActivityIcon, ArrowDownIcon, ArrowRightIcon, BellOffIcon, DownloadIcon, InfoIcon, MoveIcon, PlusCircleIcon, PlusIcon, RefreshIcon, TrashIcon, UploadIcon } from '../components/Icons';
 import { DEFAULT_WORK_SCHEDULE, type WorkSchedule } from '../autoRefresh';
-
-type SectionDrop =
-  | { target: 'column'; key: string; where: 'above' | 'below' }
-  | { target: 'group'; id: number; where: 'above' | 'below' }
-  | { target: 'into'; id: number };
 
 type SettingsTab = 'app' | 'integrations' | 'people' | 'boards' | 'backup';
 type BackupChoice = {
@@ -90,11 +86,19 @@ export default function SettingsPage(props: Props) {
   const [groupDraft, setGroupDraft] = useState(props.groups);
   const nextGroupId = useRef(-1);
   const columnDraftHold = useRef<BoardColumnConfig[] | null>(null);
-  const dragColumnKey = useRef<string | null>(null);
-  const dragGroupId = useRef<number | null>(null);
-  const [sectionDrop, setSectionDrop] = useState<SectionDrop | null>(null);
-  const [draggingColumn, setDraggingColumn] = useState<string | null>(null);
-  const [draggingGroup, setDraggingGroup] = useState<number | null>(null);
+  const listNodes = useRef(new Map<number, HTMLDivElement>());
+  const dragReady = useRef(false);
+  const dragStop = useRef<(() => void) | null>(null);
+  const ghostRef = useRef<HTMLDivElement>(null);
+  useEffect(() => () => dragStop.current?.(), []);
+  const [columnDrag, setColumnDrag] = useState<{
+    boardId: number;
+    drag: BoardDrag;
+    slot: BoardSlot;
+    label: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const [userQuery, setUserQuery] = useState('');
   const [userResults, setUserResults] = useState<TrackerUser[]>([]);
   const [savedBoards, setSavedBoards] = useState<SavedBoard[]>(props.boards);
@@ -612,6 +616,73 @@ export default function SettingsPage(props: Props) {
     setColDraft((prev) => [...prev.filter((column) => column.boardLocalId !== boardId), ...nextBoardColumns]);
     setGroupDraft((prev) => [...prev.filter((group) => group.boardLocalId !== boardId), ...nextGroups]);
   }
+  const stageLayoutRef = useRef(stageBoardLayout);
+  stageLayoutRef.current = stageBoardLayout;
+  const draftsRef = useRef({ columns: colDraft, groups: groupDraft });
+  draftsRef.current = { columns: colDraft, groups: groupDraft };
+  useLayoutEffect(() => {
+    dragReady.current = columnDrag != null;
+  }, [columnDrag]);
+
+  function beginColumnGrip(
+    event: ReactPointerEvent<HTMLElement>,
+    boardId: number,
+    drag: BoardDrag,
+    label: string,
+    columns: BoardColumnConfig[],
+    groups: ColumnGroup[],
+  ) {
+    if (event.button !== 0 || busy) return;
+    const origin = boardDragOrigin(columns, groups, drag);
+    const list = listNodes.current.get(boardId);
+    if (!origin || !list) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const pointerId = event.pointerId;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let started = false;
+    let slot = origin;
+    const finish = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      dragStop.current = null;
+      if (started) {
+        const freshColumns = draftsRef.current.columns.filter((column) => column.boardLocalId === boardId);
+        const freshGroups = draftsRef.current.groups.filter((group) => group.boardLocalId === boardId);
+        const moved = applyBoardDrop(freshColumns, freshGroups, drag, slot);
+        if (moved) stageLayoutRef.current(boardId, moved.columns, moved.groups);
+      }
+      dragReady.current = false;
+      setColumnDrag(null);
+    };
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      if (!started) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 4) return;
+        started = true;
+        document.body.style.cursor = 'grabbing';
+        document.body.style.userSelect = 'none';
+        setColumnDrag({ boardId, drag, slot: origin, label, x: ev.clientX, y: ev.clientY });
+        return;
+      }
+      if (ghostRef.current) {
+        ghostRef.current.style.transform = `translate(${ev.clientX + 14}px, ${ev.clientY + 12}px)`;
+      }
+      if (!dragReady.current) return;
+      const next = slotFromPointer(list, drag.kind, ev.clientX, ev.clientY);
+      if (!next || sameBoardSlot(slot, next)) return;
+      slot = next;
+      setColumnDrag((prev) => (prev ? { ...prev, slot: next, x: ev.clientX, y: ev.clientY } : prev));
+    };
+    dragStop.current = finish;
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+  }
 
   async function saveBoardGroups(boardId: number, nextBoardColumns: BoardColumnConfig[], nextGroups: ColumnGroup[]) {
     const saved = await window.api.saveColumnGroups(
@@ -1043,6 +1114,17 @@ export default function SettingsPage(props: Props) {
 
       {section === 'boards' && (
       <>
+      {columnDrag &&
+        createPortal(
+          <div
+            ref={ghostRef}
+            className="pointer-events-none fixed left-0 top-0 z-[10060] max-w-sm rounded-md border border-sky-600 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-lg"
+            style={{ transform: `translate(${columnDrag.x + 14}px, ${columnDrag.y + 12}px)` }}
+          >
+            {columnDrag.label}
+          </div>,
+          document.body,
+        )}
       <SchedulePanel
         autoSaveTime={props.autoSaveTime}
         minutes={props.autoRefreshMinutes}
@@ -1274,91 +1356,114 @@ export default function SettingsPage(props: Props) {
                     <PlusCircleIcon className="h-4 w-4" />
                     Добавить группу
                   </button>
-                  {columnSections(boardColumns, boardGroups).map((section) =>
-                    section.kind === 'column' ? (
-                      <ColumnEditorRow
-                        key={`${section.column.boardLocalId}-${section.column.statusKey}`}
-                        column={section.column}
-                        columns={boardColumns}
-                        busy={busy}
-                        dragKey={dragColumnKey}
-                        dropMark={sectionDrop}
-                        dragging={draggingColumn === section.column.statusKey}
-                        dragGroupId={dragGroupId}
-                        onDragState={setDraggingColumn}
-                        onHover={setSectionDrop}
-                        onChange={(next) =>
-                          setColDraft((prev) =>
-                            prev.map((item) =>
-                              item.boardLocalId === next.boardLocalId && item.statusKey === next.statusKey
-                                ? next
-                                : item,
-                            ),
-                          )
-                        }
-                        onMove={(from, to) =>
-                          stageBoardLayout(board.id, placeColumnFree(boardColumns, from, to), boardGroups)
-                        }
-                      />
-                    ) : (
-                      <ColumnGroupCard
-                        key={`group-${section.group.id}`}
-                        group={section.group}
-                        columns={boardColumns}
-                        groups={boardGroups}
-                        busy={busy}
-                        dragGroupId={dragGroupId}
-                        dragColumnKey={dragColumnKey}
-                        dropMark={sectionDrop}
-                        dragging={draggingGroup === section.group.id}
-                        onHover={setSectionDrop}
-                        onDragState={setDraggingGroup}
-                        onColumnDragEnd={() => setDraggingColumn(null)}
-                        onSave={async (nextColumns, nextGroups) => {
-                          stageBoardLayout(board.id, nextColumns, nextGroups);
-                        }}
-                        onError={(error) => publishErr('boards', error)}
-                      >
-                        {section.columns.map((column) => (
-                          <ColumnEditorRow
-                            key={`${column.boardLocalId}-${column.statusKey}`}
-                            column={column}
-                            columns={boardColumns}
-                            busy={busy}
-                            dragKey={dragColumnKey}
-                            dropMark={sectionDrop}
-                            dragging={draggingColumn === column.statusKey}
-                            dragGroupId={dragGroupId}
-                            onDragState={setDraggingColumn}
-                            onHover={setSectionDrop}
-                            onChange={(next) =>
-                              setColDraft((prev) =>
-                                prev.map((item) =>
-                                  item.boardLocalId === next.boardLocalId && item.statusKey === next.statusKey
-                                    ? next
-                                    : item,
-                                ),
-                              )
-                            }
-                            onMove={(from, to) =>
-                              stageBoardLayout(board.id, placeColumnFree(boardColumns, from, to), boardGroups)
-                            }
-                            onLeaveGroup={() =>
-                              stageBoardLayout(
-                                board.id,
-                                coalesceColumns(
-                                  boardColumns.map((item) =>
-                                    item.statusKey === column.statusKey ? { ...item, groupId: null } : item,
-                                  ),
-                                ),
-                                boardGroups,
-                              )
-                            }
-                          />
+                  <div
+                    ref={(node) => {
+                      if (node) listNodes.current.set(board.id, node);
+                      else listNodes.current.delete(board.id);
+                    }}
+                    className="flex flex-col gap-2"
+                  >
+                  {(() => {
+                    const draggingHere = columnDrag?.boardId === board.id ? columnDrag : null;
+                    const visual = sectionsWithout(columnSections(boardColumns, boardGroups), draggingHere?.drag ?? null);
+                    const slot = draggingHere?.slot ?? null;
+                    const changeColumn = (next: BoardColumnConfig) =>
+                      setColDraft((prev) =>
+                        prev.map((item) =>
+                          item.boardLocalId === next.boardLocalId && item.statusKey === next.statusKey ? next : item,
+                        ),
+                      );
+                    return (
+                      <>
+                        {slot?.kind === 'section' && slot.index === 0 && <InsertBar />}
+                        {visual.map((section, index) => (
+                          <Fragment key={section.kind === 'column' ? `col-${section.column.statusKey}` : `group-${section.group.id}`}>
+                            {section.kind === 'column' ? (
+                              <div data-board-section data-section-index={index}>
+                                <ColumnEditorRow
+                                  column={section.column}
+                                  busy={busy}
+                                  onGripDown={(event) =>
+                                    beginColumnGrip(
+                                      event,
+                                      board.id,
+                                      { kind: 'column', key: section.column.statusKey },
+                                      section.column.alias || section.column.statusKey,
+                                      boardColumns,
+                                      boardGroups,
+                                    )
+                                  }
+                                  onChange={changeColumn}
+                                />
+                              </div>
+                            ) : (
+                              <div data-board-section data-section-index={index}>
+                                <ColumnGroupCard
+                                  group={section.group}
+                                  columns={boardColumns}
+                                  groups={boardGroups}
+                                  busy={busy}
+                                  onGripDown={(event) =>
+                                    beginColumnGrip(
+                                      event,
+                                      board.id,
+                                      { kind: 'group', id: section.group.id },
+                                      section.group.name || 'Группа',
+                                      boardColumns,
+                                      boardGroups,
+                                    )
+                                  }
+                                  onSave={async (nextColumns, nextGroups) => {
+                                    stageBoardLayout(board.id, nextColumns, nextGroups);
+                                  }}
+                                  onError={(error) => publishErr('boards', error)}
+                                >
+                                  {slot?.kind === 'member' && slot.groupId === section.group.id && slot.index === 0 && <InsertBar />}
+                                  {section.columns.map((column, columnIndex) => (
+                                    <Fragment key={`${column.boardLocalId}-${column.statusKey}`}>
+                                      <div data-member>
+                                        <ColumnEditorRow
+                                          column={column}
+                                          busy={busy}
+                                          onGripDown={(event) =>
+                                            beginColumnGrip(
+                                              event,
+                                              board.id,
+                                              { kind: 'column', key: column.statusKey },
+                                              column.alias || column.statusKey,
+                                              boardColumns,
+                                              boardGroups,
+                                            )
+                                          }
+                                          onChange={changeColumn}
+                                          onLeaveGroup={() =>
+                                            stageBoardLayout(
+                                              board.id,
+                                              coalesceColumns(
+                                                boardColumns.map((item) =>
+                                                  item.statusKey === column.statusKey ? { ...item, groupId: null } : item,
+                                                ),
+                                              ),
+                                              boardGroups,
+                                            )
+                                          }
+                                        />
+                                      </div>
+                                      {slot?.kind === 'member' &&
+                                        slot.groupId === section.group.id &&
+                                        slot.index === columnIndex + 1 && <InsertBar />}
+                                    </Fragment>
+                                  ))}
+                                </ColumnGroupCard>
+                              </div>
+                            )}
+                            {slot?.kind === 'section' && slot.index === index + 1 && <InsertBar />}
+                          </Fragment>
                         ))}
-                      </ColumnGroupCard>
-                    ),
-                  )}
+                      </>
+                    );
+                  })()}
+                  </div>
                   {!boardColumns.length && (
                     <div className="text-sm text-slate-500">Колонки ещё не загружены</div>
                   )}
@@ -1892,9 +1997,64 @@ function sameColumnStructure(saved: BoardColumnConfig[], next: BoardColumnConfig
   return true;
 }
 
-function dropHalf(node: HTMLElement, clientY: number): 'above' | 'below' {
-  const rect = node.getBoundingClientRect();
-  return clientY < rect.top + rect.height / 2 ? 'above' : 'below';
+function InsertBar() {
+  return <div className="pointer-events-none h-[5px] shrink-0 rounded-sm bg-[#0284c7]" aria-hidden />;
+}
+
+function sectionsWithout(sections: ColumnSection[], drag: BoardDrag | null): ColumnSection[] {
+  if (!drag) return sections;
+  if (drag.kind === 'group') {
+    return sections.filter((section) => !(section.kind === 'group' && section.group.id === drag.id));
+  }
+  return sections.flatMap((section): ColumnSection[] => {
+    if (section.kind === 'column') return section.column.statusKey === drag.key ? [] : [section];
+    return [{ ...section, columns: section.columns.filter((column) => column.statusKey !== drag.key) }];
+  });
+}
+
+function sameBoardSlot(a: BoardSlot, b: BoardSlot): boolean {
+  if (a.kind === 'section' && b.kind === 'section') return a.index === b.index;
+  if (a.kind === 'member' && b.kind === 'member') return a.groupId === b.groupId && a.index === b.index;
+  return false;
+}
+
+function slotFromPointer(list: HTMLElement, kind: BoardDrag['kind'], clientX: number, clientY: number): BoardSlot | null {
+  if (kind === 'column') {
+    const member = memberSlot(list, clientX, clientY);
+    if (member) return member;
+  }
+  return sectionSlot(list, clientY);
+}
+
+function memberSlot(list: HTMLElement, clientX: number, clientY: number): BoardSlot | null {
+  for (const card of list.querySelectorAll<HTMLElement>('[data-group-card]')) {
+    const body = card.querySelector<HTMLElement>('[data-group-body]');
+    if (!body) continue;
+    const rect = body.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) continue;
+    const rows = [...body.querySelectorAll<HTMLElement>('[data-member]')].filter((row) => row.dataset.dragging !== 'true');
+    let index = rows.length;
+    for (let i = 0; i < rows.length; i += 1) {
+      const row = rows[i].getBoundingClientRect();
+      if (clientY < row.top + row.height / 2) {
+        index = i;
+        break;
+      }
+    }
+    return { kind: 'member', groupId: Number(card.dataset.groupId), index };
+  }
+  return null;
+}
+
+function sectionSlot(list: HTMLElement, clientY: number): BoardSlot {
+  const cards = [...list.querySelectorAll<HTMLElement>('[data-board-section]')].filter(
+    (card) => card.dataset.dragging !== 'true',
+  );
+  for (const card of cards) {
+    const rect = card.getBoundingClientRect();
+    if (clientY < rect.top + rect.height / 2) return { kind: 'section', index: Number(card.dataset.sectionIndex) };
+  }
+  return { kind: 'section', index: cards.length };
 }
 
 function ColumnGroupCard(props: {
@@ -1902,13 +2062,7 @@ function ColumnGroupCard(props: {
   columns: BoardColumnConfig[];
   groups: ColumnGroup[];
   busy: boolean;
-  dragGroupId: RefObject<number | null>;
-  dragColumnKey: { current: string | null };
-  dropMark: SectionDrop | null;
-  dragging: boolean;
-  onHover: (mark: SectionDrop | null) => void;
-  onDragState: (id: number | null) => void;
-  onColumnDragEnd: () => void;
+  onGripDown: (event: ReactPointerEvent<HTMLElement>) => void;
   onSave: (columns: BoardColumnConfig[], groups: ColumnGroup[]) => Promise<void>;
   onError: (error: unknown) => void;
   children: ReactNode;
@@ -1921,85 +2075,21 @@ function ColumnGroupCard(props: {
       props.onError(error);
     }
   }
-  const hasMembers = props.columns.some((column) => column.groupId === group.id);
-  const into = props.dropMark?.target === 'into' && props.dropMark.id === group.id;
-  const mark = into
-    ? 'ring-2 ring-inset ring-sky-500'
-    : props.dropMark?.target === 'group' && props.dropMark.id === group.id
-      ? props.dropMark.where === 'below'
-        ? 'bro-insert-below'
-        : 'bro-insert-above'
-      : '';
   return (
           <div
-            className={`space-y-2 rounded border-2 p-2 ${mark} ${props.dragging ? 'bro-drag-source' : ''}`}
+            data-group-card
+            data-group-id={group.id}
+            className="flex flex-col gap-2 rounded border-2 p-2"
             style={{
               borderColor: group.color || '#64748b',
               backgroundImage: `linear-gradient(to right, ${hexTint(group.color || '#64748b')} 0%, #fff 20%, #fff 100%)`,
             }}
-            onDragOver={(event) => {
-              const where = dropHalf(event.currentTarget, event.clientY);
-              if (props.dragGroupId.current != null) {
-                if (props.dragGroupId.current === group.id) return;
-                event.preventDefault();
-                props.onHover({ target: 'group', id: group.id, where });
-                return;
-              }
-              if (!props.dragColumnKey.current) return;
-              if ((event.target as HTMLElement).closest('[data-column-row]')) return;
-              event.preventDefault();
-              props.onHover(
-                hasMembers
-                  ? { target: 'group', id: group.id, where }
-                  : { target: 'into', id: group.id },
-              );
-            }}
-            onDrop={(event) => {
-              const where =
-                props.dropMark?.target === 'group' && props.dropMark.id === group.id
-                  ? props.dropMark.where
-                  : dropHalf(event.currentTarget, event.clientY);
-              props.onHover(null);
-              const fromId = props.dragGroupId.current;
-              props.dragGroupId.current = null;
-              props.onDragState(null);
-              if (fromId != null) {
-                if (fromId === group.id) return;
-                event.preventDefault();
-                const moved = moveGroupSection(props.columns, props.groups, fromId, { kind: 'group', id: group.id }, where);
-                if (moved) void save(moved.columns, moved.groups);
-                return;
-              }
-              const fromColumn = props.dragColumnKey.current;
-              props.dragColumnKey.current = null;
-              props.onColumnDragEnd();
-              if (!fromColumn) return;
-              if ((event.target as HTMLElement).closest('[data-column-row]')) return;
-              event.preventDefault();
-              const intoGroup =
-                !hasMembers || (props.dropMark?.target === 'into' && props.dropMark.id === group.id);
-              const moved = intoGroup
-                ? moveColumnIntoGroup(props.columns, props.groups, fromColumn, group.id)
-                : placeColumnBesideGroup(props.columns, props.groups, fromColumn, group.id, where);
-              if (moved) void save(moved.columns, moved.groups);
-            }}
           >
-            <div className="flex items-center gap-2">
+            <div data-group-header className="flex items-center gap-2">
               <span
-                draggable={!props.busy}
                 title="Перетащить"
-                className="inline-flex cursor-grab text-slate-400"
-                onDragStart={(event: DragEvent) => {
-                  props.dragGroupId.current = group.id;
-                  props.onDragState(group.id);
-                  event.dataTransfer.effectAllowed = 'move';
-                  event.dataTransfer.setData('text/plain', String(group.id));
-                }}
-                onDragEnd={() => {
-                  props.dragGroupId.current = null;
-                  props.onDragState(null);
-                  props.onHover(null);
-                }}
+                className="inline-flex cursor-grab touch-none text-slate-400"
+                onPointerDown={props.onGripDown}
               >
                 <MoveIcon className="h-4 w-4" />
               </span>
@@ -2055,77 +2145,32 @@ function ColumnGroupCard(props: {
                 <TrashIcon className="h-4 w-4" />
               </button>
             </div>
-            {!group.collapsed && <div className="space-y-1">{props.children}</div>}
+            {!group.collapsed && (
+              <div data-group-body className="flex min-h-8 flex-col gap-2 py-2">
+                {props.children}
+              </div>
+            )}
           </div>
   );
 }
 
 function ColumnEditorRow(props: {
   column: BoardColumnConfig;
-  columns: BoardColumnConfig[];
   busy: boolean;
-  dragKey: { current: string | null };
-  dragGroupId: RefObject<number | null>;
-  dropMark: SectionDrop | null;
-  dragging: boolean;
-  onDragState: (key: string | null) => void;
-  onHover: (mark: SectionDrop | null) => void;
+  onGripDown: (event: ReactPointerEvent<HTMLElement>) => void;
   onChange: (column: BoardColumnConfig) => void;
-  onMove: (from: string, to: string) => void;
   onLeaveGroup?: () => void;
 }) {
   const c = props.column;
-  const mark =
-    props.dropMark?.target === 'column' && props.dropMark.key === c.statusKey
-      ? props.dropMark.where === 'below'
-        ? 'bro-insert-below'
-        : 'bro-insert-above'
-      : '';
   return (
     <div
       data-column-row
-      className={`flex items-center gap-2 rounded border border-slate-300 bg-white p-2 text-sm shadow-[0_1px_3px_rgba(15,23,42,0.18)] ${mark} ${
-        props.dragging ? 'bro-drag-source' : ''
-      }`}
-      onDragOver={(event) => {
-        if (props.dragGroupId.current != null) return;
-        const from = props.dragKey.current;
-        if (!from || from === c.statusKey) return;
-        const source = props.columns.find((item) => item.statusKey === from);
-        if (!source) return;
-        event.preventDefault();
-        event.stopPropagation();
-        const fromIndex = props.columns.findIndex((item) => item.statusKey === from);
-        const toIndex = props.columns.findIndex((item) => item.statusKey === c.statusKey);
-        props.onHover({ target: 'column', key: c.statusKey, where: fromIndex < toIndex ? 'below' : 'above' });
-      }}
-      onDrop={(event) => {
-        if (props.dragGroupId.current != null) return;
-        const from = props.dragKey.current;
-        props.dragKey.current = null;
-        props.onHover(null);
-        props.onDragState(null);
-        if (!from || from === c.statusKey) return;
-        event.preventDefault();
-        event.stopPropagation();
-        props.onMove(from, c.statusKey);
-      }}
+      className="flex items-center gap-2 rounded border border-slate-300 bg-white p-2 text-sm shadow-[0_1px_3px_rgba(15,23,42,0.18)]"
     >
       <span
-        draggable={!props.busy}
         title="Перетащить"
-        className="inline-flex cursor-grab text-slate-400"
-        onDragStart={(event) => {
-          props.dragKey.current = c.statusKey;
-          props.onDragState(c.statusKey);
-          event.dataTransfer.effectAllowed = 'move';
-          event.dataTransfer.setData('text/plain', c.statusKey);
-        }}
-        onDragEnd={() => {
-          props.dragKey.current = null;
-          props.onDragState(null);
-          props.onHover(null);
-        }}
+        className="inline-flex cursor-grab touch-none text-slate-400"
+        onPointerDown={props.onGripDown}
       >
         <MoveIcon className="h-4 w-4" />
       </span>
