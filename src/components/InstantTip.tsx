@@ -161,19 +161,31 @@ function anchorVisible(box: Anchor) {
   return box.bottom > 0 && box.right > 0 && box.top < window.innerHeight && box.left < window.innerWidth;
 }
 
+function frontAt(x: number, y: number): Element | null {
+  const top = document.elementFromPoint(x, y);
+  return top instanceof Element ? top : null;
+}
+
+function covers(front: Element, host: Element) {
+  return front !== host && !host.contains(front) && !front.contains(host);
+}
+
 function titledAt(x: number, y: number): HTMLElement | null {
   const stack = document.elementsFromPoint(x, y);
+  const front = stack.find((node): node is Element => node instanceof Element);
+  if (!front || front.closest('[data-instant-tip]')) return null;
   for (const node of stack) {
     if (!(node instanceof Element)) continue;
+    if (covers(front, node)) break;
     if (node.closest('[data-instant-tip]')) return null;
     const host = node.closest('[title]');
-    if (!(host instanceof HTMLElement)) continue;
+    if (!(host instanceof HTMLElement) || covers(front, host)) continue;
     if (!host.getAttribute('title')?.trim()) continue;
     return host;
   }
   for (const node of document.querySelectorAll('button:disabled[title], input:disabled[title]')) {
     if (!(node instanceof HTMLElement)) continue;
-    if (node.closest('[data-instant-tip]')) continue;
+    if (node.closest('[data-instant-tip]') || covers(front, node)) continue;
     const box = node.getBoundingClientRect();
     if (x < box.left || x > box.right || y < box.top || y > box.bottom) continue;
     if (!node.getAttribute('title')?.trim()) continue;
@@ -235,7 +247,8 @@ export function InstantTitleLayer() {
     };
     const sync = (x: number, y: number) => {
       const heldEl = held.current?.el;
-      if (heldEl) {
+      const front = frontAt(x, y);
+      if (heldEl && front && !covers(front, heldEl)) {
         const box = heldEl.getBoundingClientRect();
         if (x >= box.left && x <= box.right && y >= box.top && y <= box.bottom) return;
       }
