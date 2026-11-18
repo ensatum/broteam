@@ -1,7 +1,16 @@
+import { sourceStatusesOf } from './boardColumns';
 import type { BoardColumnConfig, ColumnDuty, ColumnOwnerRole, TrackerIssue } from './types';
 
 export function normalizeColumnDuty(value: string | null | undefined): ColumnDuty {
-  if (value === 'review' || value === 'testing' || value === 'development' || value === 'ai') return value;
+  if (
+    value === 'review' ||
+    value === 'testing' ||
+    value === 'development' ||
+    value === 'ai' ||
+    value === 'final'
+  ) {
+    return value;
+  }
   return '';
 }
 
@@ -139,6 +148,36 @@ export function issueIsDone(
 ): boolean {
   if (issue.statusType) return issue.statusType === 'done';
   return doneStatusKeys?.has(issue.statusKey) ?? false;
+}
+
+/**
+ * Status keys of columns tagged Финал on this board.
+ * `null` when the board has no such column, so the caller keeps the Tracker done status.
+ */
+export function finalColumnKeys(
+  columns: Array<Pick<BoardColumnConfig, 'boardLocalId' | 'duty' | 'statusKey' | 'sourceStatuses'>>,
+  boardLocalId: number | null,
+): ReadonlySet<string> | null {
+  if (boardLocalId == null) return null;
+  const mine = columns.filter((column) => column.boardLocalId === boardLocalId);
+  if (!mine.some((column) => column.duty === 'final')) return null;
+  const keys = new Set<string>();
+  for (const column of mine) {
+    if (column.duty !== 'final') continue;
+    if (column.statusKey) keys.add(column.statusKey);
+    for (const status of sourceStatusesOf(column)) keys.add(status.key);
+  }
+  return keys;
+}
+
+/** Финал columns when the board has that tag, otherwise the Tracker done status. */
+export function issueIsBoardDone(
+  issue: TrackerIssue,
+  doneStatusKeys: ReadonlySet<string> | undefined,
+  finalKeys: ReadonlySet<string> | null | undefined,
+): boolean {
+  if (finalKeys) return finalKeys.has(issue.statusKey);
+  return issueIsDone(issue, doneStatusKeys);
 }
 
 /** Hover text for clock on a single issue. */

@@ -12,7 +12,7 @@ import {
   cellMissingBadges,
   formatDays,
   formatIssueClockTitle,
-  issueIsDone,
+  issueIsBoardDone,
   issueTimeWarn,
 } from '@shared/columnMeta';
 import {
@@ -65,6 +65,7 @@ type Props = {
   issueBookmarkCreatedAt?: Record<string, string>;
   currentSprintId?: number | null;
   doneStatusKeys?: ReadonlySet<string>;
+  finalKeys?: ReadonlySet<string> | null;
   readOnly: boolean;
   onClose: () => void;
   onIssueHover?: (issueKey: string | null) => void;
@@ -260,13 +261,13 @@ export default function IssuePanel(props: Props) {
     }
     if (props.onlyTimeWarn) {
       matched = matched.filter(
-        (issue) => !issueIsDone(issue, props.doneStatusKeys) && issueTimeWarn(issue) != null,
+        (issue) => !issueIsBoardDone(issue, props.doneStatusKeys, props.finalKeys) && issueTimeWarn(issue) != null,
       );
     }
     if (props.onlyOtherSprint) {
       matched = matched.filter(
         (issue) =>
-          !issueIsDone(issue, props.doneStatusKeys) &&
+          !issueIsBoardDone(issue, props.doneStatusKeys, props.finalKeys) &&
           issue.sprintId != null &&
           issue.sprintId !== props.currentSprintId,
       );
@@ -361,7 +362,7 @@ export default function IssuePanel(props: Props) {
     filteredIssues.length === 0 &&
     props.showDone === false &&
     cellIssues.length > 0 &&
-    cellIssues.every((issue) => issueIsDone(issue, props.doneStatusKeys));
+    cellIssues.every((issue) => issueIsBoardDone(issue, props.doneStatusKeys, props.finalKeys));
   const listNotice = onlyDoneHidden || hiddenByFilters || selection.issues.length === 0;
 
   async function saveNote(issueKey: string) {
@@ -519,7 +520,7 @@ export default function IssuePanel(props: Props) {
             statusKey: issue.statusKey,
             statusDisplay: issue.statusDisplay,
           });
-          const done = issueIsDone(issue, props.doneStatusKeys);
+          const done = issueIsBoardDone(issue, props.doneStatusKeys, props.finalKeys);
           const timeWarn = done ? null : issueTimeWarn(issue);
           const pastSprint =
             !done && issue.sprintId != null && issue.sprintId !== props.currentSprintId;

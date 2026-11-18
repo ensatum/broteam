@@ -45,7 +45,7 @@ export type Developer = {
 };
 
 /** Optional column duty. Empty means no role tag; the name of the column does not count. */
-export type ColumnDuty = '' | 'review' | 'testing' | 'development' | 'ai';
+export type ColumnDuty = '' | 'review' | 'testing' | 'development' | 'ai' | 'final';
 
 /** Optional role for which this column means the task is in active work. */
 export type ColumnOwnerRole = '' | 'developer' | 'qa';
@@ -66,7 +66,7 @@ export type BoardColumnConfig = {
   sortOrder: number;
   /** Local agile_boards.id. 0 = legacy rows before boards were split. */
   boardLocalId: number;
-  /** Тесты, Ревью or Разработка. Empty leaves the missing-role icon on the name heuristic. */
+  /** Тесты, Ревью, Разработка, ИИ or Финал. Empty leaves the missing-role icon on the name heuristic. */
   duty: ColumnDuty;
   /** Разработчик or Тестировщик. Empty means the column is not active work for a role. */
   ownerRole: ColumnOwnerRole;

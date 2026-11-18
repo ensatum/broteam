@@ -2304,7 +2304,8 @@ function ColumnEditorRow(props: {
             event.target.value === 'review' ||
             event.target.value === 'testing' ||
             event.target.value === 'development' ||
-            event.target.value === 'ai'
+            event.target.value === 'ai' ||
+            event.target.value === 'final'
               ? event.target.value
               : '';
           props.onChange({ ...c, duty });
@@ -2315,6 +2316,7 @@ function ColumnEditorRow(props: {
         <option value="review">Ревью</option>
         <option value="testing">Тесты</option>
         <option value="ai">ИИ</option>
+        <option value="final">Финал</option>
       </select>
       <select
         className="h-8 w-36 shrink-0 rounded border border-slate-300 bg-white px-1 text-xs text-slate-700"

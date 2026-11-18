@@ -242,7 +242,11 @@ export function applyBackup(backup: AppBackup, sections: BackupSections): string
           sortOrder: c.sortOrder ?? index,
           boardLocalId: c.boardLocalId || 0,
           duty:
-            c.duty === 'review' || c.duty === 'testing' || c.duty === 'development' || c.duty === 'ai'
+            c.duty === 'review' ||
+            c.duty === 'testing' ||
+            c.duty === 'development' ||
+            c.duty === 'ai' ||
+            c.duty === 'final'
               ? c.duty
               : '',
           ownerRole: c.ownerRole === 'developer' || c.ownerRole === 'qa' ? c.ownerRole : '',

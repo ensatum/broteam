@@ -14,7 +14,7 @@ import { groupHeaderCells, groupStatusKey, moveGroupBefore, placeColumn, tableSl
 import { resolveDeveloperRowColor, darkenHex, hexTint } from '@shared/types';
 import { describeMatrix } from '@shared/matrixShape';
 import { sessionLog } from '../sessionLog';
-import { PENDING_COLUMN, cellMissingBadges, cellTimeWarn, issueIsDone, issueTimeWarn } from '@shared/columnMeta';
+import { PENDING_COLUMN, cellMissingBadges, cellTimeWarn, finalColumnKeys, issueIsBoardDone, issueIsDone, issueTimeWarn } from '@shared/columnMeta';
 import { staleNewTaskNote, changeStillOpen } from '@shared/issueChanges';
 import { storyPointsTotal, type StoryPointsSum } from '@shared/storyPoints';
 import { invalidateIssueStories } from '../issueStoryCache';
@@ -706,6 +706,10 @@ export default function BoardPage(props: Props) {
       cancelled = true;
     };
   }, []);
+  const finalKeys = useMemo(
+    () => finalColumnKeys(props.columns, props.activeBoardId),
+    [props.columns, props.activeBoardId],
+  );
   const [reorderMode, setReorderMode] = useState(false);
   const [crossBoards, setCrossBoards] = useState<Record<string, boolean>>(loadCrossBoards);
   const [crossBusy, setCrossBusy] = useState(false);
@@ -1050,12 +1054,14 @@ export default function BoardPage(props: Props) {
             assignees: appliedExcludedAssignees,
           },
           doneStatusKeys,
+          finalKeys,
         ),
         castPerson,
       ),
       boardScope,
       doneStatusKeys,
       unseenChangeKeys,
+      finalKeys,
     );
   }, [
     reflowed,
@@ -1071,6 +1077,7 @@ export default function BoardPage(props: Props) {
     appliedExcludedAssignees,
     boardScope,
     doneStatusKeys,
+    finalKeys,
     unseenChangeKeys,
     castPersonId,
     props.participants,
@@ -1140,14 +1147,14 @@ export default function BoardPage(props: Props) {
           for (const issue of issues || []) {
             if (!issue || seen.has(issue.key) || !match(issue)) continue;
             seen.add(issue.key);
-            if (issueIsDone(issue, doneStatusKeys)) done += 1;
+            if (issueIsBoardDone(issue, doneStatusKeys, finalKeys)) done += 1;
             else if (enabledStatusKeys.has(statusKey)) open += 1;
           }
         }
       }
       return { open, done };
     },
-    [sourceMatrix, enabledStatusKeys, doneStatusKeys],
+    [sourceMatrix, enabledStatusKeys, doneStatusKeys, finalKeys],
   );
 
   function applyLeftMemory(memory: LeftFilterMemory) {
@@ -1496,7 +1503,7 @@ export default function BoardPage(props: Props) {
           selection.developerId != null ? rows[0].developer.displayName : selection.developerName,
         issues: rows
           .flatMap((row) => Object.values(row.issuesByColumn).flat())
-          .filter((issue) => !issueIsDone(issue, doneStatusKeys)),
+          .filter((issue) => !issueIsBoardDone(issue, doneStatusKeys, finalKeys)),
       });
       return;
     }
@@ -1838,12 +1845,12 @@ export default function BoardPage(props: Props) {
   const sprintOutdated = sprintHeader.stale;
   const boardTotals = useMemo(() => {
     try {
-      return boardStatusTotals(sourceMatrix, doneStatusKeys);
+      return boardStatusTotals(sourceMatrix, doneStatusKeys, finalKeys);
     } catch (error) {
       sessionLog('error', 'boardStatusTotals', { error, matrix: describeMatrix(sourceMatrix) });
       return { open: 0, done: 0, total: 0 };
     }
-  }, [sourceMatrix, doneStatusKeys]);
+  }, [sourceMatrix, doneStatusKeys, finalKeys]);
   useEffect(() => {
     if (!sourceMatrix) {
       props.onHeaderChange({
@@ -2451,7 +2458,7 @@ export default function BoardPage(props: Props) {
         developerId,
         developerName,
         statusKey: PENDING_COLUMN,
-        issues: issues.filter((issue) => !issueIsDone(issue, doneStatusKeys)),
+        issues: issues.filter((issue) => !issueIsBoardDone(issue, doneStatusKeys, finalKeys)),
       },
       icon,
     );
@@ -3031,12 +3038,13 @@ export default function BoardPage(props: Props) {
     visibleIssuesByColumn(matrix, columns),
     columns,
     doneStatusKeys,
+    finalKeys,
   );
   const grandIssues = matrix.developers.flatMap((developerRow) =>
     columns.flatMap((column) => developerRow.issuesByColumn[column.statusKey] || []),
   );
   const grandPoints = storyPointsTotal(grandIssues);
-  const grandOpenPoints = storyPointsTotal(grandIssues.filter((issue) => !issueIsDone(issue, doneStatusKeys)));
+  const grandOpenPoints = storyPointsTotal(grandIssues.filter((issue) => !issueIsBoardDone(issue, doneStatusKeys, finalKeys)));
   const showPending = grandFigures.open > 0 && !reorderMode;
   const dataCols = slots.length + (showPending ? 2 : 1);
   const developerRows = matrix.developers;
@@ -3253,17 +3261,18 @@ export default function BoardPage(props: Props) {
     selection,
     doneStatusKeys,
     columns,
+    finalKeys,
   );
   const scopedIssues = detailIssues.filter((issue) => {
     if (boardScope === 'changes') return unseenChangeKeys.has(issue.key);
-    if (boardScope === 'done') return issueIsDone(issue, doneStatusKeys);
-    if (boardScope === 'open') return !issueIsDone(issue, doneStatusKeys);
+    if (boardScope === 'done') return issueIsBoardDone(issue, doneStatusKeys, finalKeys);
+    if (boardScope === 'open') return !issueIsBoardDone(issue, doneStatusKeys, finalKeys);
     return true;
   });
   const listedIssues =
     boardScope === 'done' || appliedShowDone
       ? scopedIssues
-      : scopedIssues.filter((issue) => !issueIsDone(issue, doneStatusKeys));
+      : scopedIssues.filter((issue) => !issueIsBoardDone(issue, doneStatusKeys, finalKeys));
   const detailNoteCount = uniqueIssueCount(listedIssues, (issue) =>
     Boolean(sourceMatrix.issueNotes[issue.key]?.trim()),
   );
@@ -3278,12 +3287,12 @@ export default function BoardPage(props: Props) {
   const detailMissingQaCount = uniqueIssueCount(listedIssues, (issue) => !issue.qaDisplay?.trim());
   const detailTimeWarnCount = uniqueIssueCount(
     listedIssues,
-    (issue) => !issueIsDone(issue, doneStatusKeys) && issueTimeWarn(issue) != null,
+    (issue) => !issueIsBoardDone(issue, doneStatusKeys, finalKeys) && issueTimeWarn(issue) != null,
   );
   const detailOtherSprintCount = uniqueIssueCount(
     listedIssues,
     (issue) =>
-      !issueIsDone(issue, doneStatusKeys) &&
+      !issueIsBoardDone(issue, doneStatusKeys, finalKeys) &&
       issue.sprintId != null &&
       issue.sprintId !== currentSprintId,
   );
@@ -3323,13 +3332,13 @@ export default function BoardPage(props: Props) {
           if (missingQaFilter && issue.qaDisplay?.trim()) return false;
           if (
             timeWarnFilter &&
-            (issueIsDone(issue, doneStatusKeys) || issueTimeWarn(issue) == null)
+            (issueIsBoardDone(issue, doneStatusKeys, finalKeys) || issueTimeWarn(issue) == null)
           ) {
             return false;
           }
           if (
             otherSprintFilter &&
-            (issueIsDone(issue, doneStatusKeys) ||
+            (issueIsBoardDone(issue, doneStatusKeys, finalKeys) ||
               !(issue.sprintId != null && issue.sprintId !== currentSprintId))
           ) {
             return false;
@@ -3435,6 +3444,7 @@ export default function BoardPage(props: Props) {
       columns={columns}
       currentSprintId={currentSprintId}
       doneStatusKeys={doneStatusKeys}
+      finalKeys={finalKeys}
       readOnly={readOnly}
       onClose={() => setSelection(null)}
       onShowAll={selectAllTasks}
@@ -3633,7 +3643,7 @@ export default function BoardPage(props: Props) {
                     key: String(NO_SPRINT),
                     label: 'Без спринта',
                     count: splitCount(
-                      (issue) => issue.sprintId == null && !issueIsDone(issue, doneStatusKeys),
+                      (issue) => issue.sprintId == null && !issueIsBoardDone(issue, doneStatusKeys, finalKeys),
                     ),
                     active: activeSprints.has(NO_SPRINT),
                     pinned: pinnedSprints.has(NO_SPRINT),
@@ -4336,9 +4346,9 @@ export default function BoardPage(props: Props) {
                   );
                   const rowPoints = storyPointsTotal(rowIssues);
                   const rowOpenPoints = storyPointsTotal(
-                    rowIssues.filter((issue) => !issueIsDone(issue, doneStatusKeys)),
+                    rowIssues.filter((issue) => !issueIsBoardDone(issue, doneStatusKeys, finalKeys)),
                   );
-                  const rowFigures = splitVisible(row.issuesByColumn, columns, doneStatusKeys);
+                  const rowFigures = splitVisible(row.issuesByColumn, columns, doneStatusKeys, finalKeys);
                   const totalSelected = isCellSelected(row.developer.id, null);
                   const pendingSelected = isCellSelected(row.developer.id, PENDING_COLUMN);
                   const rowFixed = row.developer.id < 0;
@@ -4448,7 +4458,7 @@ export default function BoardPage(props: Props) {
                           : row.issuesByColumn[c.statusKey] || [];
                         const dropKey = grouped ? slot.columns[0]?.statusKey || c.statusKey : c.statusKey;
                         const badges = cellMissingBadges(issues, c);
-                        const activeIssues = issues.filter((i) => !issueIsDone(i, doneStatusKeys));
+                        const activeIssues = issues.filter((i) => !issueIsBoardDone(i, doneStatusKeys, finalKeys));
                         const timeWarn = cellTimeWarn(activeIssues);
                         const hasNote = issues.some(
                           (i) => Boolean(sourceMatrix?.issueNotes[i.key]?.trim()),
@@ -5073,6 +5083,7 @@ function TasksDock(props: {
   columns: BoardColumnConfig[];
   currentSprintId?: number | null;
   doneStatusKeys?: ReadonlySet<string>;
+  finalKeys: ReadonlySet<string> | null;
   readOnly: boolean;
   onClose: () => void;
   onShowAll: () => void;
@@ -5338,6 +5349,7 @@ function TasksDock(props: {
               issueBookmarkCreatedAt={props.sourceMatrix.issueBookmarkCreatedAt || {}}
               currentSprintId={props.currentSprintId}
               doneStatusKeys={props.doneStatusKeys}
+              finalKeys={props.finalKeys}
               readOnly={props.readOnly}
               onClose={props.onClose}
               onIssueHover={props.onIssueHover}
@@ -5944,6 +5956,7 @@ function issuesForSelection(
   selection: CellSelection | null,
   doneStatusKeys: ReadonlySet<string> | undefined,
   sourceColumns: BoardColumnConfig[],
+  finalKeys: ReadonlySet<string> | null,
 ): TrackerIssue[] {
   if (!source || !selection || selection.kind !== 'issues') return [];
   if (selection.statusKey === PENDING_COLUMN) {
@@ -5953,7 +5966,7 @@ function issuesForSelection(
         : source.developers;
     return rows
       .flatMap((row) => Object.values(row.issuesByColumn).flat())
-      .filter((issue) => !issueIsDone(issue, doneStatusKeys));
+      .filter((issue) => !issueIsBoardDone(issue, doneStatusKeys, finalKeys));
   }
   if (selection.developerId != null && selection.statusKey == null) {
     const row = source.developers.find((item) => item.developer.id === selection.developerId);
@@ -5983,11 +5996,12 @@ function sprintAllowed(
   include: Set<number>,
   exclude: Set<number>,
   doneStatusKeys: ReadonlySet<string> | undefined,
+  finalKeys: ReadonlySet<string> | null,
 ): boolean {
   const bare = issue.sprintId == null;
   if (bare) {
     if (exclude.has(NO_SPRINT)) return false;
-    if (include.has(NO_SPRINT)) return !issueIsDone(issue, doneStatusKeys);
+    if (include.has(NO_SPRINT)) return !issueIsBoardDone(issue, doneStatusKeys, finalKeys);
     return ![...include].some((id) => id !== NO_SPRINT);
   }
   if (exclude.has(issue.sprintId as number)) return false;
@@ -6038,6 +6052,7 @@ function applyFilters(
     assignees: Set<string>;
   },
   doneStatusKeys: ReadonlySet<string> | undefined,
+  finalKeys: ReadonlySet<string> | null,
 ): BoardMatrix {
   if (
     !sprintIds.size &&
@@ -6055,7 +6070,7 @@ function applyFilters(
   }
 
   const match = (issue: TrackerIssue) => {
-    if (!sprintAllowed(issue, sprintIds, excluded.sprints, doneStatusKeys)) return false;
+    if (!sprintAllowed(issue, sprintIds, excluded.sprints, doneStatusKeys, finalKeys)) return false;
     const reviewerMissing = !(issue.reviewerDisplay || '').trim();
     const qaMissing = !(issue.qaDisplay || '').trim();
     const authorMissing = !(issue.authorDisplay || '').trim();
@@ -6104,12 +6119,13 @@ function applyBoardScope(
   scope: BoardScope,
   doneStatusKeys: ReadonlySet<string> | undefined,
   changeKeys: ReadonlySet<string>,
+  finalKeys: ReadonlySet<string> | null,
 ): BoardMatrix {
   if (scope === 'total') return matrix;
   const match = (issue: TrackerIssue) => {
     if (scope === 'changes') return changeKeys.has(issue.key);
-    if (scope === 'done') return issueIsDone(issue, doneStatusKeys);
-    return !issueIsDone(issue, doneStatusKeys);
+    if (scope === 'done') return issueIsBoardDone(issue, doneStatusKeys, finalKeys);
+    return !issueIsBoardDone(issue, doneStatusKeys, finalKeys);
   };
   const developers = matrix.developers.map((row) => {
     const issuesByColumn: Record<string, TrackerIssue[]> = {};
@@ -6136,7 +6152,8 @@ function applyBoardScope(
 function splitVisible(
   issuesByColumn: Record<string, TrackerIssue[]>,
   shown: Array<{ statusKey: string; alias: string; statusDisplay?: string }>,
-  doneStatusKeys?: ReadonlySet<string>,
+  doneStatusKeys: ReadonlySet<string> | undefined,
+  finalKeys: ReadonlySet<string> | null,
 ): { open: number; total: number } {
   const seen = new Set<string>();
   let total = 0;
@@ -6146,7 +6163,7 @@ function splitVisible(
       if (seen.has(issue.key)) continue;
       seen.add(issue.key);
       total += 1;
-      if (issueIsDone(issue, doneStatusKeys)) done += 1;
+      if (issueIsBoardDone(issue, doneStatusKeys, finalKeys)) done += 1;
     }
   }
   return { open: Math.max(0, total - done), total };
@@ -6198,7 +6215,8 @@ function pickMatchesIssue(pick: BoardPersonPick, issue: TrackerIssue): boolean {
 
 function boardStatusTotals(
   matrix: BoardMatrix | null,
-  doneStatusKeys?: ReadonlySet<string>,
+  doneStatusKeys: ReadonlySet<string> | undefined,
+  finalKeys: ReadonlySet<string> | null,
 ): { open: number; done: number; total: number } {
   if (!matrix) return { open: 0, done: 0, total: 0 };
   const seen = new Set<string>();
@@ -6210,7 +6228,7 @@ function boardStatusTotals(
         if (seen.has(issue.key)) continue;
         seen.add(issue.key);
         total += 1;
-        if (issueIsDone(issue, doneStatusKeys)) done += 1;
+        if (issueIsBoardDone(issue, doneStatusKeys, finalKeys)) done += 1;
       }
     }
   }
