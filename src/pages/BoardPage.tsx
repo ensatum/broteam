@@ -622,6 +622,7 @@ export default function BoardPage(props: Props) {
   const [rowWidth, setRowWidth] = useState(0);
   const [centerBox, setCenterBox] = useState({ w: 0, h: 0 });
   const [listSort, setListSort] = useState<ListSort>(() => loadListSort());
+  const [listFilterEpoch, setListFilterEpoch] = useState(0);
   const [activeIcon, setActiveIcon] = useState<CellBadgeKind | null>(null);
   const [pinnedIcons, setPinnedIcons] = useState<Set<CellBadgeKind>>(() => new Set());
   const noteOn = activeIcon === 'note' || pinnedIcons.has('note');
@@ -2642,6 +2643,22 @@ export default function BoardPage(props: Props) {
     setConsoleOpen(snap.consoleOpen);
   }
 
+  function resetEveryFilter() {
+    if (reorderMode) leaveReorder();
+    setCastOn(false);
+    localStorage.removeItem(LEFT_FILTERS_KEY);
+    clearFadePreview();
+    fadeThen(() => {
+      resetTaskFiltersNow();
+      setBoardScope('total');
+      setShowDoneIssues(true);
+      saveShowDone(true);
+      syncApplied({ showDone: true });
+      setListFilterEpoch((epoch) => epoch + 1);
+      selectAllTasks();
+    });
+  }
+
   function toggleEdit() {
     if (reorderMode) {
       leaveReorder();
@@ -2660,6 +2677,14 @@ export default function BoardPage(props: Props) {
   const editButton = editSlot
     ? createPortal(
         <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            title="Сбросить фильтры на всех досках"
+            className="inline-flex h-7 items-center rounded-md border border-slate-300 bg-white px-2 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+            onClick={resetEveryFilter}
+          >
+            Сбросить все фильтры
+          </button>
           <button
             type="button"
             aria-pressed={reorderMode}
@@ -3473,6 +3498,7 @@ export default function BoardPage(props: Props) {
       onCollapseAll={() => setExpandedKeys(new Set())}
       listSort={listSort}
       onListSort={changeListSort}
+      filterEpoch={listFilterEpoch}
       panelWidth={panelWidth}
       sourceMatrix={sourceMatrix}
       columns={columns}
@@ -5128,6 +5154,7 @@ function TasksDock(props: {
   onCollapseAll: () => void;
   listSort: ListSort;
   onListSort: (next: ListSort) => void;
+  filterEpoch: number;
   panelWidth: number;
   sourceMatrix: BoardMatrix;
   columns: BoardColumnConfig[];
@@ -5412,6 +5439,7 @@ function TasksDock(props: {
               }}
               onError={props.onError}
               listSort={props.listSort}
+              filterEpoch={props.filterEpoch}
               onShowAll={props.onShowAll}
               cellIssues={props.cellIssues}
               unfilteredCellIssues={props.unfilteredCellIssues}

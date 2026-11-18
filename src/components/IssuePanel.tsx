@@ -75,6 +75,7 @@ type Props = {
   onError: (msg: string | null) => void;
   embedded?: boolean;
   listSort: ListSort;
+  filterEpoch?: number;
   onShowAll?: () => void;
   onlyWithNote?: boolean;
   onlyWithBookmark?: boolean;
@@ -225,6 +226,11 @@ export default function IssuePanel(props: Props) {
     setSearch('');
     setEpicKey(null);
   }, [selection?.developerId, selection?.statusKey]);
+
+  useEffect(() => {
+    setSearch('');
+    setEpicKey(null);
+  }, [props.filterEpoch]);
 
   useEffect(() => {
     void window.api.listDevelopers().then(setPeople).catch(() => undefined);
