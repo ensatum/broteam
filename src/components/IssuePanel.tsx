@@ -643,7 +643,7 @@ export default function IssuePanel(props: Props) {
               </span>
               <CopyIssueButton issueKey={issue.key} url={issue.url} summary={issue.summary} />
               <span className="min-w-0 flex-1" />
-              <div className="flex shrink-0 items-center gap-px">
+              <div className="flex shrink-0 items-center gap-1">
                 {marks}
                 <StoryPointsControl
                   value={issue.storyPoints}

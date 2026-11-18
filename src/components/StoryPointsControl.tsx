@@ -101,7 +101,7 @@ export function StoryPointsControl(props: {
   );
 
   if (props.disabled) {
-    return <span className="mr-1 inline-flex h-4 shrink-0 items-center justify-center">{mark}</span>;
+    return <span className="inline-flex h-4 shrink-0 items-center justify-center">{mark}</span>;
   }
 
   return (
@@ -109,7 +109,7 @@ export function StoryPointsControl(props: {
       <button
         ref={anchorRef}
         type="button"
-        className="mr-1 inline-flex h-4 shrink-0 cursor-pointer items-center justify-center bg-transparent p-0"
+        className="inline-flex h-4 shrink-0 cursor-pointer items-center justify-center bg-transparent p-0"
         style={saved == null ? heatStyle(1) : undefined}
         onMouseDown={(event) => event.stopPropagation()}
         onClick={(event) => {

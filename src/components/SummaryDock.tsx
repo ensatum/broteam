@@ -1339,7 +1339,7 @@ function SummaryCard(props: {
         </span>
         <CopyIssueButton issueKey={row.key} url={row.url} summary={row.summary} />
         <span className="min-w-0 flex-1" />
-        <div className="flex shrink-0 items-center gap-px">
+        <div className="flex shrink-0 items-center gap-1">
           <StoryPointsControl
             value={row.storyPoints}
             onApply={props.onAssignPoints}
