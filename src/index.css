@@ -541,7 +541,6 @@ body.bro-drag-col * {
   font-weight: 600;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  pointer-events: none;
   flex: 0 0 auto;
 }
 

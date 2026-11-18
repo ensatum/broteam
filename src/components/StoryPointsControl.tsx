@@ -3,14 +3,17 @@ import { createPortal } from 'react-dom';
 import { nearestStoryPoint, storyPointColor, STORY_POINT_MARKS } from '@shared/storyPoints';
 import { hexTint } from '@shared/types';
 import { BatteryChargingIcon, BatteryIcon, CheckIcon, heatStyle } from './Icons';
+import { InstantTip } from './InstantTip';
 
 export function PointsSumBadge(props: { sum: number; tasks: number }) {
   const color = storyPointColor(Math.round(props.sum / props.tasks));
   const wash = hexTint(color, 0.1);
   return (
-    <span className="bro-points-sum" style={{ color, backgroundColor: wash, borderColor: wash }}>
-      {props.sum}
-    </span>
+    <InstantTip text="Story Points" className="inline-flex">
+      <span className="bro-points-sum" style={{ color, backgroundColor: wash, borderColor: wash }}>
+        {props.sum}
+      </span>
+    </InstantTip>
   );
 }
 
@@ -112,11 +115,16 @@ export function StoryPointsControl(props: {
   );
 
   if (props.disabled) {
-    return <span className="inline-flex h-4 shrink-0 items-center justify-center">{mark}</span>;
+    return (
+      <InstantTip text="Story Points" className="inline-flex">
+        <span className="inline-flex h-4 shrink-0 items-center justify-center">{mark}</span>
+      </InstantTip>
+    );
   }
 
   return (
     <>
+      <InstantTip text="Story Points" className="inline-flex">
       <button
         ref={anchorRef}
         type="button"
@@ -137,6 +145,7 @@ export function StoryPointsControl(props: {
       >
         {mark}
       </button>
+      </InstantTip>
       {open &&
         createPortal(
           <div
