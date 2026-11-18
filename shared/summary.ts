@@ -124,6 +124,10 @@ export type SummaryRow = {
   emphasizeReview: boolean;
   /** Agile story points. `null` is unset. Missing until the summary is collected again. */
   storyPoints?: number | null;
+  /** Epic issue key. Missing until the summary is collected again. */
+  epicKey?: string | null;
+  /** Epic title. */
+  epicDisplay?: string | null;
 };
 
 export function isoDate(date: Date): string {

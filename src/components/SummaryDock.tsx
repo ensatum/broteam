@@ -39,6 +39,7 @@ import { CopyIssueButton } from './IssuePanel';
 import { LoadBar } from './LoadBar';
 import { RunSpinner, stopMatchingRuns } from './ApiRunControls';
 import { EllipsisTitle, InstantTip } from './InstantTip';
+import { EpicFilter, EpicMark, epicOptions } from './EpicFilter';
 import { StatusFlowButton } from './StatusFlowButton';
 import { RolePick } from './RolePick';
 import { StoryPointsControl } from './StoryPointsControl';
@@ -116,6 +117,7 @@ export default function SummaryDock(props: {
   const [reportNote, setReportNote] = useState('');
   const [issueNotes, setIssueNotes] = useState<Record<string, string>>({});
   const [query, setQuery] = useState('');
+  const [epicKey, setEpicKey] = useState<string | null>(null);
   const [personOpen, setPersonOpen] = useState(false);
   const [sort, setSort] = useState<SummarySort>(loadSummarySort);
   const [plans, setPlans] = useState(true);
@@ -222,7 +224,7 @@ export default function SummaryDock(props: {
   useEffect(() => {
     if (statusFilter != null && !statusBadges.some((badge) => badge.key === statusFilter)) setStatusFilter(null);
   }, [statusBadges, statusFilter]);
-  const visibleRows = useMemo(() => {
+  const matchedRows = useMemo(() => {
     let filtered = audienceRows;
     if (boardFilter != null) filtered = filtered.filter((row) => row.boardLocalId === boardFilter);
     if (statusFilter) filtered = filtered.filter((row) => rowStatusKey(row, statusColumns) === statusFilter);
@@ -232,6 +234,14 @@ export default function SummaryDock(props: {
     }
     return sortRows(filtered, sort);
   }, [audienceRows, boardFilter, statusFilter, statusColumns, query, roster, props.boards, sort]);
+  const epicChoices = useMemo(() => epicOptions(matchedRows), [matchedRows]);
+  useEffect(() => {
+    if (epicKey && !epicChoices.some((item) => item.key === epicKey)) setEpicKey(null);
+  }, [epicKey, epicChoices]);
+  const visibleRows = useMemo(
+    () => (epicKey ? matchedRows.filter((row) => row.epicKey === epicKey) : matchedRows),
+    [matchedRows, epicKey],
+  );
   runningRef.current = running;
 
   function summaryRequest(period: SummaryPeriod = props.period): SummaryBuildRequest | null {
@@ -457,7 +467,7 @@ export default function SummaryDock(props: {
           />
         </div>
       </div>
-      <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-slate-200 bg-slate-50 px-2">
+      <div className="relative flex h-8 shrink-0 items-center gap-1.5 border-b border-slate-200 bg-slate-50 px-2">
         <button
           type="button"
           title={
@@ -585,6 +595,11 @@ export default function SummaryDock(props: {
           onFetch={(period) => void build(period)}
           disabled={running || props.boardLocalId == null}
         />
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="pointer-events-auto max-w-[34%]">
+            <EpicFilter options={epicChoices} selected={epicKey} onSelect={setEpicKey} />
+          </div>
+        </div>
         <input
           type="search"
           value={query}
@@ -1299,6 +1314,7 @@ function SummaryCard(props: {
         <span title="Автор" className="absolute inset-y-0 left-0 w-1.5 bg-emerald-200" aria-hidden />
       )}
       <div className={`flex items-center gap-1.5 px-2 py-1 ${props.open ? 'border-b border-slate-200 bg-slate-50' : ''}`}>
+        <EpicMark epicKey={row.epicKey} epicDisplay={row.epicDisplay} />
         <StatusFlowButton
           issueKey={row.key}
           statusKey={row.statusKey || ''}

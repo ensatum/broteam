@@ -33,6 +33,7 @@ import { StoryPointsControl } from './StoryPointsControl';
 import { StatusFlowButton } from './StatusFlowButton';
 import { LoadBar } from './LoadBar';
 import { EllipsisTitle, InstantTip } from './InstantTip';
+import { EpicFilter, EpicMark, epicOptions } from './EpicFilter';
 import { MarkdownSurface, type MarkdownHandle } from './MarkdownSurface';
 import { QuickComment } from './QuickComment';
 import { sortIssues, type ListSort } from './ListSort';
@@ -213,6 +214,7 @@ export default function IssuePanel(props: Props) {
   const [links, setLinks] = useState<Record<string, number[]>>({});
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [epicKey, setEpicKey] = useState<string | null>(null);
 
   useEffect(() => {
     setMenuKey(null);
@@ -220,6 +222,7 @@ export default function IssuePanel(props: Props) {
     setDraft('');
     setLinkDraft([]);
     setSearch('');
+    setEpicKey(null);
   }, [selection?.developerId, selection?.statusKey]);
 
   useEffect(() => {
@@ -236,7 +239,7 @@ export default function IssuePanel(props: Props) {
     return () => window.removeEventListener('click', onDoc);
   }, []);
 
-  const filteredIssues = useMemo(() => {
+  const listedIssues = useMemo(() => {
     if (!selection) return [];
     const q = search.trim().toLowerCase();
     let matched = selection.issues;
@@ -276,11 +279,10 @@ export default function IssuePanel(props: Props) {
         textHit(q, issueSearchParts(issue, props.people?.length ? props.people : people, props.boards || [])),
       );
     }
-    return sortIssues(matched, props.listSort, (issue) => issue.createdAt);
+    return matched;
   }, [
     selection,
     search,
-    props.listSort,
     props.onlyWithNote,
     props.onlyWithBookmark,
     props.onlyMissingPoints,
@@ -298,8 +300,16 @@ export default function IssuePanel(props: Props) {
     props.boards,
     people,
   ]);
+  const epicChoices = useMemo(() => epicOptions(listedIssues), [listedIssues]);
+  useEffect(() => {
+    if (epicKey && !epicChoices.some((item) => item.key === epicKey)) setEpicKey(null);
+  }, [epicKey, epicChoices]);
+  const filteredIssues = useMemo(() => {
+    const matched = epicKey ? listedIssues.filter((issue) => issue.epicKey === epicKey) : listedIssues;
+    return sortIssues(matched, props.listSort, (issue) => issue.createdAt);
+  }, [listedIssues, epicKey, props.listSort]);
   const [paintCount, setPaintCount] = useState(40);
-  const paintKey = `${selection?.developerId ?? ''}|${selection?.statusKey ?? ''}|${filteredIssues.length}|${search}|${props.listSort ?? ''}`;
+  const paintKey = `${selection?.developerId ?? ''}|${selection?.statusKey ?? ''}|${filteredIssues.length}|${search}|${epicKey ?? ''}|${props.listSort ?? ''}`;
   useEffect(() => {
     setPaintCount(40);
   }, [paintKey]);
@@ -417,7 +427,7 @@ export default function IssuePanel(props: Props) {
 
   return (
     <aside style={props.embedded ? undefined : { width }} className={frameClass}>
-      <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-100 px-2 py-1.5">
+      <div className="relative flex shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-100 px-2 py-1.5">
         <button
           type="button"
           title="Закрыть"
@@ -444,6 +454,11 @@ export default function IssuePanel(props: Props) {
             {' · '}
           </span>
           <span className="text-[11px] font-semibold text-slate-900">{filteredIssues.length}</span>
+        </div>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="pointer-events-auto max-w-[42%]">
+            <EpicFilter options={epicChoices} selected={epicKey} onSelect={setEpicKey} />
+          </div>
         </div>
         <input
           type="search"
@@ -483,6 +498,7 @@ export default function IssuePanel(props: Props) {
               className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium text-sky-800 hover:bg-sky-50"
               onClick={() => {
                 setSearch('');
+                setEpicKey(null);
                 props.onResetFilters?.();
               }}
             >
@@ -624,6 +640,7 @@ export default function IssuePanel(props: Props) {
               className="flex cursor-pointer items-center gap-1.5 bg-slate-100 px-2 py-1 hover:bg-slate-200"
               onClick={toggleExpand}
             >
+              <EpicMark epicKey={issue.epicKey} epicDisplay={issue.epicDisplay} />
               <StatusFlowButton
                 issueKey={issue.key}
                 statusKey={issue.statusKey}

@@ -184,6 +184,10 @@ export type TrackerIssue = {
    * Missing on a saved board that has not been loaded since this field was added.
    */
   storyPoints?: number | null;
+  /** Epic issue key. Missing until this task is loaded again. */
+  epicKey?: string | null;
+  /** Epic title from Tracker. */
+  epicDisplay?: string | null;
   /** Agile board ids the issue is on (from Tracker `boards`) */
   boardIds?: number[];
 };

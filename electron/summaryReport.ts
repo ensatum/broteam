@@ -133,6 +133,8 @@ export function writeIssuePeopleIntoSummaries(issue: {
   statusKey?: string;
   statusDisplay?: string;
   statusStartTime?: string | null;
+  epicKey?: string | null;
+  epicDisplay?: string | null;
 }): void {
   for (const stored of listSummarySources()) {
     let payload: SummaryCachePayload;
@@ -148,6 +150,8 @@ export function writeIssuePeopleIntoSummaries(issue: {
     const nextStatusKey = issue.statusKey || prev.statusKey;
     const nextStatusDisplay = issue.statusDisplay || prev.statusDisplay;
     const nextStatusStart = issue.statusStartTime !== undefined ? issue.statusStartTime : prev.statusStartTime;
+    const nextEpicKey = 'epicKey' in issue ? issue.epicKey ?? null : prev.epicKey ?? null;
+    const nextEpicDisplay = 'epicDisplay' in issue ? issue.epicDisplay ?? null : prev.epicDisplay ?? null;
     if (
       prev.assigneeDisplay === issue.assigneeDisplay &&
       prev.reviewerDisplay === issue.reviewerDisplay &&
@@ -155,7 +159,9 @@ export function writeIssuePeopleIntoSummaries(issue: {
       prev.storyPoints === nextPoints &&
       prev.statusKey === nextStatusKey &&
       prev.statusDisplay === nextStatusDisplay &&
-      prev.statusStartTime === nextStatusStart
+      prev.statusStartTime === nextStatusStart &&
+      (prev.epicKey ?? null) === nextEpicKey &&
+      (prev.epicDisplay ?? null) === nextEpicDisplay
     ) {
       continue;
     }
@@ -168,6 +174,7 @@ export function writeIssuePeopleIntoSummaries(issue: {
       statusDisplay: nextStatusDisplay,
       statusStartTime: nextStatusStart,
       ...('storyPoints' in issue ? { storyPoints: nextPoints } : {}),
+      ...('epicKey' in issue ? { epicKey: nextEpicKey, epicDisplay: nextEpicDisplay } : {}),
     };
     saveSummarySource(stored.boardLocalId, {
       formedAt: stored.formedAt,
@@ -215,6 +222,8 @@ export async function refreshSummaryIssue(
     updatedAt: issue.updatedAt,
     sprintName: issue.sprintName,
     storyPoints: issue.storyPoints ?? null,
+    epicKey: issue.epicKey ?? null,
+    epicDisplay: issue.epicDisplay ?? null,
   });
   const index = payload.issues.findIndex((item) => item.key === issueKey);
   if (index >= 0) payload.issues[index] = snap;
@@ -633,6 +642,8 @@ type SummaryIssue = {
   updatedAt?: string | null;
   sprintName: string | null;
   storyPoints?: number | null;
+  epicKey?: string | null;
+  epicDisplay?: string | null;
 };
 
 type SummaryCachePayload = {
@@ -660,6 +671,9 @@ function snapshotIssue(issue: SummaryIssue): SummaryIssue {
     updatedAt: issue.updatedAt || null,
     sprintName: issue.sprintName,
     ...('storyPoints' in issue ? { storyPoints: issue.storyPoints ?? null } : {}),
+    ...('epicKey' in issue
+      ? { epicKey: issue.epicKey ?? null, epicDisplay: issue.epicDisplay ?? null }
+      : {}),
   };
 }
 
@@ -1155,6 +1169,9 @@ function interpretIssue(
     emphasizeWork: role === 'developer' && wasAssignee,
     emphasizeReview: role === 'developer' && wasReviewer,
     ...('storyPoints' in issue ? { storyPoints: issue.storyPoints ?? null } : {}),
+    ...('epicKey' in issue
+      ? { epicKey: issue.epicKey ?? null, epicDisplay: issue.epicDisplay ?? null }
+      : {}),
   };
 }
 

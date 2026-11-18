@@ -1099,6 +1099,7 @@ type RawTrackerIssue = {
   sprint?: Array<{ id?: string | number; display?: string }> | null;
   boards?: Array<{ id?: number | string; name?: string | null }> | null;
   storyPoints?: number | null;
+  epic?: { key?: string; display?: string } | null;
 };
 
 export function isReactionComment(text: string | null | undefined, type?: string | null): boolean {
@@ -1161,7 +1162,17 @@ function mapTrackerIssue(
     sprintName: sprint?.display || null,
     boardIds,
     storyPoints: storyPointsOf(issue.storyPoints),
+    ...epicOf(issue.epic),
   };
+}
+
+function epicOf(epic?: { key?: string; display?: string } | null): {
+  epicKey: string | null;
+  epicDisplay: string | null;
+} {
+  const key = (epic?.key || '').trim();
+  if (!key) return { epicKey: null, epicDisplay: null };
+  return { epicKey: key, epicDisplay: (epic?.display || '').trim() || null };
 }
 
 function storyPointsOf(value: unknown): number | null {
