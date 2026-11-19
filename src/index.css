@@ -662,6 +662,20 @@ a[href],
     right var(--bro-edge-r) bottom var(--bro-edge-b);
 }
 
+/* Marks on the outer edges already sit on the cell border.
+   Keep the overlay box there so the table stays the same width and height. */
+.bro-edge-right.bro-cell-mark::before,
+.bro-edge-right.bro-cell-selected::before {
+  right: 0;
+  --bro-edge-r: 0px;
+}
+
+.bro-edge-bottom.bro-cell-mark::before,
+.bro-edge-bottom.bro-cell-selected::before {
+  bottom: 0;
+  --bro-edge-b: 0px;
+}
+
 @keyframes bro-load {
   0% { transform: translateX(-120%); }
   100% { transform: translateX(340%); }
