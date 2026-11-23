@@ -12,7 +12,7 @@ help: ## эта справка
 		'make release                      релиз: пакеты в release/, тег' \
 		'' \
 		'make live                         текущий код; закрывает уже открытый BroTeam' \
-		'make build-last                   последний билд, AppImage; закрывает уже открытый' \
+		'make build-last                   AppImage версии из git; нет файла — собрать без бампа' \
 		'make build-last WHAT=release      запустить последний релиз, AppImage' \
 		'make build-last TYPE=deb          открыть последний такой пакет' \
 		'make build-last WHAT=release TYPE=mac ARCH=arm64' \
@@ -27,5 +27,5 @@ release: ## релиз: пакеты в release/, тег
 live: ## текущий код; закрывает уже открытый BroTeam
 	node scripts/live.mjs
 
-build-last: ## открыть последний пакет (WHAT, TYPE, ARCH)
+build-last: ## AppImage версии из git; нет файла — собрать без бампа (WHAT, TYPE, ARCH)
 	node scripts/open-artifact.mjs --what "$(WHAT)" --type "$(TYPE)" --arch "$(ARCH)"

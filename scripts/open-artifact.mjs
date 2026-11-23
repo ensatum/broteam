@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 /**
- * Open the newest packaged file.
- * A running BroTeam is closed first.
+ * Open a packaged file.
+ * The build AppImage is the version recorded in git. If that file is missing, it is packed
+ * from a clean tree without a version bump, commit, or push. Other packages are the newest local file.
+ * A running BroTeam is closed before launch.
  * AppImage is started. deb, mac zip and Windows zip are handed to the system.
  *
  * node scripts/open-artifact.mjs --what build|release --type appimage|deb|mac|win --arch x64
  */
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { appImagePath, packBuild } from './pack-build.mjs';
 import { compareVersions, versionIn } from './prune-artifacts.mjs';
 import { stopRunning } from './stop-running.mjs';
 
@@ -51,6 +54,74 @@ function pick(dir, type, arch) {
   );
 }
 
+function git(args) {
+  return execFileSync('git', args, {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+function gitError(err, fallback) {
+  const detail = err.stderr ? String(err.stderr).trim() : '';
+  return detail ? `${fallback} ${detail}` : fallback;
+}
+
+function versionInGit() {
+  let raw;
+  try {
+    raw = git(['show', 'HEAD:package.json']);
+  } catch (err) {
+    throw new Error(gitError(err, 'Не удалось прочитать версию сборки из git.'));
+  }
+  let version = '';
+  try {
+    version = JSON.parse(raw).version;
+  } catch {
+    throw new Error('package.json в git не читается.');
+  }
+  if (!/^\d+\.\d+\.\d+$/.test(version)) {
+    throw new Error(`Версия в git не в виде год.релиз.сборка: ${version}`);
+  }
+  return version;
+}
+
+function ensureCanRebuild() {
+  let gitDir;
+  let status;
+  try {
+    gitDir = path.resolve(root, git(['rev-parse', '--git-dir']).trim());
+    status = git(['status', '--porcelain']);
+  } catch (err) {
+    throw new Error(gitError(err, 'Не удалось проверить git.'));
+  }
+  if (
+    fs.existsSync(path.join(gitDir, 'rebase-merge')) ||
+    fs.existsSync(path.join(gitDir, 'rebase-apply')) ||
+    fs.existsSync(path.join(gitDir, 'MERGE_HEAD'))
+  ) {
+    throw new Error('Сначала завершите rebase или merge.');
+  }
+  if (status.trim()) {
+    throw new Error(
+      'Этой сборки нет в builds/, а рабочая копия отличается от git. Без бампа её можно собрать только из чистого дерева.',
+    );
+  }
+}
+
+function buildAppImage() {
+  const version = versionInGit();
+  const expected = appImagePath(version);
+  if (fs.existsSync(expected)) return expected;
+  ensureCanRebuild();
+  console.log(`Сборки ${version} нет в builds/. Собираю её без бампа версии.`);
+  const packed = packBuild();
+  if (path.resolve(packed) !== path.resolve(expected) || !fs.existsSync(expected)) {
+    throw new Error(`Сборка ${version} не появилась в builds/.`);
+  }
+  return expected;
+}
+
 function launch(file, type) {
   const command = type === 'appimage' ? file : 'xdg-open';
   const args = type === 'appimage' ? [] : [file];
@@ -73,7 +144,7 @@ async function main() {
   }
   if (!types.includes(type)) throw new Error(`TYPE: ${types.join(', ')}`);
   const dir = path.join(root, what === 'build' ? 'builds' : 'release');
-  const file = pick(dir, type, arch);
+  const file = what === 'build' && type === 'appimage' ? buildAppImage() : pick(dir, type, arch);
   if (!file) throw new Error(`Нет пакета ${type} в ${path.relative(root, dir)}/`);
   await stopRunning();
   launch(file, type);
